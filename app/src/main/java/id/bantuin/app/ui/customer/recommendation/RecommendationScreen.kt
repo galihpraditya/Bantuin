@@ -80,6 +80,7 @@ import id.bantuin.app.ui.theme.TextSecondary
 fun RecommendationScreen(
     categoryId: Int,
     orderFlow: OrderFlowManager,
+    repository: id.bantuin.app.data.repository.FakeBantuinRepository,
     onNavigateBack: () -> Unit,
     onSelectProvider: (ProviderCandidate) -> Unit,
     modifier: Modifier = Modifier
@@ -95,14 +96,23 @@ fun RecommendationScreen(
     var minRatingFilter by remember { mutableDoubleStateOf(0.0) }
     var onlyTrusted by remember { mutableStateOf(false) }
 
-    // Evaluasi F1 Matchmaking
-    val matchResult = remember(categoryId, orderFlow.customerLocation) {
-        val candidates = FakeData.providers.filter { p ->
-            // Filter layanan di kategori ini dan bukan semua hari OFF (p15)
-            FakeData.services.any { it.providerId == p.providerId && it.categoryId == categoryId } &&
-                    p.providerId != "p15"
+    var candidateList by remember { mutableStateOf<List<ProviderCandidate>>(emptyList()) }
+    var isLoading by remember { mutableStateOf(true) }
+
+    androidx.compose.runtime.LaunchedEffect(categoryId, orderFlow.customerLocation) {
+        isLoading = true
+        val res = repository.candidates(categoryId)
+        if (res is id.bantuin.app.core.result.AppResult.Success) {
+            candidateList = res.data
         }
-        matchmakingUseCase(orderFlow.customerLocation, candidates)
+        isLoading = false
+    }
+
+    // Evaluasi F1 Matchmaking secara dinamis berdasarkan data repositori terbaru
+    val matchResult by remember(candidateList, orderFlow.customerLocation) {
+        derivedStateOf {
+            matchmakingUseCase(orderFlow.customerLocation, candidateList)
+        }
     }
 
     val filteredList by remember(matchResult, maxDistanceFilter, minRatingFilter, onlyTrusted) {
@@ -360,7 +370,7 @@ private fun ProviderRecommendationCard(
                         .padding(horizontal = 8.dp, vertical = 4.dp)
                 ) {
                     Text(
-                        text = "⚡ Match Score ${ranked.matchScore}%",
+                        text = "Match Score ${ranked.matchScore}%",
                         style = MaterialTheme.typography.labelMedium,
                         color = if (candidate.flagAnomaly) RedError else OrangePrimary,
                         fontWeight = FontWeight.Bold

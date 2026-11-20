@@ -134,6 +134,7 @@ fun BantuinNavGraph(
                 RecommendationScreen(
                     categoryId = categoryId,
                     orderFlow = orderFlow,
+                    repository = repository,
                     onNavigateBack = { navController.popBackStack() },
                     onSelectProvider = { provider ->
                         orderFlow.selectedProvider = provider
