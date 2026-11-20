@@ -57,6 +57,9 @@ Thumbs.db
 # Memory & profiler dumps
 *.hprof
 
+# Superpowers scratch
+.superpowers/
+
 # Design mockups & raw reference assets
 docs/design/
 
