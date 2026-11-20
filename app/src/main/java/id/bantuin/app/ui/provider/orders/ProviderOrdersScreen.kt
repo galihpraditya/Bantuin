@@ -168,13 +168,13 @@ private fun ProviderOrderActionCard(
             Spacer(modifier = Modifier.height(4.dp))
 
             Text(
-                text = "🔧 ${booking.serviceName}",
+                text = "Layanan: ${booking.serviceName}",
                 style = MaterialTheme.typography.bodyMedium,
                 color = TextSecondary
             )
 
             Text(
-                text = "📍 ${booking.address}",
+                text = "Lokasi: ${booking.address}",
                 style = MaterialTheme.typography.bodySmall,
                 color = TextMuted
             )

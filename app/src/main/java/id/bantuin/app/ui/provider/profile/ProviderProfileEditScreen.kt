@@ -69,6 +69,7 @@ import id.bantuin.app.ui.theme.RedError
 import id.bantuin.app.ui.theme.TextMuted
 import id.bantuin.app.ui.theme.TextPrimary
 import id.bantuin.app.ui.theme.TextSecondary
+import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -104,8 +105,14 @@ fun ProviderProfileEditScreen(
             val p = res.data.find { it.providerId == "p01" }
             if (p != null) {
                 name = p.name
+                bio = p.bio
+                address = p.address
                 location = p.location
             }
+        }
+        val user = repository.currentUser().firstOrNull()
+        if (user != null && user.phone.isNotBlank()) {
+            phone = user.phone
         }
     }
 
@@ -240,7 +247,7 @@ fun ProviderProfileEditScreen(
                                         selectedContainerColor = OrangePrimary,
                                         selectedLabelColor = Color.White
                                     ),
-                                    modifier = Modifier.heightIn(min = 40.dp)
+                                    modifier = Modifier.heightIn(min = 48.dp)
                                 )
                             }
                         }

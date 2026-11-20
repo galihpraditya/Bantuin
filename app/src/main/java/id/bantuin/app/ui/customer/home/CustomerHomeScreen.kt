@@ -286,7 +286,7 @@ private fun CustomerHeaderSection(
                     contentAlignment = Alignment.Center
                 ) {
                     Text(
-                        text = "✓ Pelanggan",
+                        text = "Pelanggan",
                         style = MaterialTheme.typography.labelMedium,
                         color = Color.White,
                         fontWeight = FontWeight.SemiBold
@@ -441,7 +441,7 @@ private fun EmergencyHeroCard(
                         .padding(horizontal = 8.dp, vertical = 3.dp)
                 ) {
                     Text(
-                        text = "⚡ DARURAT 24 JAM",
+                        text = "DARURAT 24 JAM",
                         style = MaterialTheme.typography.labelSmall,
                         color = Color.White,
                         fontWeight = FontWeight.Bold
@@ -703,7 +703,7 @@ private fun NearbyProvidersSection(
                                     overflow = TextOverflow.Ellipsis
                                 )
                                 Text(
-                                    text = "★ ${provider.ratingAvg ?: 5.0} (${provider.reviewCount} ulasan)",
+                                    text = "Rating ${provider.ratingAvg ?: 5.0} (${provider.reviewCount} ulasan)",
                                     style = MaterialTheme.typography.bodySmall,
                                     color = Color(0xFFF57C00)
                                 )
@@ -718,7 +718,7 @@ private fun NearbyProvidersSection(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Text(
-                                text = "📍 ~1.2 km",
+                                text = "Jarak ~1.2 km",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = TextSecondary
                             )

@@ -425,9 +425,13 @@ private fun UpsertServiceDialog(
                         errorMessage = "Nama layanan wajib diisi"
                         return@Button
                     }
-                    val fare = baseFareText.toIntOrNull() ?: 0
-                    if (fare < 0) {
-                        errorMessage = "Tarif dasar tidak boleh negatif"
+                    val fare = baseFareText.toIntOrNull() ?: -1
+                    if (fare <= 0) {
+                        errorMessage = "Tarif dasar harus lebih besar dari Rp 0"
+                        return@Button
+                    }
+                    if (fare % 500 != 0) {
+                        errorMessage = "Tarif dasar harus kelipatan Rp 500 (contoh: Rp 75.000, Rp 75.500)"
                         return@Button
                     }
                     val duration = durationText.toIntOrNull() ?: 60
@@ -436,9 +440,7 @@ private fun UpsertServiceDialog(
                         return@Button
                     }
 
-                    val finalFare = if (fare % 500 != 0) {
-                        ((fare + 499) / 500) * 500
-                    } else fare
+                    val finalFare = fare
 
                     val item = ServiceItem(
                         id = existing?.id ?: ("s_" + UUID.randomUUID().toString().take(6)),

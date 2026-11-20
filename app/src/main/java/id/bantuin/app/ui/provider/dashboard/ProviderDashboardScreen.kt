@@ -22,9 +22,13 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.Shield
+import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.Warning
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -165,7 +169,7 @@ fun ProviderDashboardScreen(
                             .padding(horizontal = 10.dp, vertical = 6.dp)
                     ) {
                         Text(
-                            text = "📍 Area Operasional: Sleman & Kota • Siap Terima Order",
+                            text = "Area Operasional: Malang & Sekitarnya • Siap Terima Order",
                             style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
                             color = OrangePrimary
                         )
@@ -213,7 +217,7 @@ fun ProviderDashboardScreen(
                                 .padding(horizontal = 8.dp, vertical = 3.dp)
                         ) {
                             Text(
-                                text = if (isAnomaly) "Prioritas Turun" else "✓ Prioritas Visibilitas",
+                                text = if (isAnomaly) "Prioritas Turun" else "Prioritas Visibilitas",
                                 style = MaterialTheme.typography.labelSmall,
                                 color = if (isAnomaly) RedError else GreenSuccess,
                                 fontWeight = FontWeight.Bold
@@ -351,7 +355,7 @@ fun ProviderDashboardScreen(
                     horizontalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
                     MetricTile(
-                        icon = "★",
+                        icon = Icons.Default.Star,
                         value = "4.92",
                         unit = "Skala 5.0",
                         subtext = "98% Normal",
@@ -359,7 +363,7 @@ fun ProviderDashboardScreen(
                         modifier = Modifier.weight(1f)
                     )
                     MetricTile(
-                        icon = "⏱",
+                        icon = Icons.Default.Schedule,
                         value = "96.4%",
                         unit = "Ketepatan SLA",
                         subtext = "Tepat Waktu",
@@ -367,7 +371,7 @@ fun ProviderDashboardScreen(
                         modifier = Modifier.weight(1f)
                     )
                     MetricTile(
-                        icon = "✕",
+                        icon = Icons.Default.Close,
                         value = "${simulatedCancelRate}%",
                         unit = "Rasio Batal",
                         subtext = if (simulatedCancelRate > 20.0) "Melebihi Batas" else "< 5% Target",
@@ -580,7 +584,7 @@ fun ProviderDashboardScreen(
                                     .padding(horizontal = 6.dp, vertical = 2.dp)
                             ) {
                                 Text(
-                                    text = "⏱ 14:15",
+                                    text = "Batas 14:15",
                                     style = MaterialTheme.typography.labelSmall,
                                     color = RedError,
                                     fontWeight = FontWeight.Bold
@@ -624,7 +628,7 @@ fun ProviderDashboardScreen(
                         Spacer(modifier = Modifier.height(8.dp))
 
                         Text(
-                            text = "🔧 Servis AC (Sedang) • 14:30 WIB (Hari ini)",
+                            text = "Servis AC (Sedang) • 14:30 WIB (Hari ini)",
                             style = MaterialTheme.typography.bodySmall,
                             color = TextSecondary
                         )
@@ -640,7 +644,7 @@ fun ProviderDashboardScreen(
                                 shape = RoundedCornerShape(10.dp),
                                 modifier = Modifier.weight(1f)
                             ) {
-                                Text("✕ Tolak", color = TextSecondary)
+                                Text("Tolak", color = TextSecondary)
                             }
 
                             Button(
@@ -649,7 +653,7 @@ fun ProviderDashboardScreen(
                                 shape = RoundedCornerShape(10.dp),
                                 modifier = Modifier.weight(1f)
                             ) {
-                                Text("✓ Terima Pesanan")
+                                Text("Terima Pesanan")
                             }
                         }
                     }
@@ -686,7 +690,7 @@ fun ProviderDashboardScreen(
 
 @Composable
 private fun MetricTile(
-    icon: String,
+    icon: ImageVector,
     value: String,
     unit: String,
     subtext: String,
@@ -700,7 +704,12 @@ private fun MetricTile(
         border = CardDefaults.outlinedCardBorder().copy(brush = androidx.compose.ui.graphics.SolidColor(BorderSubtle))
     ) {
         Column(modifier = Modifier.padding(12.dp)) {
-            Text(text = icon, fontSize = 16.sp)
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                tint = color,
+                modifier = Modifier.size(20.dp)
+            )
             Spacer(modifier = Modifier.height(6.dp))
             Text(
                 text = value,

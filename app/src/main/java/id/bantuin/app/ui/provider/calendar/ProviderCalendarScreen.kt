@@ -253,7 +253,7 @@ fun ProviderCalendarScreen(
                                             selectedContainerColor = OrangePrimary,
                                             selectedLabelColor = Color.White
                                         ),
-                                        modifier = Modifier.heightIn(min = 40.dp)
+                                        modifier = Modifier.heightIn(min = 48.dp)
                                     )
                                 }
                             }
@@ -264,21 +264,49 @@ fun ProviderCalendarScreen(
                                 modifier = Modifier.fillMaxWidth(),
                                 horizontalArrangement = Arrangement.spacedBy(10.dp)
                             ) {
-                                val currentOpenHour = (day.openMin ?: 480) / 60
-                                val currentCloseHour = (day.closeMin ?: 1020) / 60
+                                var openInput by remember(day.openMin) {
+                                    val h = (day.openMin ?: 480) / 60
+                                    val m = (day.openMin ?: 480) % 60
+                                    mutableStateOf(String.format(java.util.Locale.US, "%02d:%02d", h, m))
+                                }
+                                var closeInput by remember(day.closeMin) {
+                                    val h = (day.closeMin ?: 1020) / 60
+                                    val m = (day.closeMin ?: 1020) % 60
+                                    mutableStateOf(String.format(java.util.Locale.US, "%02d:%02d", h, m))
+                                }
 
                                 OutlinedTextField(
-                                    value = String.format(java.util.Locale.US, "%02d:00", currentOpenHour),
-                                    onValueChange = {},
-                                    readOnly = true,
-                                    label = { Text("Jam Buka") },
+                                    value = openInput,
+                                    onValueChange = { newVal ->
+                                        openInput = newVal
+                                        isSaved = false
+                                        val parts = newVal.split(":", ".")
+                                        val h = parts.getOrNull(0)?.trim()?.toIntOrNull()
+                                        val m = parts.getOrNull(1)?.trim()?.toIntOrNull() ?: 0
+                                        if (h != null && h in 0..23 && m in 0..59) {
+                                            val total = h * 60 + m
+                                            days = days.map { if (it.dayOfWeek == day.dayOfWeek) it.copy(openMin = total) else it }
+                                        }
+                                    },
+                                    label = { Text("Jam Buka (JJ:MM)") },
+                                    singleLine = true,
                                     modifier = Modifier.weight(1f)
                                 )
                                 OutlinedTextField(
-                                    value = String.format(java.util.Locale.US, "%02d:00", currentCloseHour),
-                                    onValueChange = {},
-                                    readOnly = true,
-                                    label = { Text("Jam Tutup") },
+                                    value = closeInput,
+                                    onValueChange = { newVal ->
+                                        closeInput = newVal
+                                        isSaved = false
+                                        val parts = newVal.split(":", ".")
+                                        val h = parts.getOrNull(0)?.trim()?.toIntOrNull()
+                                        val m = parts.getOrNull(1)?.trim()?.toIntOrNull() ?: 0
+                                        if (h != null && h in 0..23 && m in 0..59) {
+                                            val total = h * 60 + m
+                                            days = days.map { if (it.dayOfWeek == day.dayOfWeek) it.copy(closeMin = total) else it }
+                                        }
+                                    },
+                                    label = { Text("Jam Tutup (JJ:MM)") },
+                                    singleLine = true,
                                     modifier = Modifier.weight(1f)
                                 )
                             }
@@ -323,7 +351,7 @@ fun ProviderCalendarScreen(
                         .fillMaxWidth()
                         .height(48.dp)
                 ) {
-                    Text(if (isSaved) "✓ Jadwal Tersimpan" else "Simpan Perubahan Jadwal")
+                    Text(if (isSaved) "Jadwal Tersimpan" else "Simpan Perubahan Jadwal")
                 }
             }
         }

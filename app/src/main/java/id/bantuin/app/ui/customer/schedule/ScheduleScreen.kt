@@ -57,6 +57,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import id.bantuin.app.core.util.TimeUtils
+import id.bantuin.app.domain.usecase.matchmaking.HaversineCalculator
 import id.bantuin.app.data.fake.FakeData
 import id.bantuin.app.domain.model.AvailabilityMode
 import id.bantuin.app.domain.model.ConflictReason
@@ -92,6 +93,11 @@ fun ScheduleScreen(
     val detector = remember { SchedulingConflictDetector() }
     val provider = orderFlow.selectedProvider ?: FakeData.providers.first()
     val service = orderFlow.selectedService ?: FakeData.services.first()
+
+    val distanceKm = remember(orderFlow.customerLocation, provider.location) {
+        val d = HaversineCalculator.distanceKm(orderFlow.customerLocation, provider.location)
+        Math.round(d * 10.0) / 10.0
+    }
 
     // 7 hari kalender dinamis mulai dari hari ini (WIB)
     val today = remember { java.time.LocalDate.now() }
@@ -342,7 +348,7 @@ fun ScheduleScreen(
                                     color = TextPrimary
                                 )
                                 Text(
-                                    text = "📍 1.8 km dari lokasimu • ★ ${provider.ratingAvg ?: 4.9}",
+                                    text = "${String.format(java.util.Locale.US, "%.1f", distanceKm)} km dari lokasimu • Rating ${provider.ratingAvg ?: 4.9}",
                                     style = MaterialTheme.typography.bodySmall,
                                     color = TextSecondary
                                 )
@@ -351,8 +357,8 @@ fun ScheduleScreen(
 
                         OutlinedButton(
                             onClick = onNavigateBack,
-                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 2.dp),
-                            modifier = Modifier.height(30.dp)
+                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
+                            modifier = Modifier.heightIn(min = 48.dp)
                         ) {
                             Text("Ganti", style = MaterialTheme.typography.labelSmall)
                         }

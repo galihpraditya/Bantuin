@@ -58,6 +58,8 @@ class FakeBantuinRepositoryTest {
         assertTrue(candidateResult is AppResult.Success<List<ProviderCandidate>>)
         val candidate = (candidateResult as AppResult.Success<List<ProviderCandidate>>).data.first { it.providerId == "p01" }
         assertEquals("Budi Santoso Baru", candidate.name)
+        assertEquals("Teknisi AC bersertifikat 10 tahun", candidate.bio)
+        assertEquals("Jl. Sukarno Hatta No. 45, Malang", candidate.address)
         assertEquals(newLoc.lat, candidate.location.lat, 0.0001)
     }
 }

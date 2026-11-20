@@ -151,7 +151,7 @@ fun OrderDetailScreen(
                                 fontWeight = FontWeight.Bold
                             )
                             Text(
-                                text = "⏱ Estimasi 12 Menit",
+                                text = "Estimasi 12 Menit",
                                 style = MaterialTheme.typography.labelSmall,
                                 color = TextSecondary
                             )
@@ -234,7 +234,7 @@ fun OrderDetailScreen(
                                     color = TextPrimary
                                 )
                                 Text(
-                                    text = "🏍 N 4821 XY • Honda Vario Hitam",
+                                    text = "Kendaraan: N 4821 XY • Honda Vario Hitam",
                                     style = MaterialTheme.typography.bodySmall,
                                     color = TextSecondary
                                 )
@@ -381,7 +381,7 @@ fun OrderDetailScreen(
                 }
             }
 
-            // 6. Formulir Ulasan (Muncul Otomatis saat Status SELESAI — CRUD-4)
+            // 6. Formulir Ulasan (Muncul Otomatis saat Status SELESAI - CRUD-4)
             if (currentStatus == BookingStatus.SELESAI) {
                 item {
                     Card(
@@ -521,7 +521,7 @@ fun OrderDetailScreen(
                                     .fillMaxWidth()
                                     .height(48.dp)
                             ) {
-                                Text(if (isReviewSubmitted) "✓ Ulasan Terkirim" else "Kirim Ulasan & Selesai")
+                                Text(if (isReviewSubmitted) "Ulasan Terkirim" else "Kirim Ulasan & Selesai")
                             }
                         }
                     }

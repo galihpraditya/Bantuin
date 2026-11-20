@@ -213,7 +213,7 @@ fun RecommendationScreen(
                         onClick = {
                             minRatingFilter = if (minRatingFilter == 4.8) 0.0 else 4.8
                         },
-                        label = { Text("★ Rating 4.8+") },
+                        label = { Text("Rating 4.8+") },
                         colors = FilterChipDefaults.filterChipColors(
                             selectedContainerColor = OrangeContainer,
                             selectedLabelColor = OrangePrimary

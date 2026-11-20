@@ -152,7 +152,9 @@ class FakeBantuinRepository :
             val p = providersList[idx]
             providersList[idx] = p.copy(
                 name = name,
-                location = location
+                bio = bio,
+                location = location,
+                address = address
             )
         }
         val user = currentUserFlow.value

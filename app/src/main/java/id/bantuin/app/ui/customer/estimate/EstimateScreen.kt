@@ -57,6 +57,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import id.bantuin.app.core.util.CurrencyUtils
+import id.bantuin.app.core.util.TimeUtils
 import id.bantuin.app.data.fake.FakeData
 import id.bantuin.app.data.repository.FakeBantuinRepository
 import id.bantuin.app.domain.model.Complexity
@@ -254,7 +255,7 @@ fun EstimateScreen(
                             )
                             Spacer(modifier = Modifier.width(8.dp))
                             Text(
-                                text = "${orderFlow.selectedDateIso} • 14:30 WIB",
+                                text = "${orderFlow.selectedDateIso} • ${TimeUtils.formatMinuteOfDay(orderFlow.selectedStartMin)}",
                                 style = MaterialTheme.typography.bodyMedium,
                                 color = TextPrimary
                             )
