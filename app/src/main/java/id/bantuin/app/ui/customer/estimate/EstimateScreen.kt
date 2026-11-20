@@ -89,16 +89,25 @@ fun EstimateScreen(
     val provider = orderFlow.selectedProvider ?: FakeData.providers.first()
     val service = orderFlow.selectedService ?: FakeData.services.first()
 
-    // Evaluasi F2 Cost Estimator secara langsung (reaktif terhadap perubahan kompleksitas & urgent switch)
+    val distanceKm = remember(orderFlow.customerLocation, provider.location) {
+        val d = id.bantuin.app.domain.usecase.matchmaking.HaversineCalculator.distanceKm(
+            orderFlow.customerLocation,
+            provider.location
+        )
+        Math.round(d * 10.0) / 10.0
+    }
+
+    // Evaluasi F2 Cost Estimator secara langsung (reaktif terhadap perubahan kompleksitas, jarak & urgent switch)
     val estimate = remember(
         service.baseFare,
         orderFlow.selectedComplexity,
         orderFlow.selectedStartMin,
-        orderFlow.isUrgent
+        orderFlow.isUrgent,
+        distanceKm
     ) {
         val est = costEstimator(
             baseFare = service.baseFare,
-            distanceKm = 1.8,
+            distanceKm = distanceKm,
             complexity = orderFlow.selectedComplexity,
             startMinOfDay = orderFlow.selectedStartMin,
             isUrgent = orderFlow.isUrgent
