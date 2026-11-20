@@ -25,6 +25,14 @@ interface CatalogRepository {
     suspend fun saveAvailability(providerId: String, days: List<DayAvailability>): AppResult<Unit>
     suspend fun upsertService(service: ServiceItem): AppResult<Unit>
     suspend fun deleteService(serviceId: String): AppResult<Unit>
+    suspend fun updateProviderProfile(
+        providerId: String,
+        name: String,
+        bio: String,
+        location: id.bantuin.app.domain.model.GeoPoint,
+        address: String,
+        phone: String
+    ): AppResult<Unit>
 }
 
 interface BookingRepository {

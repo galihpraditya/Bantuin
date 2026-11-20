@@ -43,6 +43,9 @@ class FakeBantuinRepository :
     AuthRepository {
 
     private val matchmakingUseCase = MatchmakingUseCase()
+    private val recalculateMetricsUseCase by lazy {
+        id.bantuin.app.domain.usecase.trust.RecalculateProviderMetricsUseCase(this)
+    }
 
     // Data in-memory
     private val categoriesList = FakeData.categories.toMutableList()
@@ -133,6 +136,29 @@ class FakeBantuinRepository :
 
     override suspend fun deleteService(serviceId: String): AppResult<Unit> {
         servicesList.removeAll { it.id == serviceId }
+        return AppResult.Success(Unit)
+    }
+
+    override suspend fun updateProviderProfile(
+        providerId: String,
+        name: String,
+        bio: String,
+        location: id.bantuin.app.domain.model.GeoPoint,
+        address: String,
+        phone: String
+    ): AppResult<Unit> {
+        val idx = providersList.indexOfFirst { it.providerId == providerId }
+        if (idx >= 0) {
+            val p = providersList[idx]
+            providersList[idx] = p.copy(
+                name = name,
+                location = location
+            )
+        }
+        val user = currentUserFlow.value
+        if (user != null) {
+            currentUserFlow.value = user.copy(fullName = name, phone = phone)
+        }
         return AppResult.Success(Unit)
     }
 
@@ -248,6 +274,9 @@ class FakeBantuinRepository :
             list[idx] = list[idx].copy(review = review)
             bookingsFlow.value = list
         }
+
+        // Panggil Feedback Loop F4 -> F1
+        recalculateMetricsUseCase(providerId)
         return AppResult.Success(Unit)
     }
 
