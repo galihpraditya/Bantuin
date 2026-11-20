@@ -173,6 +173,15 @@ fun ProviderHomeScreen(
 
         item {
             ActionTile(
+                title = "Edit Profil & Pangkalan",
+                subtitle = "Ubah biodata, kontak, dan titik lokasi pangkalan mitra",
+                icon = Icons.Default.Person,
+                onClick = { onNavigateToRoute(Routes.PROVIDER_PROFILE_EDIT) }
+            )
+        }
+
+        item {
+            ActionTile(
                 title = "Antrean Pesanan Masuk",
                 subtitle = "Terima atau tolak pesanan baru dengan batas 15 menit",
                 icon = Icons.Default.ReceiptLong,

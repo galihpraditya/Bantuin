@@ -32,6 +32,7 @@ import id.bantuin.app.ui.provider.dashboard.ProviderDashboardScreen
 import id.bantuin.app.ui.provider.evaluation.ProviderEvaluationScreen
 import id.bantuin.app.ui.provider.home.ProviderHomeScreen
 import id.bantuin.app.ui.provider.orders.ProviderOrdersScreen
+import id.bantuin.app.ui.provider.profile.ProviderProfileEditScreen
 import id.bantuin.app.ui.provider.services.ProviderServicesScreen
 
 @Composable
@@ -270,6 +271,13 @@ fun BantuinNavGraph(
 
             composable(Routes.PROVIDER_SERVICES) {
                 ProviderServicesScreen(repository = repository)
+            }
+
+            composable(Routes.PROVIDER_PROFILE_EDIT) {
+                ProviderProfileEditScreen(
+                    repository = repository,
+                    onNavigateBack = { navController.popBackStack() }
+                )
             }
         }
     }
