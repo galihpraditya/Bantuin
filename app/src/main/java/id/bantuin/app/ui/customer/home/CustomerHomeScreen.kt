@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -45,6 +46,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -789,7 +791,16 @@ private fun LocationPickerDialog(
     onDismiss: () -> Unit,
     onLocationConfirmed: (String, id.bantuin.app.domain.model.GeoPoint) -> Unit
 ) {
+    val presets = remember {
+        listOf(
+            Triple("Alun-alun Malang", id.bantuin.app.domain.model.GeoPoint(-7.9797, 112.6304), "Jl. Merdeka Barat, Alun-alun Malang"),
+            Triple("UB / Suhat", id.bantuin.app.domain.model.GeoPoint(-7.9467, 112.6156), "Jl. Soekarno Hatta No. 9, Lowokwaru, Malang"),
+            Triple("Sawojajar", id.bantuin.app.domain.model.GeoPoint(-7.9772, 112.6562), "Jl. Danau Toba, Sawojajar, Malang"),
+            Triple("Dinoyo", id.bantuin.app.domain.model.GeoPoint(-7.9405, 112.6074), "Jl. MT Haryono No. 193, Dinoyo, Malang")
+        )
+    }
     var textInput by remember { mutableStateOf(currentAddress) }
+    var selectedLocation by remember { mutableStateOf(location) }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -799,21 +810,55 @@ private fun LocationPickerDialog(
         text = {
             Column {
                 Text(
-                    text = "Geser atau ketik alamat tujuan Anda di area Malang/Sleman:",
+                    text = "Pilih titik acuan cepat di Malang untuk uji jarak matchmaking:",
                     style = MaterialTheme.typography.bodySmall,
                     color = TextSecondary
                 )
+                Spacer(modifier = Modifier.height(8.dp))
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    presets.forEach { (name, point, addr) ->
+                        val isSelected = Math.abs(selectedLocation.lat - point.lat) < 0.001 && Math.abs(selectedLocation.lng - point.lng) < 0.001
+                        Button(
+                            onClick = {
+                                selectedLocation = point
+                                textInput = addr
+                            },
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = if (isSelected) OrangePrimary else NeutralSurface
+                            ),
+                            border = ButtonDefaults.outlinedButtonBorder.copy(
+                                brush = androidx.compose.ui.graphics.SolidColor(if (isSelected) OrangePrimary else BorderSubtle)
+                            ),
+                            shape = RoundedCornerShape(20.dp),
+                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+                            modifier = Modifier.heightIn(min = 48.dp)
+                        ) {
+                            Text(
+                                text = name,
+                                style = MaterialTheme.typography.labelSmall,
+                                color = if (isSelected) Color.White else TextPrimary
+                            )
+                        }
+                    }
+                }
                 Spacer(modifier = Modifier.height(10.dp))
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(160.dp)
+                        .height(150.dp)
                         .clip(RoundedCornerShape(8.dp))
                 ) {
-                    OsmMapView(
-                        centerPoint = location,
-                        zoomLevel = 14.0
-                    )
+                    key(selectedLocation) {
+                        OsmMapView(
+                            centerPoint = selectedLocation,
+                            zoomLevel = 14.0
+                        )
+                    }
                 }
                 Spacer(modifier = Modifier.height(10.dp))
                 OutlinedTextField(
@@ -826,14 +871,19 @@ private fun LocationPickerDialog(
         },
         confirmButton = {
             Button(
-                onClick = { onLocationConfirmed(textInput, location) },
-                colors = ButtonDefaults.buttonColors(containerColor = OrangePrimary)
+                onClick = { onLocationConfirmed(textInput, selectedLocation) },
+                colors = ButtonDefaults.buttonColors(containerColor = OrangePrimary),
+                shape = RoundedCornerShape(8.dp),
+                modifier = Modifier.heightIn(min = 48.dp)
             ) {
                 Text("Simpan Lokasi")
             }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) {
+            TextButton(
+                onClick = onDismiss,
+                modifier = Modifier.heightIn(min = 48.dp)
+            ) {
                 Text("Batal")
             }
         }
