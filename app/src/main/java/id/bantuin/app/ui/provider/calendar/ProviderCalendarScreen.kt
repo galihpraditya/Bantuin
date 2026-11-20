@@ -2,6 +2,7 @@ package id.bantuin.app.ui.provider.calendar
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -11,19 +12,28 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.RadioButtonDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -34,8 +44,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import id.bantuin.app.core.result.AppResult
 import id.bantuin.app.core.util.TimeUtils
 import id.bantuin.app.data.fake.FakeData
 import id.bantuin.app.data.repository.FakeBantuinRepository
@@ -47,6 +59,7 @@ import id.bantuin.app.ui.theme.GreenSuccess
 import id.bantuin.app.ui.theme.NeutralBackground
 import id.bantuin.app.ui.theme.NeutralSurface
 import id.bantuin.app.ui.theme.OrangePrimary
+import id.bantuin.app.ui.theme.RedError
 import id.bantuin.app.ui.theme.TextMuted
 import id.bantuin.app.ui.theme.TextPrimary
 import id.bantuin.app.ui.theme.TextSecondary
@@ -60,10 +73,18 @@ fun ProviderCalendarScreen(
     val scope = rememberCoroutineScope()
     val dayNames = listOf("", "Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu", "Minggu")
 
-    var days by remember {
-        mutableStateOf(FakeData.getAvailability("p01").toMutableList())
-    }
+    var days by remember { mutableStateOf<List<DayAvailability>>(emptyList()) }
     var isSaved by remember { mutableStateOf(false) }
+    var validationError by remember { mutableStateOf<String?>(null) }
+
+    LaunchedEffect(Unit) {
+        val res = repository.availability("p01")
+        if (res is AppResult.Success) {
+            days = res.data
+        } else {
+            days = FakeData.getAvailability("p01")
+        }
+    }
 
     Column(
         modifier = modifier
@@ -79,7 +100,7 @@ fun ProviderCalendarScreen(
         ) {
             item {
                 Text(
-                    text = "Atur ketersediaan operasional Anda per hari:",
+                    text = "Atur jam kerja dan ketersediaan operasional Anda per hari:",
                     style = MaterialTheme.typography.bodySmall,
                     color = TextSecondary
                 )
@@ -118,7 +139,7 @@ fun ProviderCalendarScreen(
                             ) {
                                 Text(
                                     text = when (day.mode) {
-                                        AvailabilityMode.ON -> "Aktif (07.00 - 21.00)"
+                                        AvailabilityMode.ON -> "Aktif (${TimeUtils.formatMinuteOfDay(day.openMin ?: 480)} - ${TimeUtils.formatMinuteOfDay(day.closeMin ?: 1020)})"
                                         AvailabilityMode.ALWAYS_ON -> "Siaga 24 Jam"
                                         AvailabilityMode.OFF -> "Libur (OFF)"
                                     },
@@ -135,7 +156,7 @@ fun ProviderCalendarScreen(
 
                         Spacer(modifier = Modifier.height(10.dp))
 
-                        // Opsi Mode: OFF / ON / ALWAYS_ON
+                        // Opsi Mode: OFF / ON / ALWAYS_ON (min 48dp target)
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceBetween
@@ -143,22 +164,38 @@ fun ProviderCalendarScreen(
                             AvailabilityMode.entries.forEach { mode ->
                                 Row(
                                     verticalAlignment = Alignment.CenterVertically,
-                                    modifier = Modifier.clickable {
-                                        val updated = days.map {
-                                            if (it.dayOfWeek == day.dayOfWeek) it.copy(mode = mode) else it
-                                        }.toMutableList()
-                                        days = updated
-                                        isSaved = false
-                                    }
+                                    modifier = Modifier
+                                        .heightIn(min = 48.dp)
+                                        .clickable {
+                                            val updated = days.map {
+                                                if (it.dayOfWeek == day.dayOfWeek) {
+                                                    it.copy(
+                                                        mode = mode,
+                                                        openMin = if (mode == AvailabilityMode.ON) (it.openMin ?: 480) else null,
+                                                        closeMin = if (mode == AvailabilityMode.ON) (it.closeMin ?: 1020) else null
+                                                    )
+                                                } else it
+                                            }
+                                            days = updated
+                                            isSaved = false
+                                            validationError = null
+                                        }
                                 ) {
                                     RadioButton(
                                         selected = day.mode == mode,
                                         onClick = {
                                             val updated = days.map {
-                                                if (it.dayOfWeek == day.dayOfWeek) it.copy(mode = mode) else it
-                                            }.toMutableList()
+                                                if (it.dayOfWeek == day.dayOfWeek) {
+                                                    it.copy(
+                                                        mode = mode,
+                                                        openMin = if (mode == AvailabilityMode.ON) (it.openMin ?: 480) else null,
+                                                        closeMin = if (mode == AvailabilityMode.ON) (it.closeMin ?: 1020) else null
+                                                    )
+                                                } else it
+                                            }
                                             days = updated
                                             isSaved = false
+                                            validationError = null
                                         },
                                         colors = RadioButtonDefaults.colors(selectedColor = OrangePrimary)
                                     )
@@ -174,16 +211,108 @@ fun ProviderCalendarScreen(
                                 }
                             }
                         }
+
+                        // Sesuai PRD 11.2: Mode ON menampilkan input jam, mode ALWAYS_ON & OFF menyembunyikannya
+                        if (day.mode == AvailabilityMode.ON) {
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Text(
+                                text = "Atur Rentang Jam Operasional:",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = TextSecondary
+                            )
+                            Spacer(modifier = Modifier.height(6.dp))
+
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .horizontalScroll(rememberScrollState()),
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                val standardHours = listOf(
+                                    "08.00 - 17.00" to (480 to 1020),
+                                    "07.00 - 21.00" to (420 to 1260),
+                                    "09.00 - 18.00" to (540 to 1080),
+                                    "08.00 - 14.00" to (480 to 840)
+                                )
+                                standardHours.forEach { (label, range) ->
+                                    val isSelected = (day.openMin == range.first && day.closeMin == range.second)
+                                    FilterChip(
+                                        selected = isSelected,
+                                        onClick = {
+                                            val updated = days.map {
+                                                if (it.dayOfWeek == day.dayOfWeek) {
+                                                    it.copy(openMin = range.first, closeMin = range.second)
+                                                } else it
+                                            }
+                                            days = updated
+                                            isSaved = false
+                                            validationError = null
+                                        },
+                                        label = { Text(label) },
+                                        colors = FilterChipDefaults.filterChipColors(
+                                            selectedContainerColor = OrangePrimary,
+                                            selectedLabelColor = Color.White
+                                        ),
+                                        modifier = Modifier.heightIn(min = 40.dp)
+                                    )
+                                }
+                            }
+
+                            Spacer(modifier = Modifier.height(8.dp))
+
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(10.dp)
+                            ) {
+                                val currentOpenHour = (day.openMin ?: 480) / 60
+                                val currentCloseHour = (day.closeMin ?: 1020) / 60
+
+                                OutlinedTextField(
+                                    value = String.format(java.util.Locale.US, "%02d:00", currentOpenHour),
+                                    onValueChange = {},
+                                    readOnly = true,
+                                    label = { Text("Jam Buka") },
+                                    modifier = Modifier.weight(1f)
+                                )
+                                OutlinedTextField(
+                                    value = String.format(java.util.Locale.US, "%02d:00", currentCloseHour),
+                                    onValueChange = {},
+                                    readOnly = true,
+                                    label = { Text("Jam Tutup") },
+                                    modifier = Modifier.weight(1f)
+                                )
+                            }
+                        }
                     }
+                }
+            }
+
+            if (validationError != null) {
+                item {
+                    Text(
+                        text = validationError!!,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = RedError
+                    )
                 }
             }
 
             item {
                 Button(
                     onClick = {
+                        // Validasi PRD 11.2: mode ON wajib openMin < closeMin
+                        val hasInvalidHours = days.any {
+                            it.mode == AvailabilityMode.ON && ((it.openMin ?: 0) >= (it.closeMin ?: 0))
+                        }
+                        if (hasInvalidHours) {
+                            validationError = "Jam buka harus lebih awal dari jam tutup untuk mode Jam Kerja"
+                            return@Button
+                        }
+
                         scope.launch {
                             repository.saveAvailability("p01", days)
                             isSaved = true
+                            validationError = null
                         }
                     },
                     colors = ButtonDefaults.buttonColors(
