@@ -45,7 +45,7 @@ class OrderFlowManager {
             notes = orderNotes,
             customerLocation = customerLocation,
             customerAddress = customerAddress,
-            distanceKm = 1.8,
+            distanceKm = currentEstimate?.distanceKm ?: 1.8,
             costEstimate = currentEstimate,
             lockInfo = currentLock
         )

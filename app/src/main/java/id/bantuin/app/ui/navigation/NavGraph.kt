@@ -161,6 +161,7 @@ fun BantuinNavGraph(
             composable(Routes.SCHEDULE_SELECT) {
                 ScheduleScreen(
                     orderFlow = orderFlow,
+                    repository = repository,
                     onNavigateBack = { navController.popBackStack() },
                     onContinueToEstimate = {
                         navController.navigate(Routes.ESTIMATE_ORDER)

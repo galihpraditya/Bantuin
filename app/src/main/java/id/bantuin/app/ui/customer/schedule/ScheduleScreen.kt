@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -46,6 +47,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -58,6 +60,7 @@ import id.bantuin.app.core.util.TimeUtils
 import id.bantuin.app.data.fake.FakeData
 import id.bantuin.app.domain.model.AvailabilityMode
 import id.bantuin.app.domain.model.ConflictReason
+import kotlinx.coroutines.launch
 import id.bantuin.app.domain.model.DayAvailability
 import id.bantuin.app.domain.model.TimeBlock
 import id.bantuin.app.domain.usecase.scheduling.SchedulingConflictDetector
@@ -80,54 +83,105 @@ import id.bantuin.app.ui.theme.TextSecondary
 @Composable
 fun ScheduleScreen(
     orderFlow: OrderFlowManager,
+    repository: id.bantuin.app.data.repository.FakeBantuinRepository,
     onNavigateBack: () -> Unit,
     onContinueToEstimate: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val scope = rememberCoroutineScope()
     val detector = remember { SchedulingConflictDetector() }
     val provider = orderFlow.selectedProvider ?: FakeData.providers.first()
     val service = orderFlow.selectedService ?: FakeData.services.first()
 
-    // Mitra ketersediaan & existing blok
-    val dayAvailability = remember {
-        DayAvailability(dayOfWeek = 2, mode = AvailabilityMode.ON, openMin = 420, closeMin = 1260)
+    // 7 hari kalender dinamis mulai dari hari ini (WIB)
+    val today = remember { java.time.LocalDate.now() }
+    val dynamicDates = remember(today) {
+        (0..6).map { i ->
+            val d = today.plusDays(i.toLong())
+            val dayName = when (d.dayOfWeek.value) {
+                1 -> "Sen"
+                2 -> "Sel"
+                3 -> "Rab"
+                4 -> "Kam"
+                5 -> "Jum"
+                6 -> "Sab"
+                else -> "Min"
+            }
+            Triple(dayName, "${d.dayOfMonth}", d)
+        }
     }
-    val existingBlocks = remember {
-        listOf(
-            TimeBlock(600, 690), // 10:00 - 11:30
-            TimeBlock(720, 825)  // 12:00 - 13:45 (berbenturan dengan 13:00)
+    var selectedDateIdx by remember { mutableIntStateOf(0) }
+    val selectedDate = dynamicDates[selectedDateIdx].third
+    val selectedDateIso = remember(selectedDate) { selectedDate.toString() }
+    val dayOfWeekIso = remember(selectedDate) { selectedDate.dayOfWeek.value }
+
+    // Memuat ketersediaan & blok sibuk dari repositori secara dinamis
+    var providerAvailability by remember { mutableStateOf<List<DayAvailability>>(emptyList()) }
+    var existingBlocks by remember { mutableStateOf<List<TimeBlock>>(emptyList()) }
+
+    androidx.compose.runtime.LaunchedEffect(provider.providerId, selectedDateIso) {
+        val availRes = repository.availability(provider.providerId)
+        if (availRes is id.bantuin.app.core.result.AppResult.Success) {
+            providerAvailability = availRes.data
+        }
+        val busyRes = repository.busyBlocks(provider.providerId, selectedDateIso)
+        if (busyRes is id.bantuin.app.core.result.AppResult.Success) {
+            existingBlocks = busyRes.data
+        }
+    }
+
+    val currentDayAvailability = remember(providerAvailability, dayOfWeekIso) {
+        providerAvailability.find { it.dayOfWeek == dayOfWeekIso } ?: DayAvailability(
+            dayOfWeek = dayOfWeekIso,
+            mode = AvailabilityMode.ON,
+            openMin = 480,
+            closeMin = 1020
         )
     }
 
-    // Pilihan tanggal
-    val dates = listOf(
-        Triple("Sen", "14", "Penuh"),
-        Triple("Sel", "15", "Ada slot"), // Hari ini
-        Triple("Rab", "16", "Ada slot"),
-        Triple("Kam", "17", "Ada slot"),
-        Triple("Jum", "18", "Ada slot")
-    )
-    var selectedDateIdx by remember { mutableIntStateOf(1) } // Default Sel 15
+    // Pembangkitan slot jam berdasarkan jam kerja mitra
+    val availableSlots = remember(currentDayAvailability, service.durationMin) {
+        when (currentDayAvailability.mode) {
+            AvailabilityMode.OFF -> emptyList()
+            AvailabilityMode.ALWAYS_ON -> {
+                (480..1260 step 60).map { min -> min to TimeUtils.formatMinuteOfDay(min) }
+            }
+            AvailabilityMode.ON -> {
+                val start = currentDayAvailability.openMin ?: 480
+                val end = (currentDayAvailability.closeMin ?: 1020) - service.durationMin
+                if (start <= end) {
+                    (start..end step 30).map { min -> min to TimeUtils.formatMinuteOfDay(min) }
+                } else {
+                    listOf(480 to "08:00", 600 to "10:00", 780 to "13:00", 870 to "14:30")
+                }
+            }
+        }
+    }
 
-    // Pilihan slot jam: menit sejak 00:00 WIB
-    val availableSlots = listOf(
-        480 to "08:00",
-        600 to "10:00", // Terisi
-        780 to "13:00", // Konflik! (780..900 beririsan dengan 720..825)
-        870 to "14:30", // Valid (Cepat)
-        960 to "16:00", // Valid
-        1140 to "19:00" // Valid
-    )
     var selectedStartMin by remember { mutableIntStateOf(orderFlow.selectedStartMin) }
 
+    androidx.compose.runtime.LaunchedEffect(availableSlots) {
+        if (availableSlots.isNotEmpty() && availableSlots.none { it.first == selectedStartMin }) {
+            selectedStartMin = availableSlots.first().first
+        }
+    }
+
     // Evaluasi F3 Conflict Detector secara dinamis
-    val slotCheckResult = remember(selectedStartMin, service.durationMin) {
+    val isSelectedDateToday = selectedDateIdx == 0
+    val nowMin = remember(isSelectedDateToday) {
+        if (isSelectedDateToday) {
+            val now = java.time.LocalTime.now()
+            now.hour * 60 + now.minute
+        } else null
+    }
+
+    val slotCheckResult = remember(selectedStartMin, service.durationMin, currentDayAvailability, existingBlocks, nowMin) {
         detector.check(
             requestedStartMin = selectedStartMin,
             durationMin = service.durationMin,
-            day = dayAvailability,
+            day = currentDayAvailability,
             existing = existingBlocks,
-            nowMin = null // null agar tidak bentrok waktu lampau dalam simulasi
+            nowMin = nowMin
         )
     }
 
@@ -202,9 +256,20 @@ fun ScheduleScreen(
 
                     Button(
                         onClick = {
-                            orderFlow.selectedStartMin = selectedStartMin
-                            orderFlow.selectedDurationMin = service.durationMin
-                            onContinueToEstimate()
+                            scope.launch {
+                                val lockRes = repository.acquireLock(
+                                    providerId = provider.providerId,
+                                    startMin = selectedStartMin,
+                                    endMin = selectedStartMin + service.durationMin
+                                )
+                                if (lockRes is id.bantuin.app.core.result.AppResult.Success) {
+                                    orderFlow.currentLock = lockRes.data
+                                }
+                                orderFlow.selectedStartMin = selectedStartMin
+                                orderFlow.selectedDurationMin = service.durationMin
+                                orderFlow.selectedDateIso = selectedDateIso
+                                onContinueToEstimate()
+                            }
                         },
                         enabled = slotCheckResult.valid,
                         colors = ButtonDefaults.buttonColors(
@@ -323,11 +388,15 @@ fun ScheduleScreen(
                             .horizontalScroll(rememberScrollState()),
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        dates.forEachIndexed { index, (dayName, dateNum, note) ->
+                        dynamicDates.forEachIndexed { index, (dayName, dateNum, d) ->
                             val isSelected = selectedDateIdx == index
+                            val dayAvail = providerAvailability.find { it.dayOfWeek == d.dayOfWeek.value }
+                            val isOff = dayAvail?.mode == AvailabilityMode.OFF
+                            val note = if (index == 0) "Hari ini" else if (isOff) "Libur" else "Ada slot"
                             Card(
                                 modifier = Modifier
                                     .width(68.dp)
+                                    .heightIn(min = 68.dp)
                                     .clip(RoundedCornerShape(12.dp))
                                     .clickable { selectedDateIdx = index },
                                 shape = RoundedCornerShape(12.dp),
@@ -356,9 +425,9 @@ fun ScheduleScreen(
                                     )
                                     Spacer(modifier = Modifier.height(4.dp))
                                     Text(
-                                        text = if (index == 1) "Hari ini" else note,
+                                        text = note,
                                         style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
-                                        color = if (isSelected) Color.White else if (note == "Penuh") RedError else GreenSuccess
+                                        color = if (isSelected) Color.White else if (isOff) RedError else GreenSuccess
                                     )
                                 }
                             }
@@ -420,39 +489,75 @@ fun ScheduleScreen(
 
             // 4. Grid Slot Waktu Mulai
             item {
+                val operText = when (currentDayAvailability.mode) {
+                    AvailabilityMode.OFF -> "Mitra Libur"
+                    AvailabilityMode.ALWAYS_ON -> "Operasional 24 Jam"
+                    AvailabilityMode.ON -> "Operasional ${TimeUtils.formatMinuteOfDay(currentDayAvailability.openMin ?: 480)} - ${TimeUtils.formatMinuteOfDay(currentDayAvailability.closeMin ?: 1020)}"
+                }
                 Text(
-                    text = "Pilih Jam Mulai (Operasional 07.00 - 21.00)",
+                    text = "Pilih Jam Mulai ($operText)",
                     style = MaterialTheme.typography.titleMedium,
                     color = TextPrimary
                 )
             }
 
             item {
-                val chunkedSlots = availableSlots.chunked(2)
-                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    chunkedSlots.forEach { pair ->
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                if (availableSlots.isEmpty()) {
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp),
+                        colors = CardDefaults.cardColors(containerColor = NeutralSurface)
+                    ) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(24.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally
                         ) {
-                            pair.forEach { (min, label) ->
-                                val isSelected = selectedStartMin == min
-                                val isFilled = min == 600 // 10:00 simulasi terisi
-                                val isConflict = min == 780 // 13:00 simulasi konflik
+                            Text(
+                                text = "Tidak Ada Slot Tersedia",
+                                style = MaterialTheme.typography.titleSmall,
+                                color = TextPrimary
+                            )
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text(
+                                text = "Mitra tidak membuka jadwal pada hari ini. Silakan pilih tanggal lain.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = TextSecondary
+                            )
+                        }
+                    }
+                } else {
+                    val chunkedSlots = availableSlots.chunked(2)
+                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        chunkedSlots.forEach { pair ->
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(10.dp)
+                            ) {
+                                pair.forEach { (min, label) ->
+                                    val isSelected = selectedStartMin == min
+                                    val check = detector.check(
+                                        requestedStartMin = min,
+                                        durationMin = service.durationMin,
+                                        day = currentDayAvailability,
+                                        existing = existingBlocks,
+                                        nowMin = nowMin
+                                    )
+                                    val isConflict = !check.valid
 
-                                TimeSlotItem(
-                                    timeLabel = label,
-                                    finishLabel = "Selesai ${TimeUtils.formatMinuteOfDay(min + service.durationMin)}",
-                                    isSelected = isSelected,
-                                    isFilled = isFilled,
-                                    isConflict = isConflict,
-                                    onClick = {
-                                        if (!isFilled) {
+                                    TimeSlotItem(
+                                        timeLabel = label,
+                                        finishLabel = "Selesai ${TimeUtils.formatMinuteOfDay(min + service.durationMin)}",
+                                        isSelected = isSelected,
+                                        isFilled = false,
+                                        isConflict = isConflict,
+                                        onClick = {
                                             selectedStartMin = min
-                                        }
-                                    },
-                                    modifier = Modifier.weight(1f)
-                                )
+                                        },
+                                        modifier = Modifier.weight(1f)
+                                    )
+                                }
                             }
                         }
                     }
@@ -460,7 +565,7 @@ fun ScheduleScreen(
             }
 
             // 5. Kartu Peringatan Konflik Jadwal (F3 Conflict Detector)
-            if (!slotCheckResult.valid && slotCheckResult.reason == ConflictReason.OVERLAP) {
+            if (!slotCheckResult.valid) {
                 item {
                     ConflictAlertCard(
                         slotCheckResult = slotCheckResult,
