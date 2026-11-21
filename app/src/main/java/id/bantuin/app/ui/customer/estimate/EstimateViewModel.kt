@@ -172,6 +172,7 @@ class EstimateViewModel(
                         )
                     }
                 }
+                is AppResult.Loading -> {}
             }
         }
     }

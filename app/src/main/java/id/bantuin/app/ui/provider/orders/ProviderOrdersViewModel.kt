@@ -67,6 +67,7 @@ class ProviderOrdersViewModel(
                 is AppResult.Error -> {
                     _uiState.update { it.copy(isLoading = false, errorMessage = res.message) }
                 }
+                is AppResult.Loading -> {}
             }
         }
     }
@@ -86,6 +87,7 @@ class ProviderOrdersViewModel(
                 is AppResult.Error -> {
                     _uiState.update { it.copy(isUpdatingStatus = false, errorMessage = res.message) }
                 }
+                is AppResult.Loading -> {}
             }
         }
     }

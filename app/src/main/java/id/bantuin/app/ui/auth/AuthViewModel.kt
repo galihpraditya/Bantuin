@@ -69,6 +69,9 @@ class AuthViewModel(
                 is AppResult.Error -> {
                     _uiState.update { it.copy(isLoading = false, errorMessage = result.message) }
                 }
+                is AppResult.Loading -> {
+                    // Tidak perlu melakukan apa pun
+                }
             }
         }
     }
@@ -96,6 +99,9 @@ class AuthViewModel(
                 }
                 is AppResult.Error -> {
                     _uiState.update { it.copy(isLoading = false, errorMessage = result.message) }
+                }
+                is AppResult.Loading -> {
+                    // Tidak perlu melakukan apa pun
                 }
             }
         }

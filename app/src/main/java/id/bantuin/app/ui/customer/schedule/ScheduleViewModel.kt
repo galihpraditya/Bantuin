@@ -163,6 +163,7 @@ class ScheduleViewModel(
                 is AppResult.Error -> {
                     _uiState.update { it.copy(isLocking = false, errorMessage = lockRes.message) }
                 }
+                is AppResult.Loading -> {}
             }
         }
     }

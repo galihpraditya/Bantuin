@@ -97,6 +97,7 @@ class ProviderViewModelsTest {
             providerId = "p01",
             categoryId = 2,
             name = "Pembersihan Saluran AC",
+            description = "Pembersihan menyeluruh",
             baseFare = 75000,
             durationMin = 60,
             isActive = true

@@ -42,6 +42,7 @@ class ProviderCalendarViewModel(
                 is AppResult.Error -> {
                     _uiState.update { it.copy(errorMessage = res.message) }
                 }
+                is AppResult.Loading -> {}
             }
         }
     }
@@ -83,6 +84,7 @@ class ProviderCalendarViewModel(
                 is AppResult.Error -> {
                     _uiState.update { it.copy(isSaving = false, errorMessage = res.message) }
                 }
+                is AppResult.Loading -> {}
             }
         }
     }

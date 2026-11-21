@@ -83,6 +83,7 @@ class OrderDetailViewModel(
                 is AppResult.Error -> {
                     _uiState.update { it.copy(isSubmittingReview = false, errorMessage = res.message) }
                 }
+                is AppResult.Loading -> {}
             }
         }
     }
@@ -98,6 +99,7 @@ class OrderDetailViewModel(
                 is AppResult.Error -> {
                     _uiState.update { it.copy(isUpdatingStatus = false, errorMessage = res.message) }
                 }
+                is AppResult.Loading -> {}
             }
         }
     }

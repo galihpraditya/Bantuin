@@ -101,8 +101,8 @@ fun OrderDetailScreen(
     val currentStatus = booking?.status ?: BookingStatus.DALAM_PENGERJAAN
 
     // Review form states
-    var rating = uiState.rating
-    var reviewComment = uiState.reviewComment
+    val rating = uiState.rating
+    val reviewComment = uiState.reviewComment
     val selectedTags = uiState.selectedTags
     val isReviewSubmitted = uiState.reviewSubmitted
 
@@ -446,7 +446,7 @@ fun OrderDetailScreen(
                                         tint = if (starIndex <= rating) Color(0xFFF59E0B) else TextMuted,
                                         modifier = Modifier
                                             .size(36.dp)
-                                            .clickable { rating = starIndex }
+                                            .clickable { viewModel.setRating(starIndex) }
                                     )
                                 }
                             }
@@ -480,7 +480,7 @@ fun OrderDetailScreen(
                                             .clip(RoundedCornerShape(16.dp))
                                             .background(if (isSelected) OrangeContainer else Color(0xFFF0EAE1))
                                             .clickable {
-                                                if (isSelected) selectedTags.remove(tag) else selectedTags.add(tag)
+                                                viewModel.toggleTag(tag)
                                             }
                                             .padding(horizontal = 12.dp, vertical = 6.dp)
                                     ) {
@@ -499,7 +499,6 @@ fun OrderDetailScreen(
                             OutlinedTextField(
                                 value = reviewComment,
                                 onValueChange = {
-                                    reviewComment = it
                                     viewModel.setReviewComment(it)
                                 },
                                 label = { Text("Catatan Ulasan Anda") },
@@ -511,8 +510,6 @@ fun OrderDetailScreen(
 
                             Button(
                                 onClick = {
-                                    viewModel.setRating(rating)
-                                    viewModel.setReviewComment(reviewComment)
                                     viewModel.submitReview()
                                 },
                                 enabled = !isReviewSubmitted && !uiState.isSubmittingReview,

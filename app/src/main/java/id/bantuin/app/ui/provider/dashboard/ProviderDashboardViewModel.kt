@@ -2,12 +2,15 @@ package id.bantuin.app.ui.provider.dashboard
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import id.bantuin.app.core.config.BantuinConfig
 import id.bantuin.app.core.result.AppResult
 import id.bantuin.app.domain.model.MetricSnapshot
 import id.bantuin.app.domain.model.TrustInput
 import id.bantuin.app.domain.model.TrustResult
 import id.bantuin.app.domain.repository.MetricsRepository
 import id.bantuin.app.domain.usecase.trust.TrustScoreUseCase
+import kotlin.math.roundToInt
+import kotlin.time.Duration.Companion.minutes
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -54,14 +57,19 @@ class ProviderDashboardViewModel(
                 trustScoreUseCase(input)
             } else null
 
+            val tolerance = BantuinConfig.LATE_TOLERANCE_MIN.minutes
+            val avgRating = input?.ratings?.takeIf { it.isNotEmpty() }?.average() ?: 4.9
+            val lateCount = input?.completed?.count { it.startedAt > it.startAt + tolerance } ?: 0
+            val cancelCount = input?.mitraCancelledCount ?: 0
+
             _uiState.update {
                 it.copy(
                     trustInput = input,
                     trustResult = result,
                     snapshots = snapshots,
-                    simRating = input?.completedJobs?.map { j -> j.rating }?.average() ?: 4.9,
-                    simLateCount = input?.completedJobs?.count { j -> j.isLate } ?: 0,
-                    simCancelCount = input?.providerCancelCount ?: 0,
+                    simRating = avgRating,
+                    simLateCount = lateCount,
+                    simCancelCount = cancelCount,
                     simResult = result,
                     isLoading = false
                 )
@@ -71,16 +79,23 @@ class ProviderDashboardViewModel(
 
     fun updateSimulation(rating: Double, lateCount: Int, cancelCount: Int) {
         val baseInput = _uiState.value.trustInput ?: return
-        val totalJobs = baseInput.completedJobs.size.coerceAtLeast(1)
+        val tolerance = BantuinConfig.LATE_TOLERANCE_MIN.minutes
+
+        val simulatedCompleted = baseInput.completed.mapIndexed { idx, job ->
+            if (idx < lateCount) {
+                job.copy(startedAt = job.startAt + tolerance + 5.minutes)
+            } else {
+                job.copy(startedAt = job.startAt)
+            }
+        }
+
+        val roundedRating = rating.roundToInt().coerceIn(1, 5)
+        val simulatedRatings = List(baseInput.ratings.size.coerceAtLeast(1)) { roundedRating }
 
         val simulatedInput = baseInput.copy(
-            completedJobs = baseInput.completedJobs.mapIndexed { idx, job ->
-                job.copy(
-                    rating = rating,
-                    isLate = idx < lateCount
-                )
-            },
-            providerCancelCount = cancelCount
+            completed = simulatedCompleted,
+            mitraCancelledCount = cancelCount,
+            ratings = simulatedRatings
         )
 
         val newResult = trustScoreUseCase(simulatedInput)
@@ -99,11 +114,16 @@ class ProviderDashboardViewModel(
     fun resetSimulation() {
         val baseInput = _uiState.value.trustInput
         val baseResult = _uiState.value.trustResult
+        val tolerance = BantuinConfig.LATE_TOLERANCE_MIN.minutes
+        val avgRating = baseInput?.ratings?.takeIf { it.isNotEmpty() }?.average() ?: 4.9
+        val lateCount = baseInput?.completed?.count { it.startedAt > it.startAt + tolerance } ?: 0
+        val cancelCount = baseInput?.mitraCancelledCount ?: 0
+
         _uiState.update {
             it.copy(
-                simRating = baseInput?.completedJobs?.map { j -> j.rating }?.average() ?: 4.9,
-                simLateCount = baseInput?.completedJobs?.count { j -> j.isLate } ?: 0,
-                simCancelCount = baseInput?.providerCancelCount ?: 0,
+                simRating = avgRating,
+                simLateCount = lateCount,
+                simCancelCount = cancelCount,
                 simResult = baseResult,
                 isSimulationActive = false
             )

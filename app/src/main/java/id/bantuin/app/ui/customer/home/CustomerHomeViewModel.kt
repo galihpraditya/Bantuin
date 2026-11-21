@@ -56,6 +56,7 @@ class CustomerHomeViewModel(
                 is AppResult.Error -> {
                     _uiState.update { it.copy(categories = FakeData.categories, isLoading = false) }
                 }
+                is AppResult.Loading -> {}
             }
         }
     }

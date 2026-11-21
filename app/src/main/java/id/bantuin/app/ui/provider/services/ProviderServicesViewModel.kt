@@ -101,6 +101,7 @@ class ProviderServicesViewModel(
                 is AppResult.Error -> {
                     _uiState.update { it.copy(isSaving = false, errorMessage = res.message) }
                 }
+                is AppResult.Loading -> {}
             }
         }
     }
@@ -114,6 +115,7 @@ class ProviderServicesViewModel(
                 is AppResult.Error -> {
                     _uiState.update { it.copy(errorMessage = res.message) }
                 }
+                is AppResult.Loading -> {}
             }
         }
     }

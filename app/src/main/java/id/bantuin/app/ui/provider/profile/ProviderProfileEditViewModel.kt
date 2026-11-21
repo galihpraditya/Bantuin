@@ -55,6 +55,7 @@ class ProviderProfileEditViewModel(
                 is AppResult.Error -> {
                     _uiState.update { it.copy(isLoading = false, errorMessage = res.message) }
                 }
+                is AppResult.Loading -> {}
             }
         }
     }
@@ -89,6 +90,7 @@ class ProviderProfileEditViewModel(
                 is AppResult.Error -> {
                     _uiState.update { it.copy(isSaving = false, errorMessage = res.message) }
                 }
+                is AppResult.Loading -> {}
             }
         }
     }

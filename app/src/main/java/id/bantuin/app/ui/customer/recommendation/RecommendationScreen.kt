@@ -98,6 +98,7 @@ fun RecommendationScreen(
 
     val category = uiState.category
     val filteredList = uiState.filteredList
+    val matchResult = uiState.matchResult
 
     Scaffold(
         topBar = {

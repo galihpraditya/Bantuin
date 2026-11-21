@@ -71,6 +71,7 @@ class RecommendationViewModel(
                 is AppResult.Error -> {
                     _uiState.update { it.copy(isLoading = false, errorMessage = res.message) }
                 }
+                is AppResult.Loading -> {}
             }
         }
     }
