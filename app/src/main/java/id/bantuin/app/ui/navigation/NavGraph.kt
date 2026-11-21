@@ -15,12 +15,14 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import id.bantuin.app.data.repository.FakeBantuinRepository
+import id.bantuin.app.domain.model.BookingStatus
 import id.bantuin.app.ui.auth.LoginScreen
 import id.bantuin.app.ui.auth.RegisterScreen
 import id.bantuin.app.ui.common.BantuinBottomBar
 import id.bantuin.app.ui.customer.OrderFlowManager
 import id.bantuin.app.ui.customer.estimate.EstimateScreen
 import id.bantuin.app.ui.customer.home.CustomerHomeScreen
+import id.bantuin.app.ui.customer.notifications.CustomerNotificationsScreen
 import id.bantuin.app.ui.customer.orderdetail.OrderDetailScreen
 import id.bantuin.app.ui.customer.orders.CustomerOrdersScreen
 import id.bantuin.app.ui.customer.profile.CustomerProfileScreen
@@ -45,9 +47,17 @@ fun BantuinNavGraph(
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = navBackStackEntry?.destination?.route
     val activeRole by repository.activeRole().collectAsState(initial = "customer")
+    val customerBookings by repository.observeCustomerBookings().collectAsState(initial = emptyList())
+    val hasActiveCustomerOrders = customerBookings.any {
+        it.status in listOf(
+            BookingStatus.PENDING,
+            BookingStatus.DIKONFIRMASI,
+            BookingStatus.DALAM_PENGERJAAN
+        )
+    }
 
     val bottomBarRoutes = setOf(
-        Routes.CUSTOMER_HOME, Routes.CUSTOMER_ORDERS, Routes.CUSTOMER_SCHEDULE, Routes.CUSTOMER_PROFILE,
+        Routes.CUSTOMER_HOME, Routes.CUSTOMER_ORDERS, Routes.CUSTOMER_NOTIFICATIONS, Routes.CUSTOMER_SCHEDULE, Routes.CUSTOMER_PROFILE,
         Routes.PROVIDER_HOME, Routes.PROVIDER_ORDERS, Routes.PROVIDER_CALENDAR, Routes.PROVIDER_DASHBOARD
     )
     val showBottomBar = currentRoute in bottomBarRoutes
@@ -58,6 +68,7 @@ fun BantuinNavGraph(
                 BantuinBottomBar(
                     currentRoute = currentRoute,
                     activeRole = activeRole,
+                    hasUnreadNotifications = hasActiveCustomerOrders,
                     onNavigateToRoute = { route ->
                         navController.navigate(route) {
                             popUpTo(if (activeRole == "provider") Routes.PROVIDER_HOME else Routes.CUSTOMER_HOME) {
@@ -211,8 +222,17 @@ fun BantuinNavGraph(
                 )
             }
 
+            composable(Routes.CUSTOMER_NOTIFICATIONS) {
+                CustomerNotificationsScreen(
+                    repository = repository,
+                    onOrderClick = { bookingId ->
+                        navController.navigate(Routes.orderTracking(bookingId))
+                    }
+                )
+            }
+
             composable(Routes.CUSTOMER_SCHEDULE) {
-                CustomerOrdersScreen(
+                CustomerNotificationsScreen(
                     repository = repository,
                     onOrderClick = { bookingId ->
                         navController.navigate(Routes.orderTracking(bookingId))

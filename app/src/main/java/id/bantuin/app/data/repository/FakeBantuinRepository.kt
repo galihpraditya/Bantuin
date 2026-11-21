@@ -239,6 +239,13 @@ class FakeBantuinRepository(
         return bookingsFlow.map { list -> list.find { it.id == bookingId } }
     }
 
+    override fun observeCustomerBookings(): Flow<List<BookingItem>> {
+        val userId = sessionStore.currentUserValue?.id ?: ""
+        return bookingsFlow.map { list ->
+            list.filter { it.customerId == userId || it.customerId == "user_demo_rani" }
+        }
+    }
+
     // ================= REVIEW REPOSITORY =================
     override suspend fun submitReview(
         bookingId: String,

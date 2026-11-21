@@ -6,6 +6,7 @@ import id.bantuin.app.data.repository.FakeBantuinRepository
 import id.bantuin.app.ui.auth.AuthViewModel
 import id.bantuin.app.ui.customer.estimate.EstimateViewModel
 import id.bantuin.app.ui.customer.home.CustomerHomeViewModel
+import id.bantuin.app.ui.customer.notifications.CustomerNotificationsViewModel
 import id.bantuin.app.ui.customer.orderdetail.OrderDetailViewModel
 import id.bantuin.app.ui.customer.orders.CustomerOrdersViewModel
 import id.bantuin.app.ui.customer.profile.CustomerProfileViewModel
@@ -42,6 +43,8 @@ class BantuinViewModelFactory(
                 OrderDetailViewModel(repository, repository) as T
             modelClass.isAssignableFrom(CustomerOrdersViewModel::class.java) ->
                 CustomerOrdersViewModel(repository) as T
+            modelClass.isAssignableFrom(CustomerNotificationsViewModel::class.java) ->
+                CustomerNotificationsViewModel(repository) as T
             modelClass.isAssignableFrom(CustomerProfileViewModel::class.java) ->
                 CustomerProfileViewModel(repository) as T
             modelClass.isAssignableFrom(ProviderHomeViewModel::class.java) ->

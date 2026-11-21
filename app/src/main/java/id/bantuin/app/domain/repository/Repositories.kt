@@ -44,6 +44,7 @@ interface BookingRepository {
     suspend fun myBookingsCustomer(): AppResult<List<BookingItem>>
     suspend fun myBookingsProvider(): AppResult<List<BookingItem>>
     fun observeBooking(bookingId: String): Flow<BookingItem?>
+    fun observeCustomerBookings(): Flow<List<BookingItem>>
 }
 
 interface ReviewRepository {

@@ -7,6 +7,7 @@ object Routes {
     // Pelanggan Flow
     const val CUSTOMER_HOME = "customer_home"
     const val CUSTOMER_ORDERS = "customer_orders"
+    const val CUSTOMER_NOTIFICATIONS = "customer_notifications"
     const val CUSTOMER_SCHEDULE = "customer_schedule"
     const val CUSTOMER_PROFILE = "customer_profile"
 

@@ -6,6 +6,8 @@ import id.bantuin.app.domain.model.Complexity
 import id.bantuin.app.domain.model.GeoPoint
 import id.bantuin.app.ui.customer.estimate.EstimateViewModel
 import id.bantuin.app.ui.customer.home.CustomerHomeViewModel
+import id.bantuin.app.ui.customer.notifications.CustomerNotificationsViewModel
+import id.bantuin.app.ui.customer.notifications.NotificationType
 import id.bantuin.app.ui.customer.orderdetail.OrderDetailViewModel
 import id.bantuin.app.ui.customer.recommendation.RecommendationViewModel
 import id.bantuin.app.ui.customer.schedule.ScheduleViewModel
@@ -149,5 +151,17 @@ class CustomerViewModelsTest {
 
         assertTrue(reviewDone)
         assertTrue(vm.uiState.value.reviewSubmitted)
+    }
+
+    @Test
+    fun customerNotificationsViewModel_loadsNotificationsAndSyncsWithBookings() = runTest {
+        val vm = CustomerNotificationsViewModel(repository)
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        val state = vm.uiState.value
+        assertTrue(state.notifications.isNotEmpty())
+        assertTrue(state.notifications.any { it.type == NotificationType.SYSTEM_INFO })
+        assertTrue(state.notifications.any { it.id == "sys_notif_garansi" })
+        assertTrue(state.notifications.any { it.id == "sys_notif_welcome" })
     }
 }

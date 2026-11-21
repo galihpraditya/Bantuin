@@ -4,8 +4,11 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.Dashboard
 import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.ReceiptLong
+import androidx.compose.material3.Badge
+import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
@@ -27,7 +30,8 @@ import id.bantuin.app.ui.theme.TextPrimary
 data class NavTabItem(
     val route: String,
     val label: String,
-    val icon: ImageVector
+    val icon: ImageVector,
+    val hasBadge: Boolean = false
 )
 
 @Composable
@@ -35,6 +39,7 @@ fun BantuinBottomBar(
     currentRoute: String?,
     activeRole: String, // "customer" or "provider"
     onNavigateToRoute: (String) -> Unit,
+    hasUnreadNotifications: Boolean = false,
     modifier: Modifier = Modifier
 ) {
     val items = if (activeRole == "provider") {
@@ -48,7 +53,7 @@ fun BantuinBottomBar(
         listOf(
             NavTabItem(Routes.CUSTOMER_HOME, "Beranda", Icons.Default.Home),
             NavTabItem(Routes.CUSTOMER_ORDERS, "Pesanan", Icons.Default.ReceiptLong),
-            NavTabItem(Routes.CUSTOMER_SCHEDULE, "Jadwal", Icons.Default.CalendarMonth),
+            NavTabItem(Routes.CUSTOMER_NOTIFICATIONS, "Notifikasi", Icons.Default.Notifications, hasBadge = hasUnreadNotifications),
             NavTabItem(Routes.CUSTOMER_PROFILE, "Profil", Icons.Default.Person)
         )
     }
@@ -68,11 +73,27 @@ fun BantuinBottomBar(
                     }
                 },
                 icon = {
-                    Icon(
-                        imageVector = item.icon,
-                        contentDescription = item.label,
-                        tint = if (isSelected) OrangePrimary else TextMuted
-                    )
+                    if (item.hasBadge) {
+                        BadgedBox(
+                            badge = {
+                                Badge(
+                                    containerColor = OrangePrimary
+                                )
+                            }
+                        ) {
+                            Icon(
+                                imageVector = item.icon,
+                                contentDescription = item.label,
+                                tint = if (isSelected) OrangePrimary else TextMuted
+                            )
+                        }
+                    } else {
+                        Icon(
+                            imageVector = item.icon,
+                            contentDescription = item.label,
+                            tint = if (isSelected) OrangePrimary else TextMuted
+                        )
+                    }
                 },
                 label = {
                     Text(
