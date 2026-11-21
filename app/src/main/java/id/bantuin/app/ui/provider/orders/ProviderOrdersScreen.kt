@@ -41,9 +41,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import id.bantuin.app.core.util.CurrencyUtils
-import id.bantuin.app.data.repository.FakeBantuinRepository
 import id.bantuin.app.domain.model.BookingItem
 import id.bantuin.app.domain.model.BookingStatus
+import id.bantuin.app.domain.repository.BantuinRepository
 import id.bantuin.app.ui.common.BantuinTopAppBar
 import id.bantuin.app.ui.common.EmptyView
 import id.bantuin.app.ui.theme.BorderSubtle
@@ -63,7 +63,7 @@ import kotlinx.coroutines.launch
 
 @Composable
 fun ProviderOrdersScreen(
-    repository: FakeBantuinRepository,
+    repository: BantuinRepository,
     viewModel: ProviderOrdersViewModel = viewModel(factory = BantuinViewModelFactory(repository)),
     modifier: Modifier = Modifier
 ) {

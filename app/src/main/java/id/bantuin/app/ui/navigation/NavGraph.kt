@@ -14,8 +14,8 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
-import id.bantuin.app.data.repository.FakeBantuinRepository
 import id.bantuin.app.domain.model.BookingStatus
+import id.bantuin.app.domain.repository.BantuinRepository
 import id.bantuin.app.ui.auth.LoginScreen
 import id.bantuin.app.ui.auth.RegisterScreen
 import id.bantuin.app.ui.common.BantuinBottomBar
@@ -39,7 +39,7 @@ import id.bantuin.app.ui.provider.services.ProviderServicesScreen
 
 @Composable
 fun BantuinNavGraph(
-    repository: FakeBantuinRepository,
+    repository: BantuinRepository,
     navController: NavHostController = rememberNavController(),
     orderFlow: OrderFlowManager = remember { OrderFlowManager() },
     modifier: Modifier = Modifier

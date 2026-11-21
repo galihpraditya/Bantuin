@@ -2,7 +2,7 @@ package id.bantuin.app.ui.common
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
-import id.bantuin.app.data.repository.FakeBantuinRepository
+import id.bantuin.app.domain.repository.BantuinRepository
 import id.bantuin.app.ui.auth.AuthViewModel
 import id.bantuin.app.ui.customer.estimate.EstimateViewModel
 import id.bantuin.app.ui.customer.home.CustomerHomeViewModel
@@ -21,7 +21,7 @@ import id.bantuin.app.ui.provider.profile.ProviderProfileEditViewModel
 import id.bantuin.app.ui.provider.services.ProviderServicesViewModel
 
 class BantuinViewModelFactory(
-    private val repository: FakeBantuinRepository
+    private val repository: BantuinRepository
 ) : ViewModelProvider.Factory {
 
     @Suppress("UNCHECKED_CAST")

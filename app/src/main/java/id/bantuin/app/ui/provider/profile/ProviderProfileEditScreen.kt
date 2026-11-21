@@ -58,9 +58,9 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import id.bantuin.app.core.result.AppResult
 import id.bantuin.app.data.fake.FakeData
-import id.bantuin.app.data.repository.FakeBantuinRepository
 import id.bantuin.app.domain.model.GeoPoint
 import id.bantuin.app.domain.model.ProviderCandidate
+import id.bantuin.app.domain.repository.BantuinRepository
 import id.bantuin.app.ui.common.BantuinViewModelFactory
 import id.bantuin.app.ui.common.OsmMapView
 import id.bantuin.app.ui.theme.BorderSubtle
@@ -78,7 +78,7 @@ import kotlinx.coroutines.launch
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ProviderProfileEditScreen(
-    repository: FakeBantuinRepository,
+    repository: BantuinRepository,
     onNavigateBack: () -> Unit,
     viewModel: ProviderProfileEditViewModel = viewModel(factory = BantuinViewModelFactory(repository)),
     modifier: Modifier = Modifier

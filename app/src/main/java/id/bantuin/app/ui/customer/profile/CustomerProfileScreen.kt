@@ -35,7 +35,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
-import id.bantuin.app.data.repository.FakeBantuinRepository
+import id.bantuin.app.domain.repository.BantuinRepository
 import id.bantuin.app.ui.common.BantuinTopAppBar
 import id.bantuin.app.ui.common.BantuinViewModelFactory
 import id.bantuin.app.ui.theme.BorderSubtle
@@ -51,7 +51,7 @@ import kotlinx.coroutines.launch
 
 @Composable
 fun CustomerProfileScreen(
-    repository: FakeBantuinRepository,
+    repository: BantuinRepository,
     onSwitchRole: () -> Unit,
     onSignOut: () -> Unit,
     viewModel: CustomerProfileViewModel = viewModel(factory = BantuinViewModelFactory(repository)),

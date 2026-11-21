@@ -58,8 +58,8 @@ import id.bantuin.app.core.result.AppResult
 import id.bantuin.app.core.util.CurrencyUtils
 import id.bantuin.app.core.util.TimeUtils
 import id.bantuin.app.data.fake.FakeData
-import id.bantuin.app.data.repository.FakeBantuinRepository
 import id.bantuin.app.domain.model.ServiceItem
+import id.bantuin.app.domain.repository.BantuinRepository
 import id.bantuin.app.ui.common.BantuinTopAppBar
 import id.bantuin.app.ui.common.BantuinViewModelFactory
 import id.bantuin.app.ui.theme.BorderSubtle
@@ -76,7 +76,7 @@ import java.util.UUID
 
 @Composable
 fun ProviderServicesScreen(
-    repository: FakeBantuinRepository,
+    repository: BantuinRepository,
     viewModel: ProviderServicesViewModel = viewModel(factory = BantuinViewModelFactory(repository)),
     modifier: Modifier = Modifier
 ) {

@@ -20,6 +20,7 @@ import id.bantuin.app.domain.model.TimeBlock
 import id.bantuin.app.domain.model.TrustInput
 import id.bantuin.app.domain.model.TrustResult
 import id.bantuin.app.domain.repository.AuthRepository
+import id.bantuin.app.domain.repository.BantuinRepository
 import id.bantuin.app.domain.repository.BookingRepository
 import id.bantuin.app.domain.repository.CatalogRepository
 import id.bantuin.app.domain.repository.MetricsRepository
@@ -37,12 +38,7 @@ import kotlin.time.Duration.Companion.minutes
 
 class FakeBantuinRepository(
     private val sessionStore: id.bantuin.app.core.session.UserSessionStore = id.bantuin.app.core.session.InMemorySessionStore()
-) :
-    CatalogRepository,
-    BookingRepository,
-    ReviewRepository,
-    MetricsRepository,
-    AuthRepository {
+) : BantuinRepository {
 
     private val matchmakingUseCase = MatchmakingUseCase()
     private val recalculateMetricsUseCase by lazy {

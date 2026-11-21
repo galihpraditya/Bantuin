@@ -35,7 +35,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
-import id.bantuin.app.data.repository.FakeBantuinRepository
+import id.bantuin.app.domain.repository.BantuinRepository
 import id.bantuin.app.ui.common.BantuinViewModelFactory
 import id.bantuin.app.ui.theme.NeutralBackground
 import id.bantuin.app.ui.theme.OrangePrimary
@@ -45,7 +45,7 @@ import id.bantuin.app.ui.theme.TextSecondary
 
 @Composable
 fun LoginScreen(
-    repository: FakeBantuinRepository,
+    repository: BantuinRepository,
     onLoginSuccess: () -> Unit,
     onNavigateToRegister: () -> Unit,
     viewModel: AuthViewModel = viewModel(factory = BantuinViewModelFactory(repository)),
@@ -156,7 +156,7 @@ fun LoginScreen(
 
 @Composable
 fun RegisterScreen(
-    repository: FakeBantuinRepository,
+    repository: BantuinRepository,
     onRegisterSuccess: () -> Unit,
     onNavigateToLogin: () -> Unit,
     viewModel: AuthViewModel = viewModel(factory = BantuinViewModelFactory(repository)),

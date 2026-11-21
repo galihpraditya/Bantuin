@@ -67,6 +67,13 @@ interface AuthRepository {
     fun currentUser(): Flow<UserProfile?>
 }
 
+interface BantuinRepository :
+    CatalogRepository,
+    BookingRepository,
+    ReviewRepository,
+    MetricsRepository,
+    AuthRepository
+
 data class UserProfile(
     val id: String,
     val fullName: String,

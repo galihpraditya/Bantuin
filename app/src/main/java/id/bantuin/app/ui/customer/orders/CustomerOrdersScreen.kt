@@ -39,9 +39,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import id.bantuin.app.core.util.CurrencyUtils
-import id.bantuin.app.data.repository.FakeBantuinRepository
 import id.bantuin.app.domain.model.BookingItem
 import id.bantuin.app.domain.model.BookingStatus
+import id.bantuin.app.domain.repository.BantuinRepository
 import id.bantuin.app.ui.common.BantuinTopAppBar
 import id.bantuin.app.ui.common.BantuinViewModelFactory
 import id.bantuin.app.ui.common.EmptyView
@@ -60,7 +60,7 @@ import id.bantuin.app.ui.theme.TextSecondary
 
 @Composable
 fun CustomerOrdersScreen(
-    repository: FakeBantuinRepository,
+    repository: BantuinRepository,
     onOrderClick: (String) -> Unit,
     viewModel: CustomerOrdersViewModel = viewModel(factory = BantuinViewModelFactory(repository)),
     modifier: Modifier = Modifier

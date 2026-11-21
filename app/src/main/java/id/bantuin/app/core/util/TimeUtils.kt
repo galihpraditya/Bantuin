@@ -50,4 +50,21 @@ object TimeUtils {
         val seconds = safeSeconds % 60
         return String.format(Locale.US, "%02d:%02d", minutes, seconds)
     }
+
+    fun toWibMinutesOfDay(instant: Instant): Int {
+        val ldt = instant.toLocalDateTime(WIB_ZONE)
+        return ldt.hour * 60 + ldt.minute
+    }
+
+    fun todayIso(): String {
+        val now = kotlinx.datetime.Clock.System.now()
+        val ldt = now.toLocalDateTime(WIB_ZONE)
+        return String.format(Locale.US, "%04d-%02d-%02d", ldt.year, ldt.monthNumber, ldt.dayOfMonth)
+    }
+
+    fun toIsoString(dateIso: String, minuteOfDay: Int): String {
+        val hours = minuteOfDay / 60
+        val minutes = minuteOfDay % 60
+        return String.format(Locale.US, "%sT%02d:%02d:00+07:00", dateIso, hours, minutes)
+    }
 }

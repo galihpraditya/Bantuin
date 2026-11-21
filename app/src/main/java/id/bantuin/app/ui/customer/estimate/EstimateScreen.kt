@@ -62,8 +62,8 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import id.bantuin.app.core.util.CurrencyUtils
 import id.bantuin.app.core.util.TimeUtils
 import id.bantuin.app.data.fake.FakeData
-import id.bantuin.app.data.repository.FakeBantuinRepository
 import id.bantuin.app.domain.model.Complexity
+import id.bantuin.app.domain.repository.BantuinRepository
 import id.bantuin.app.domain.usecase.pricing.CostEstimatorUseCase
 import id.bantuin.app.ui.common.BantuinViewModelFactory
 import id.bantuin.app.ui.customer.OrderFlowManager
@@ -82,7 +82,7 @@ import id.bantuin.app.ui.theme.TextSecondary
 @Composable
 fun EstimateScreen(
     orderFlow: OrderFlowManager,
-    repository: FakeBantuinRepository,
+    repository: BantuinRepository,
     onNavigateBack: () -> Unit,
     onOrderConfirmed: (String) -> Unit,
     viewModel: EstimateViewModel = viewModel(factory = BantuinViewModelFactory(repository)),

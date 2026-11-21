@@ -67,3 +67,6 @@ docs/design/
 *.jks
 *.keystore
 gradle.properties
+
+# Environment variables
+.env

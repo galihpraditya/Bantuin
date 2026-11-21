@@ -4,7 +4,10 @@ import android.app.Application
 import android.preference.PreferenceManager
 import id.bantuin.app.core.session.SharedPreferencesSessionStore
 import id.bantuin.app.core.session.UserSessionStore
+import id.bantuin.app.data.remote.SupabaseClientProvider
 import id.bantuin.app.data.repository.FakeBantuinRepository
+import id.bantuin.app.data.repository.SupabaseBantuinRepository
+import id.bantuin.app.domain.repository.BantuinRepository
 import org.osmdroid.config.Configuration
 
 class BantuinApp : Application() {
@@ -12,7 +15,7 @@ class BantuinApp : Application() {
     lateinit var sessionStore: UserSessionStore
         private set
 
-    lateinit var repository: FakeBantuinRepository
+    lateinit var repository: BantuinRepository
         private set
 
     override fun onCreate() {
@@ -24,7 +27,18 @@ class BantuinApp : Application() {
         Configuration.getInstance().userAgentValue = packageName
 
         sessionStore = SharedPreferencesSessionStore(this)
-        repository = FakeBantuinRepository(sessionStore = sessionStore)
+        val fakeRepo = FakeBantuinRepository(sessionStore = sessionStore)
+
+        // Gunakan Supabase jika URL & ANON_KEY sudah dikonfigurasi, jika belum fallback ke in-memory
+        repository = if (SupabaseClientProvider.isConfigured) {
+            SupabaseBantuinRepository(
+                client = SupabaseClientProvider.client,
+                sessionStore = sessionStore,
+                fallback = fakeRepo
+            )
+        } else {
+            fakeRepo
+        }
     }
 
     companion object {
@@ -32,3 +46,4 @@ class BantuinApp : Application() {
             private set
     }
 }
+

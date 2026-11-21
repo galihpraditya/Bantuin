@@ -39,7 +39,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import id.bantuin.app.data.repository.FakeBantuinRepository
+import id.bantuin.app.domain.repository.BantuinRepository
 import id.bantuin.app.ui.navigation.Routes
 import id.bantuin.app.ui.theme.BorderSubtle
 import id.bantuin.app.ui.theme.GreenSuccess
@@ -58,7 +58,7 @@ import kotlinx.coroutines.launch
 
 @Composable
 fun ProviderHomeScreen(
-    repository: FakeBantuinRepository,
+    repository: BantuinRepository,
     onNavigateToRoute: (String) -> Unit,
     onSwitchToCustomer: () -> Unit,
     viewModel: ProviderHomeViewModel = viewModel(factory = BantuinViewModelFactory(repository)),

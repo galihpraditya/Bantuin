@@ -64,8 +64,8 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import id.bantuin.app.core.util.CurrencyUtils
 import id.bantuin.app.data.fake.FakeData
-import id.bantuin.app.data.repository.FakeBantuinRepository
 import id.bantuin.app.domain.model.BookingStatus
+import id.bantuin.app.domain.repository.BantuinRepository
 import id.bantuin.app.ui.common.BantuinViewModelFactory
 import id.bantuin.app.ui.common.OsmMapView
 import id.bantuin.app.ui.theme.BorderSubtle
@@ -85,7 +85,7 @@ import kotlinx.coroutines.launch
 @Composable
 fun OrderDetailScreen(
     bookingId: String,
-    repository: FakeBantuinRepository,
+    repository: BantuinRepository,
     onNavigateBack: () -> Unit,
     viewModel: OrderDetailViewModel = viewModel(factory = BantuinViewModelFactory(repository)),
     modifier: Modifier = Modifier
