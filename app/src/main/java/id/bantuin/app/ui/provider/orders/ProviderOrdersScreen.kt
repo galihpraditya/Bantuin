@@ -57,21 +57,18 @@ import id.bantuin.app.ui.theme.RedErrorContainer
 import id.bantuin.app.ui.theme.TextMuted
 import id.bantuin.app.ui.theme.TextPrimary
 import id.bantuin.app.ui.theme.TextSecondary
+import androidx.lifecycle.viewmodel.compose.viewModel
+import id.bantuin.app.ui.common.BantuinViewModelFactory
 import kotlinx.coroutines.launch
 
 @Composable
 fun ProviderOrdersScreen(
     repository: FakeBantuinRepository,
+    viewModel: ProviderOrdersViewModel = viewModel(factory = BantuinViewModelFactory(repository)),
     modifier: Modifier = Modifier
 ) {
-    val scope = rememberCoroutineScope()
-    var selectedTab by remember { mutableIntStateOf(0) }
-    var orders by remember { mutableStateOf<List<BookingItem>>(emptyList()) }
-
-    androidx.compose.runtime.LaunchedEffect(Unit) {
-        orders = repository.myBookingsProvider().getOrNull() ?: emptyList()
-    }
-
+    val uiState by viewModel.uiState.collectAsState()
+    val selectedTab = uiState.selectedTab
     val tabs = listOf("Menunggu", "Terkonfirmasi", "Berjalan", "Riwayat")
 
     Column(
@@ -96,17 +93,17 @@ fun ProviderOrdersScreen(
             tabs.forEachIndexed { index, tabName ->
                 Tab(
                     selected = selectedTab == index,
-                    onClick = { selectedTab = index },
+                    onClick = { viewModel.selectTab(index) },
                     text = { Text(tabName) }
                 )
             }
         }
 
         val filteredOrders = when (selectedTab) {
-            0 -> orders.filter { it.status == BookingStatus.PENDING }
-            1 -> orders.filter { it.status == BookingStatus.DIKONFIRMASI }
-            2 -> orders.filter { it.status == BookingStatus.DALAM_PENGERJAAN }
-            else -> orders.filter { it.status in listOf(BookingStatus.SELESAI, BookingStatus.DITOLAK, BookingStatus.KEDALUWARSA, BookingStatus.DIBATALKAN_MITRA, BookingStatus.DIBATALKAN_PELANGGAN) }
+            0 -> uiState.pendingOrders
+            1 -> uiState.confirmedOrders
+            2 -> uiState.inProgressOrders
+            else -> uiState.historyOrders
         }
 
         if (filteredOrders.isEmpty()) {
@@ -124,9 +121,7 @@ fun ProviderOrdersScreen(
                     ProviderOrderActionCard(
                         booking = booking,
                         onUpdateStatus = { newStatus ->
-                            scope.launch {
-                                repository.updateStatus(booking.id, newStatus)
-                            }
+                            viewModel.updateStatus(booking.id, newStatus)
                         }
                     )
                 }

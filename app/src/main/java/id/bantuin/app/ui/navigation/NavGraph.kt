@@ -110,6 +110,7 @@ fun BantuinNavGraph(
             composable(Routes.CUSTOMER_HOME) {
                 CustomerHomeScreen(
                     orderFlow = orderFlow,
+                    repository = repository,
                     onCategoryClick = { catId ->
                         orderFlow.selectedCategoryId = catId
                         navController.navigate(Routes.recommendation(catId))
@@ -152,6 +153,7 @@ fun BantuinNavGraph(
                 ProviderDetailScreen(
                     providerId = providerId,
                     orderFlow = orderFlow,
+                    repository = repository,
                     onNavigateBack = { navController.popBackStack() },
                     onServiceSelected = { service ->
                         orderFlow.selectedService = service
@@ -257,6 +259,7 @@ fun BantuinNavGraph(
 
             composable(Routes.PROVIDER_DASHBOARD) {
                 ProviderDashboardScreen(
+                    repository = repository,
                     onNavigateToEvaluation = {
                         navController.navigate(Routes.PROVIDER_EVALUATION)
                     }

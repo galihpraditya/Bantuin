@@ -52,6 +52,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.viewmodel.compose.viewModel
 import id.bantuin.app.core.result.AppResult
 import id.bantuin.app.core.util.CurrencyUtils
 import id.bantuin.app.core.util.TimeUtils
@@ -59,6 +60,7 @@ import id.bantuin.app.data.fake.FakeData
 import id.bantuin.app.data.repository.FakeBantuinRepository
 import id.bantuin.app.domain.model.ServiceItem
 import id.bantuin.app.ui.common.BantuinTopAppBar
+import id.bantuin.app.ui.common.BantuinViewModelFactory
 import id.bantuin.app.ui.theme.BorderSubtle
 import id.bantuin.app.ui.theme.GreenSuccess
 import id.bantuin.app.ui.theme.NeutralBackground
@@ -74,21 +76,24 @@ import java.util.UUID
 @Composable
 fun ProviderServicesScreen(
     repository: FakeBantuinRepository,
+    viewModel: ProviderServicesViewModel = viewModel(factory = BantuinViewModelFactory(repository)),
     modifier: Modifier = Modifier
 ) {
+    val uiState by viewModel.uiState.collectAsState()
     val scope = rememberCoroutineScope()
     var services by remember { mutableStateOf<List<ServiceItem>>(emptyList()) }
     var showUpsertDialog by remember { mutableStateOf(false) }
     var editingService by remember { mutableStateOf<ServiceItem?>(null) }
     var serviceToDelete by remember { mutableStateOf<ServiceItem?>(null) }
 
-    fun reloadServices() {
-        scope.launch {
-            val res = repository.servicesOf("p01")
-            if (res is AppResult.Success) {
-                services = res.data
-            }
+    LaunchedEffect(uiState.services) {
+        if (uiState.services.isNotEmpty()) {
+            services = uiState.services
         }
+    }
+
+    fun reloadServices() {
+        viewModel.loadData("p01")
     }
 
     LaunchedEffect(Unit) {

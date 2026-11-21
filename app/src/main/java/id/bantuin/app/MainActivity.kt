@@ -6,7 +6,6 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.Surface
-import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import id.bantuin.app.data.repository.FakeBantuinRepository
 import id.bantuin.app.ui.navigation.BantuinNavGraph
@@ -18,9 +17,10 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
 
-        setContent {
-            val repository = remember { FakeBantuinRepository() }
+        val app = application as? BantuinApp
+        val repository = app?.repository ?: FakeBantuinRepository()
 
+        setContent {
             BantuinTheme {
                 Surface(
                     modifier = Modifier.fillMaxSize(),

@@ -57,6 +57,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import id.bantuin.app.data.fake.FakeData
+import androidx.compose.runtime.collectAsState
+import androidx.lifecycle.viewmodel.compose.viewModel
+import id.bantuin.app.data.repository.FakeBantuinRepository
+import id.bantuin.app.ui.common.BantuinViewModelFactory
 import id.bantuin.app.ui.theme.BorderSubtle
 import id.bantuin.app.ui.theme.GreenSuccess
 import id.bantuin.app.ui.theme.GreenSuccessContainer
@@ -73,8 +77,11 @@ import id.bantuin.app.ui.theme.TextSecondary
 @Composable
 fun ProviderDashboardScreen(
     onNavigateToEvaluation: () -> Unit,
+    repository: FakeBantuinRepository = FakeBantuinRepository(),
+    viewModel: ProviderDashboardViewModel = viewModel(factory = BantuinViewModelFactory(repository)),
     modifier: Modifier = Modifier
 ) {
+    val uiState by viewModel.uiState.collectAsState()
     var isOnline by remember { mutableStateOf(true) }
     var simulatedScore by remember { mutableDoubleStateOf(92.0) }
     var simulatedCancelRate by remember { mutableDoubleStateOf(1.8) }

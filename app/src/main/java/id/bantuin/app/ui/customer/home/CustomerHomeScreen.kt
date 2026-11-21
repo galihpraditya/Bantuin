@@ -64,6 +64,10 @@ import id.bantuin.app.data.fake.FakeData
 import id.bantuin.app.domain.model.ServiceCategory
 import id.bantuin.app.ui.common.OsmMapView
 import id.bantuin.app.ui.customer.OrderFlowManager
+import androidx.compose.runtime.collectAsState
+import androidx.lifecycle.viewmodel.compose.viewModel
+import id.bantuin.app.data.repository.FakeBantuinRepository
+import id.bantuin.app.ui.common.BantuinViewModelFactory
 import id.bantuin.app.ui.theme.BorderSubtle
 import id.bantuin.app.ui.theme.GreenSuccess
 import id.bantuin.app.ui.theme.GreenSuccessContainer
@@ -81,9 +85,16 @@ fun CustomerHomeScreen(
     onCategoryClick: (Int) -> Unit,
     onSwitchToProvider: () -> Unit,
     onEmergencyClick: () -> Unit,
+    repository: FakeBantuinRepository = FakeBantuinRepository(),
+    viewModel: CustomerHomeViewModel = viewModel(factory = BantuinViewModelFactory(repository)),
     modifier: Modifier = Modifier
 ) {
-    var showLocationDialog by remember { mutableStateOf(false) }
+    val uiState by viewModel.uiState.collectAsState()
+
+    androidx.compose.runtime.LaunchedEffect(uiState.customerAddress, uiState.customerLocation) {
+        orderFlow.customerAddress = uiState.customerAddress
+        orderFlow.customerLocation = uiState.customerLocation
+    }
 
     LazyColumn(
         modifier = modifier
@@ -94,7 +105,7 @@ fun CustomerHomeScreen(
         // 1. Header & Sapaan
         item {
             CustomerHeaderSection(
-                customerName = "Rani",
+                customerName = uiState.user?.fullName ?: "Rani",
                 onSwitchRole = onSwitchToProvider
             )
         }
@@ -102,8 +113,8 @@ fun CustomerHomeScreen(
         // 2. Kartu Lokasi Pelanggan
         item {
             LocationCard(
-                address = orderFlow.customerAddress,
-                onEditLocation = { showLocationDialog = true },
+                address = uiState.customerAddress,
+                onEditLocation = { viewModel.setShowLocationDialog(true) },
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp)
             )
         }
@@ -126,7 +137,7 @@ fun CustomerHomeScreen(
         // 5. Grid Kategori Layanan (6 Kategori)
         item {
             CategoryGridSection(
-                categories = FakeData.categories,
+                categories = uiState.categories.ifEmpty { FakeData.categories },
                 onCategoryClick = onCategoryClick,
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
             )
@@ -151,15 +162,15 @@ fun CustomerHomeScreen(
         }
     }
 
-    if (showLocationDialog) {
+    if (uiState.showLocationDialog) {
         LocationPickerDialog(
-            currentAddress = orderFlow.customerAddress,
-            location = orderFlow.customerLocation,
-            onDismiss = { showLocationDialog = false },
+            currentAddress = uiState.customerAddress,
+            location = uiState.customerLocation,
+            onDismiss = { viewModel.setShowLocationDialog(false) },
             onLocationConfirmed = { newAddr, newLoc ->
+                viewModel.updateLocation(newAddr, newLoc)
                 orderFlow.customerAddress = newAddr
                 orderFlow.customerLocation = newLoc
-                showLocationDialog = false
             }
         )
     }

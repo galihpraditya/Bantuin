@@ -37,11 +37,13 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.viewmodel.compose.viewModel
 import id.bantuin.app.core.util.CurrencyUtils
 import id.bantuin.app.data.repository.FakeBantuinRepository
 import id.bantuin.app.domain.model.BookingItem
 import id.bantuin.app.domain.model.BookingStatus
 import id.bantuin.app.ui.common.BantuinTopAppBar
+import id.bantuin.app.ui.common.BantuinViewModelFactory
 import id.bantuin.app.ui.common.EmptyView
 import id.bantuin.app.ui.theme.BorderSubtle
 import id.bantuin.app.ui.theme.GreenSuccess
@@ -60,17 +62,13 @@ import id.bantuin.app.ui.theme.TextSecondary
 fun CustomerOrdersScreen(
     repository: FakeBantuinRepository,
     onOrderClick: (String) -> Unit,
+    viewModel: CustomerOrdersViewModel = viewModel(factory = BantuinViewModelFactory(repository)),
     modifier: Modifier = Modifier
 ) {
-    var selectedTab by remember { mutableIntStateOf(0) }
-    var bookings by remember { mutableStateOf<List<BookingItem>>(emptyList()) }
-
-    androidx.compose.runtime.LaunchedEffect(Unit) {
-        bookings = repository.myBookingsCustomer().getOrNull() ?: emptyList()
-    }
-
-    val activeOrders = bookings.filter { it.status.isActive }
-    val historyOrders = bookings.filter { !it.status.isActive }
+    val uiState by viewModel.uiState.collectAsState()
+    val selectedTab = uiState.selectedTab
+    val activeOrders = uiState.activeOrders
+    val historyOrders = uiState.historyOrders
 
     Column(
         modifier = modifier
@@ -92,12 +90,12 @@ fun CustomerOrdersScreen(
         ) {
             Tab(
                 selected = selectedTab == 0,
-                onClick = { selectedTab = 0 },
+                onClick = { viewModel.selectTab(0) },
                 text = { Text("Pesanan Aktif (${activeOrders.size})") }
             )
             Tab(
                 selected = selectedTab == 1,
-                onClick = { selectedTab = 1 },
+                onClick = { viewModel.selectTab(1) },
                 text = { Text("Riwayat Transaksi") }
             )
         }

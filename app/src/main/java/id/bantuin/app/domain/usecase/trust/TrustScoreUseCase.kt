@@ -16,6 +16,8 @@ import kotlin.time.Duration.Companion.minutes
  * Evaluasi anomali aktif bila tx >= 5 dan (Trust Score < 60 atau Cancel Rate > 20%).
  */
 class TrustScoreUseCase {
+    operator fun invoke(input: TrustInput): TrustResult = calculate(input)
+
     fun calculate(input: TrustInput): TrustResult {
         val done = input.completed.size
         val tx = done + input.mitraCancelledCount

@@ -56,12 +56,15 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.runtime.collectAsState
+import androidx.lifecycle.viewmodel.compose.viewModel
 import id.bantuin.app.core.util.CurrencyUtils
 import id.bantuin.app.core.util.TimeUtils
 import id.bantuin.app.data.fake.FakeData
 import id.bantuin.app.data.repository.FakeBantuinRepository
 import id.bantuin.app.domain.model.Complexity
 import id.bantuin.app.domain.usecase.pricing.CostEstimatorUseCase
+import id.bantuin.app.ui.common.BantuinViewModelFactory
 import id.bantuin.app.ui.customer.OrderFlowManager
 import id.bantuin.app.ui.theme.BorderSubtle
 import id.bantuin.app.ui.theme.GreenSuccess
@@ -73,7 +76,6 @@ import id.bantuin.app.ui.theme.OrangePrimary
 import id.bantuin.app.ui.theme.TextMuted
 import id.bantuin.app.ui.theme.TextPrimary
 import id.bantuin.app.ui.theme.TextSecondary
-import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -82,10 +84,10 @@ fun EstimateScreen(
     repository: FakeBantuinRepository,
     onNavigateBack: () -> Unit,
     onOrderConfirmed: (String) -> Unit,
+    viewModel: EstimateViewModel = viewModel(factory = BantuinViewModelFactory(repository)),
     modifier: Modifier = Modifier
 ) {
-    val costEstimator = remember { CostEstimatorUseCase() }
-    val scope = rememberCoroutineScope()
+    val uiState by viewModel.uiState.collectAsState()
 
     val provider = orderFlow.selectedProvider ?: FakeData.providers.first()
     val service = orderFlow.selectedService ?: FakeData.services.first()
@@ -98,24 +100,31 @@ fun EstimateScreen(
         Math.round(d * 10.0) / 10.0
     }
 
-    // Evaluasi F2 Cost Estimator secara langsung (reaktif terhadap perubahan kompleksitas, jarak & urgent switch)
-    val estimate = remember(
-        service.baseFare,
-        orderFlow.selectedComplexity,
-        orderFlow.selectedStartMin,
-        orderFlow.isUrgent,
-        distanceKm
-    ) {
-        val est = costEstimator(
-            baseFare = service.baseFare,
+    androidx.compose.runtime.LaunchedEffect(provider.providerId, service.id) {
+        viewModel.initialize(
+            categoryId = orderFlow.selectedCategoryId,
+            provider = provider,
+            service = service,
+            customerLocation = orderFlow.customerLocation,
+            customerAddress = orderFlow.customerAddress,
+            scheduledDateIso = orderFlow.selectedDateIso,
+            scheduledStartMin = orderFlow.selectedStartMin,
+            scheduledDurationMin = orderFlow.selectedDurationMin,
+            lockInfo = orderFlow.currentLock,
             distanceKm = distanceKm,
-            complexity = orderFlow.selectedComplexity,
-            startMinOfDay = orderFlow.selectedStartMin,
-            isUrgent = orderFlow.isUrgent
+            initialComplexity = orderFlow.selectedComplexity,
+            initialUrgent = orderFlow.isUrgent,
+            initialNotes = orderFlow.orderNotes
         )
-        orderFlow.currentEstimate = est
-        est
     }
+
+    val estimate = uiState.costEstimate ?: CostEstimatorUseCase()(
+        baseFare = service.baseFare,
+        distanceKm = distanceKm,
+        complexity = orderFlow.selectedComplexity,
+        startMinOfDay = orderFlow.selectedStartMin,
+        isUrgent = orderFlow.isUrgent
+    )
 
     Scaffold(
         topBar = {
@@ -170,20 +179,19 @@ fun EstimateScreen(
 
                     Button(
                         onClick = {
-                            scope.launch {
-                                val draft = orderFlow.toDraft()
-                                if (draft != null) {
-                                    val res = repository.createBooking(draft)
-                                    val bookingId = res.getOrNull() ?: "b01"
-                                    onOrderConfirmed(bookingId)
-                                }
+                            viewModel.confirmOrder { bookingId ->
+                                onOrderConfirmed(bookingId)
                             }
                         },
+                        enabled = !uiState.isSubmitting,
                         colors = ButtonDefaults.buttonColors(containerColor = OrangePrimary),
                         shape = RoundedCornerShape(12.dp),
                         contentPadding = PaddingValues(horizontal = 20.dp, vertical = 12.dp)
                     ) {
-                        Text("Konfirmasi Order", style = MaterialTheme.typography.labelLarge)
+                        Text(
+                            if (uiState.isSubmitting) "Memproses..." else "Konfirmasi Order",
+                            style = MaterialTheme.typography.labelLarge
+                        )
                         Spacer(modifier = Modifier.width(6.dp))
                         Icon(
                             imageVector = Icons.AutoMirrored.Filled.ArrowForward,

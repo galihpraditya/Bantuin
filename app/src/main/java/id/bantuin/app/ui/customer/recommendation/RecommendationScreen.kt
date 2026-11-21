@@ -67,6 +67,10 @@ import id.bantuin.app.ui.theme.BorderSubtle
 import id.bantuin.app.ui.theme.GreenSuccess
 import id.bantuin.app.ui.theme.GreenSuccessContainer
 import id.bantuin.app.ui.theme.NeutralBackground
+import androidx.compose.runtime.collectAsState
+import androidx.lifecycle.viewmodel.compose.viewModel
+import id.bantuin.app.data.repository.FakeBantuinRepository
+import id.bantuin.app.ui.common.BantuinViewModelFactory
 import id.bantuin.app.ui.theme.NeutralSurface
 import id.bantuin.app.ui.theme.OrangeContainer
 import id.bantuin.app.ui.theme.OrangePrimary
@@ -80,51 +84,20 @@ import id.bantuin.app.ui.theme.TextSecondary
 fun RecommendationScreen(
     categoryId: Int,
     orderFlow: OrderFlowManager,
-    repository: id.bantuin.app.data.repository.FakeBantuinRepository,
+    repository: FakeBantuinRepository,
     onNavigateBack: () -> Unit,
     onSelectProvider: (ProviderCandidate) -> Unit,
+    viewModel: RecommendationViewModel = viewModel(factory = BantuinViewModelFactory(repository)),
     modifier: Modifier = Modifier
 ) {
-    val matchmakingUseCase = remember { MatchmakingUseCase() }
-
-    val category = remember(categoryId) {
-        FakeData.categories.find { it.id == categoryId } ?: FakeData.categories[1]
-    }
-
-    // Filter states
-    var maxDistanceFilter by remember { mutableDoubleStateOf(10.0) }
-    var minRatingFilter by remember { mutableDoubleStateOf(0.0) }
-    var onlyTrusted by remember { mutableStateOf(false) }
-
-    var candidateList by remember { mutableStateOf<List<ProviderCandidate>>(emptyList()) }
-    var isLoading by remember { mutableStateOf(true) }
+    val uiState by viewModel.uiState.collectAsState()
 
     androidx.compose.runtime.LaunchedEffect(categoryId, orderFlow.customerLocation) {
-        isLoading = true
-        val res = repository.candidates(categoryId)
-        if (res is id.bantuin.app.core.result.AppResult.Success) {
-            candidateList = res.data
-        }
-        isLoading = false
+        viewModel.initialize(categoryId, orderFlow.customerLocation)
     }
 
-    // Evaluasi F1 Matchmaking secara dinamis berdasarkan data repositori terbaru
-    val matchResult by remember(candidateList, orderFlow.customerLocation) {
-        derivedStateOf {
-            matchmakingUseCase(orderFlow.customerLocation, candidateList)
-        }
-    }
-
-    val filteredList by remember(matchResult, maxDistanceFilter, minRatingFilter, onlyTrusted) {
-        derivedStateOf {
-            matchResult.ranked.filter { ranked ->
-                val distPass = ranked.distanceKm <= maxDistanceFilter
-                val ratingPass = (ranked.candidate.ratingAvg ?: 0.0) >= minRatingFilter
-                val trustedPass = !onlyTrusted || ranked.candidate.badge == id.bantuin.app.domain.model.ProviderBadge.TRUSTED
-                distPass && ratingPass && trustedPass
-            }
-        }
-    }
+    val category = uiState.category
+    val filteredList = uiState.filteredList
 
     Scaffold(
         topBar = {
@@ -183,11 +156,11 @@ fun RecommendationScreen(
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     FilterChip(
-                        selected = maxDistanceFilter == 10.0 && minRatingFilter == 0.0 && !onlyTrusted,
+                        selected = uiState.maxDistanceFilter == 10.0 && uiState.minRatingFilter == 0.0 && !uiState.onlyTrusted,
                         onClick = {
-                            maxDistanceFilter = 10.0
-                            minRatingFilter = 0.0
-                            onlyTrusted = false
+                            viewModel.setMaxDistanceFilter(10.0)
+                            viewModel.setMinRatingFilter(0.0)
+                            viewModel.setOnlyTrusted(false)
                         },
                         label = { Text("Semua Mitra") },
                         colors = FilterChipDefaults.filterChipColors(
@@ -197,9 +170,9 @@ fun RecommendationScreen(
                     )
 
                     FilterChip(
-                        selected = maxDistanceFilter == 5.0,
+                        selected = uiState.maxDistanceFilter == 5.0,
                         onClick = {
-                            maxDistanceFilter = if (maxDistanceFilter == 5.0) 10.0 else 5.0
+                            viewModel.setMaxDistanceFilter(if (uiState.maxDistanceFilter == 5.0) 10.0 else 5.0)
                         },
                         label = { Text("Jarak ≤ 5km") },
                         colors = FilterChipDefaults.filterChipColors(
@@ -209,9 +182,9 @@ fun RecommendationScreen(
                     )
 
                     FilterChip(
-                        selected = minRatingFilter == 4.8,
+                        selected = uiState.minRatingFilter == 4.8,
                         onClick = {
-                            minRatingFilter = if (minRatingFilter == 4.8) 0.0 else 4.8
+                            viewModel.setMinRatingFilter(if (uiState.minRatingFilter == 4.8) 0.0 else 4.8)
                         },
                         label = { Text("Rating 4.8+") },
                         colors = FilterChipDefaults.filterChipColors(
@@ -221,9 +194,9 @@ fun RecommendationScreen(
                     )
 
                     FilterChip(
-                        selected = onlyTrusted,
+                        selected = uiState.onlyTrusted,
                         onClick = {
-                            onlyTrusted = !onlyTrusted
+                            viewModel.setOnlyTrusted(!uiState.onlyTrusted)
                         },
                         label = { Text("Mitra Terpercaya") },
                         colors = FilterChipDefaults.filterChipColors(

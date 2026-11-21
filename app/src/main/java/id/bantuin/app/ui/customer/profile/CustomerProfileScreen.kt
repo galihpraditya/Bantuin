@@ -34,8 +34,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.viewmodel.compose.viewModel
 import id.bantuin.app.data.repository.FakeBantuinRepository
 import id.bantuin.app.ui.common.BantuinTopAppBar
+import id.bantuin.app.ui.common.BantuinViewModelFactory
 import id.bantuin.app.ui.theme.BorderSubtle
 import id.bantuin.app.ui.theme.NeutralBackground
 import id.bantuin.app.ui.theme.NeutralSurface
@@ -52,10 +54,11 @@ fun CustomerProfileScreen(
     repository: FakeBantuinRepository,
     onSwitchRole: () -> Unit,
     onSignOut: () -> Unit,
+    viewModel: CustomerProfileViewModel = viewModel(factory = BantuinViewModelFactory(repository)),
     modifier: Modifier = Modifier
 ) {
-    val scope = rememberCoroutineScope()
-    val user by repository.currentUser().collectAsState(initial = null)
+    val uiState by viewModel.uiState.collectAsState()
+    val user = uiState.user
 
     Column(
         modifier = modifier
@@ -113,10 +116,7 @@ fun CustomerProfileScreen(
             // Tombol Alih ke Mode Mitra
             Button(
                 onClick = {
-                    scope.launch {
-                        repository.setActiveRole("provider")
-                        onSwitchRole()
-                    }
+                    viewModel.switchRole("provider", onSwitchRole)
                 },
                 colors = ButtonDefaults.buttonColors(containerColor = OrangePrimary),
                 shape = RoundedCornerShape(12.dp),
@@ -134,10 +134,7 @@ fun CustomerProfileScreen(
             // Tombol Keluar
             OutlinedButton(
                 onClick = {
-                    scope.launch {
-                        repository.signOut()
-                        onSignOut()
-                    }
+                    viewModel.signOut(onSignOut)
                 },
                 shape = RoundedCornerShape(12.dp),
                 modifier = Modifier

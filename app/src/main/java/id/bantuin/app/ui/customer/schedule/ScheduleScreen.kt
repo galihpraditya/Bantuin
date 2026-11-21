@@ -77,6 +77,9 @@ import id.bantuin.app.ui.theme.OrangePrimary
 import id.bantuin.app.ui.theme.RedError
 import id.bantuin.app.ui.theme.RedErrorContainer
 import id.bantuin.app.ui.theme.TextMuted
+import androidx.compose.runtime.collectAsState
+import androidx.lifecycle.viewmodel.compose.viewModel
+import id.bantuin.app.ui.common.BantuinViewModelFactory
 import id.bantuin.app.ui.theme.TextPrimary
 import id.bantuin.app.ui.theme.TextSecondary
 
@@ -87,8 +90,10 @@ fun ScheduleScreen(
     repository: id.bantuin.app.data.repository.FakeBantuinRepository,
     onNavigateBack: () -> Unit,
     onContinueToEstimate: () -> Unit,
+    viewModel: ScheduleViewModel = viewModel(factory = BantuinViewModelFactory(repository)),
     modifier: Modifier = Modifier
 ) {
+    val uiState by viewModel.uiState.collectAsState()
     val scope = rememberCoroutineScope()
     val detector = remember { SchedulingConflictDetector() }
     val provider = orderFlow.selectedProvider ?: FakeData.providers.first()
@@ -97,6 +102,10 @@ fun ScheduleScreen(
     val distanceKm = remember(orderFlow.customerLocation, provider.location) {
         val d = HaversineCalculator.distanceKm(orderFlow.customerLocation, provider.location)
         Math.round(d * 10.0) / 10.0
+    }
+
+    androidx.compose.runtime.LaunchedEffect(provider.providerId, service.id) {
+        viewModel.initialize(provider, service, distanceKm, orderFlow.selectedStartMin)
     }
 
     // 7 hari kalender dinamis mulai dari hari ini (WIB)
@@ -262,22 +271,15 @@ fun ScheduleScreen(
 
                     Button(
                         onClick = {
-                            scope.launch {
-                                val lockRes = repository.acquireLock(
-                                    providerId = provider.providerId,
-                                    startMin = selectedStartMin,
-                                    endMin = selectedStartMin + service.durationMin
-                                )
-                                if (lockRes is id.bantuin.app.core.result.AppResult.Success) {
-                                    orderFlow.currentLock = lockRes.data
-                                }
+                            viewModel.acquireLockAndProceed { lockInfo ->
+                                orderFlow.currentLock = lockInfo
                                 orderFlow.selectedStartMin = selectedStartMin
                                 orderFlow.selectedDurationMin = service.durationMin
                                 orderFlow.selectedDateIso = selectedDateIso
                                 onContinueToEstimate()
                             }
                         },
-                        enabled = slotCheckResult.valid,
+                        enabled = slotCheckResult.valid && !uiState.isLocking,
                         colors = ButtonDefaults.buttonColors(
                             containerColor = OrangePrimary,
                             disabledContainerColor = Color(0xFFE0E0E0)

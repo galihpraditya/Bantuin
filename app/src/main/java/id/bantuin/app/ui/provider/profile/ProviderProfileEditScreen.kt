@@ -54,11 +54,13 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.viewmodel.compose.viewModel
 import id.bantuin.app.core.result.AppResult
 import id.bantuin.app.data.fake.FakeData
 import id.bantuin.app.data.repository.FakeBantuinRepository
 import id.bantuin.app.domain.model.GeoPoint
 import id.bantuin.app.domain.model.ProviderCandidate
+import id.bantuin.app.ui.common.BantuinViewModelFactory
 import id.bantuin.app.ui.common.OsmMapView
 import id.bantuin.app.ui.theme.BorderSubtle
 import id.bantuin.app.ui.theme.GreenSuccess
@@ -77,8 +79,10 @@ import kotlinx.coroutines.launch
 fun ProviderProfileEditScreen(
     repository: FakeBantuinRepository,
     onNavigateBack: () -> Unit,
+    viewModel: ProviderProfileEditViewModel = viewModel(factory = BantuinViewModelFactory(repository)),
     modifier: Modifier = Modifier
 ) {
+    val uiState by viewModel.uiState.collectAsState()
     val scope = rememberCoroutineScope()
     val snackbarHostState = remember { SnackbarHostState() }
 
@@ -89,6 +93,20 @@ fun ProviderProfileEditScreen(
     var location by remember { mutableStateOf(GeoPoint(-7.9780, 112.6310)) }
     var isSaving by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
+
+    LaunchedEffect(Unit) {
+        viewModel.loadProfile("p01")
+    }
+
+    LaunchedEffect(uiState.name) {
+        if (uiState.name.isNotBlank()) {
+            name = uiState.name
+            bio = uiState.bio
+            address = uiState.address
+            phone = uiState.phone
+            location = uiState.location
+        }
+    }
 
     val presets = remember {
         listOf(

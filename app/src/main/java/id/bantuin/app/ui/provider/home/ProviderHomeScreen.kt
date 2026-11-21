@@ -47,6 +47,10 @@ import id.bantuin.app.ui.theme.NeutralBackground
 import id.bantuin.app.ui.theme.NeutralSurface
 import id.bantuin.app.ui.theme.OrangeContainer
 import id.bantuin.app.ui.theme.OrangePrimary
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.lifecycle.viewmodel.compose.viewModel
+import id.bantuin.app.ui.common.BantuinViewModelFactory
 import id.bantuin.app.ui.theme.TextMuted
 import id.bantuin.app.ui.theme.TextPrimary
 import id.bantuin.app.ui.theme.TextSecondary
@@ -57,9 +61,10 @@ fun ProviderHomeScreen(
     repository: FakeBantuinRepository,
     onNavigateToRoute: (String) -> Unit,
     onSwitchToCustomer: () -> Unit,
+    viewModel: ProviderHomeViewModel = viewModel(factory = BantuinViewModelFactory(repository)),
     modifier: Modifier = Modifier
 ) {
-    val scope = rememberCoroutineScope()
+    val uiState by viewModel.uiState.collectAsState()
 
     LazyColumn(
         modifier = modifier
@@ -113,10 +118,7 @@ fun ProviderHomeScreen(
 
                         Button(
                             onClick = {
-                                scope.launch {
-                                    repository.setActiveRole("customer")
-                                    onSwitchToCustomer()
-                                }
+                                viewModel.switchToCustomer(onSwitchToCustomer)
                             },
                             colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFF0EAE1)),
                             contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),

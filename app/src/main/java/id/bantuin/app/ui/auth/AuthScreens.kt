@@ -25,11 +25,8 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -37,25 +34,30 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
+import androidx.lifecycle.viewmodel.compose.viewModel
 import id.bantuin.app.data.repository.FakeBantuinRepository
+import id.bantuin.app.ui.common.BantuinViewModelFactory
 import id.bantuin.app.ui.theme.NeutralBackground
 import id.bantuin.app.ui.theme.OrangePrimary
-import id.bantuin.app.ui.theme.TextMuted
+import id.bantuin.app.ui.theme.RedError
 import id.bantuin.app.ui.theme.TextPrimary
 import id.bantuin.app.ui.theme.TextSecondary
-import kotlinx.coroutines.launch
 
 @Composable
 fun LoginScreen(
     repository: FakeBantuinRepository,
     onLoginSuccess: () -> Unit,
     onNavigateToRegister: () -> Unit,
+    viewModel: AuthViewModel = viewModel(factory = BantuinViewModelFactory(repository)),
     modifier: Modifier = Modifier
 ) {
-    val scope = rememberCoroutineScope()
-    var email by remember { mutableStateOf("rani@bantuin.test") }
-    var password by remember { mutableStateOf("Demo12345!") }
+    val uiState by viewModel.uiState.collectAsState()
+
+    // Initialize with default demo credentials once if empty
+    androidx.compose.runtime.LaunchedEffect(Unit) {
+        if (uiState.email.isEmpty()) viewModel.onEmailChange("rani@bantuin.test")
+        if (uiState.password.isEmpty()) viewModel.onPasswordChange("Demo12345!")
+    }
 
     Column(
         modifier = modifier
@@ -98,8 +100,8 @@ fun LoginScreen(
         Spacer(modifier = Modifier.height(32.dp))
 
         OutlinedTextField(
-            value = email,
-            onValueChange = { email = it },
+            value = uiState.email,
+            onValueChange = { viewModel.onEmailChange(it) },
             label = { Text("Email Pengguna") },
             modifier = Modifier.fillMaxWidth(),
             singleLine = true
@@ -108,30 +110,40 @@ fun LoginScreen(
         Spacer(modifier = Modifier.height(14.dp))
 
         OutlinedTextField(
-            value = password,
-            onValueChange = { password = it },
+            value = uiState.password,
+            onValueChange = { viewModel.onPasswordChange(it) },
             label = { Text("Kata Sandi") },
             visualTransformation = PasswordVisualTransformation(),
             modifier = Modifier.fillMaxWidth(),
             singleLine = true
         )
 
+        if (uiState.errorMessage != null) {
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(
+                text = uiState.errorMessage ?: "",
+                color = RedError,
+                style = MaterialTheme.typography.bodySmall
+            )
+        }
+
         Spacer(modifier = Modifier.height(24.dp))
 
         Button(
             onClick = {
-                scope.launch {
-                    repository.signIn(email, password)
-                    onLoginSuccess()
-                }
+                viewModel.signIn { onLoginSuccess() }
             },
+            enabled = !uiState.isLoading,
             colors = ButtonDefaults.buttonColors(containerColor = OrangePrimary),
             shape = RoundedCornerShape(12.dp),
             modifier = Modifier
                 .fillMaxWidth()
                 .height(48.dp)
         ) {
-            Text("Masuk ke Aplikasi", style = MaterialTheme.typography.labelLarge)
+            Text(
+                if (uiState.isLoading) "Memproses..." else "Masuk ke Aplikasi",
+                style = MaterialTheme.typography.labelLarge
+            )
         }
 
         Spacer(modifier = Modifier.height(12.dp))
@@ -147,14 +159,10 @@ fun RegisterScreen(
     repository: FakeBantuinRepository,
     onRegisterSuccess: () -> Unit,
     onNavigateToLogin: () -> Unit,
+    viewModel: AuthViewModel = viewModel(factory = BantuinViewModelFactory(repository)),
     modifier: Modifier = Modifier
 ) {
-    val scope = rememberCoroutineScope()
-    var name by remember { mutableStateOf("") }
-    var email by remember { mutableStateOf("") }
-    var phone by remember { mutableStateOf("") }
-    var password by remember { mutableStateOf("") }
-    var isProvider by remember { mutableStateOf(false) }
+    val uiState by viewModel.uiState.collectAsState()
 
     Column(
         modifier = modifier
@@ -180,8 +188,8 @@ fun RegisterScreen(
         Spacer(modifier = Modifier.height(24.dp))
 
         OutlinedTextField(
-            value = name,
-            onValueChange = { name = it },
+            value = uiState.name,
+            onValueChange = { viewModel.onNameChange(it) },
             label = { Text("Nama Lengkap") },
             modifier = Modifier.fillMaxWidth(),
             singleLine = true
@@ -190,8 +198,8 @@ fun RegisterScreen(
         Spacer(modifier = Modifier.height(10.dp))
 
         OutlinedTextField(
-            value = email,
-            onValueChange = { email = it },
+            value = uiState.email,
+            onValueChange = { viewModel.onEmailChange(it) },
             label = { Text("Email") },
             modifier = Modifier.fillMaxWidth(),
             singleLine = true
@@ -200,8 +208,8 @@ fun RegisterScreen(
         Spacer(modifier = Modifier.height(10.dp))
 
         OutlinedTextField(
-            value = phone,
-            onValueChange = { phone = it },
+            value = uiState.phone,
+            onValueChange = { viewModel.onPhoneChange(it) },
             label = { Text("Nomor WhatsApp (Opsional)") },
             modifier = Modifier.fillMaxWidth(),
             singleLine = true
@@ -210,8 +218,8 @@ fun RegisterScreen(
         Spacer(modifier = Modifier.height(10.dp))
 
         OutlinedTextField(
-            value = password,
-            onValueChange = { password = it },
+            value = uiState.password,
+            onValueChange = { viewModel.onPasswordChange(it) },
             label = { Text("Kata Sandi (Min. 8 karakter)") },
             visualTransformation = PasswordVisualTransformation(),
             modifier = Modifier.fillMaxWidth(),
@@ -225,8 +233,8 @@ fun RegisterScreen(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Checkbox(
-                checked = isProvider,
-                onCheckedChange = { isProvider = it },
+                checked = uiState.isProvider,
+                onCheckedChange = { viewModel.onRoleToggle(it) },
                 colors = CheckboxDefaults.colors(checkedColor = OrangePrimary)
             )
             Spacer(modifier = Modifier.width(6.dp))
@@ -237,22 +245,32 @@ fun RegisterScreen(
             )
         }
 
+        if (uiState.errorMessage != null) {
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(
+                text = uiState.errorMessage ?: "",
+                color = RedError,
+                style = MaterialTheme.typography.bodySmall
+            )
+        }
+
         Spacer(modifier = Modifier.height(20.dp))
 
         Button(
             onClick = {
-                scope.launch {
-                    repository.signUp(name, email, password, phone, isProvider)
-                    onRegisterSuccess()
-                }
+                viewModel.signUp { onRegisterSuccess() }
             },
+            enabled = !uiState.isLoading,
             colors = ButtonDefaults.buttonColors(containerColor = OrangePrimary),
             shape = RoundedCornerShape(12.dp),
             modifier = Modifier
                 .fillMaxWidth()
                 .height(48.dp)
         ) {
-            Text("Daftar Sekarang", style = MaterialTheme.typography.labelLarge)
+            Text(
+                if (uiState.isLoading) "Mendaftarkan..." else "Daftar Sekarang",
+                style = MaterialTheme.typography.labelLarge
+            )
         }
 
         Spacer(modifier = Modifier.height(10.dp))

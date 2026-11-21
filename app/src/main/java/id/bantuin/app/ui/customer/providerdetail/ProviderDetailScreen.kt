@@ -58,6 +58,11 @@ import id.bantuin.app.ui.theme.NeutralBackground
 import id.bantuin.app.ui.theme.NeutralSurface
 import id.bantuin.app.ui.theme.OrangeContainer
 import id.bantuin.app.ui.theme.OrangePrimary
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.lifecycle.viewmodel.compose.viewModel
+import id.bantuin.app.data.repository.FakeBantuinRepository
+import id.bantuin.app.ui.common.BantuinViewModelFactory
 import id.bantuin.app.ui.theme.TextMuted
 import id.bantuin.app.ui.theme.TextPrimary
 import id.bantuin.app.ui.theme.TextSecondary
@@ -69,19 +74,22 @@ fun ProviderDetailScreen(
     orderFlow: OrderFlowManager,
     onNavigateBack: () -> Unit,
     onServiceSelected: (ServiceItem) -> Unit,
+    repository: FakeBantuinRepository = FakeBantuinRepository(),
+    viewModel: ProviderDetailViewModel = viewModel(factory = BantuinViewModelFactory(repository)),
     modifier: Modifier = Modifier
 ) {
-    val provider = remember(providerId) {
-        FakeData.providers.find { it.providerId == providerId } ?: FakeData.providers.first()
+    val uiState by viewModel.uiState.collectAsState()
+
+    androidx.compose.runtime.LaunchedEffect(providerId) {
+        viewModel.loadProviderDetail(
+            providerId = providerId,
+            initialProvider = orderFlow.selectedProvider ?: FakeData.providers.find { it.providerId == providerId }
+        )
     }
 
-    val services = remember(providerId) {
-        FakeData.services.filter { it.providerId == providerId && it.isActive }
-    }
-
-    val reviews = remember(providerId) {
-        FakeData.sampleReviews
-    }
+    val provider = uiState.provider ?: orderFlow.selectedProvider ?: FakeData.providers.first()
+    val services = uiState.services.ifEmpty { FakeData.services.filter { it.providerId == providerId && it.isActive } }
+    val reviews = uiState.reviews.ifEmpty { FakeData.sampleReviews }
 
     Scaffold(
         topBar = {

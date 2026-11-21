@@ -47,6 +47,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.viewmodel.compose.viewModel
 import id.bantuin.app.core.result.AppResult
 import id.bantuin.app.core.util.TimeUtils
 import id.bantuin.app.data.fake.FakeData
@@ -54,6 +55,7 @@ import id.bantuin.app.data.repository.FakeBantuinRepository
 import id.bantuin.app.domain.model.AvailabilityMode
 import id.bantuin.app.domain.model.DayAvailability
 import id.bantuin.app.ui.common.BantuinTopAppBar
+import id.bantuin.app.ui.common.BantuinViewModelFactory
 import id.bantuin.app.ui.theme.BorderSubtle
 import id.bantuin.app.ui.theme.GreenSuccess
 import id.bantuin.app.ui.theme.NeutralBackground
@@ -68,8 +70,10 @@ import kotlinx.coroutines.launch
 @Composable
 fun ProviderCalendarScreen(
     repository: FakeBantuinRepository,
+    viewModel: ProviderCalendarViewModel = viewModel(factory = BantuinViewModelFactory(repository)),
     modifier: Modifier = Modifier
 ) {
+    val uiState by viewModel.uiState.collectAsState()
     val scope = rememberCoroutineScope()
     val dayNames = listOf("", "Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu", "Minggu")
 
@@ -77,12 +81,17 @@ fun ProviderCalendarScreen(
     var isSaved by remember { mutableStateOf(false) }
     var validationError by remember { mutableStateOf<String?>(null) }
 
-    LaunchedEffect(Unit) {
-        val res = repository.availability("p01")
-        if (res is AppResult.Success) {
-            days = res.data
-        } else {
-            days = FakeData.getAvailability("p01")
+    LaunchedEffect(uiState.availabilities) {
+        if (uiState.availabilities.isNotEmpty()) {
+            days = uiState.availabilities
+        }
+    }
+    LaunchedEffect(uiState.saveSuccess) {
+        isSaved = uiState.saveSuccess
+    }
+    LaunchedEffect(uiState.errorMessage) {
+        if (uiState.errorMessage != null) {
+            validationError = uiState.errorMessage
         }
     }
 

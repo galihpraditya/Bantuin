@@ -61,10 +61,12 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.viewmodel.compose.viewModel
 import id.bantuin.app.core.util.CurrencyUtils
 import id.bantuin.app.data.fake.FakeData
 import id.bantuin.app.data.repository.FakeBantuinRepository
 import id.bantuin.app.domain.model.BookingStatus
+import id.bantuin.app.ui.common.BantuinViewModelFactory
 import id.bantuin.app.ui.common.OsmMapView
 import id.bantuin.app.ui.theme.BorderSubtle
 import id.bantuin.app.ui.theme.GreenSuccess
@@ -85,18 +87,24 @@ fun OrderDetailScreen(
     bookingId: String,
     repository: FakeBantuinRepository,
     onNavigateBack: () -> Unit,
+    viewModel: OrderDetailViewModel = viewModel(factory = BantuinViewModelFactory(repository)),
     modifier: Modifier = Modifier
 ) {
+    val uiState by viewModel.uiState.collectAsState()
     val scope = rememberCoroutineScope()
-    val booking by repository.observeBooking(bookingId).collectAsState(initial = null)
 
+    androidx.compose.runtime.LaunchedEffect(bookingId) {
+        viewModel.observeBooking(bookingId)
+    }
+
+    val booking = uiState.booking
     val currentStatus = booking?.status ?: BookingStatus.DALAM_PENGERJAAN
 
     // Review form states
-    var rating by remember { mutableIntStateOf(5) }
-    var reviewComment by remember { mutableStateOf("Pak Budi datang cepat sekali, AC langsung dingin dan kamar tetap bersih!") }
-    val selectedTags = remember { mutableStateListOf("Tepat Waktu", "Pekerjaan Rapi") }
-    var isReviewSubmitted by remember { mutableStateOf(false) }
+    var rating = uiState.rating
+    var reviewComment = uiState.reviewComment
+    val selectedTags = uiState.selectedTags
+    val isReviewSubmitted = uiState.reviewSubmitted
 
     Scaffold(
         topBar = {
@@ -490,7 +498,10 @@ fun OrderDetailScreen(
 
                             OutlinedTextField(
                                 value = reviewComment,
-                                onValueChange = { reviewComment = it },
+                                onValueChange = {
+                                    reviewComment = it
+                                    viewModel.setReviewComment(it)
+                                },
                                 label = { Text("Catatan Ulasan Anda") },
                                 modifier = Modifier.fillMaxWidth(),
                                 maxLines = 3
@@ -500,18 +511,11 @@ fun OrderDetailScreen(
 
                             Button(
                                 onClick = {
-                                    scope.launch {
-                                        repository.submitReview(
-                                            bookingId = bookingId,
-                                            providerId = booking?.providerId ?: "p01",
-                                            rating = rating,
-                                            comment = reviewComment,
-                                            tags = selectedTags.toList()
-                                        )
-                                        isReviewSubmitted = true
-                                    }
+                                    viewModel.setRating(rating)
+                                    viewModel.setReviewComment(reviewComment)
+                                    viewModel.submitReview()
                                 },
-                                enabled = !isReviewSubmitted,
+                                enabled = !isReviewSubmitted && !uiState.isSubmittingReview,
                                 colors = ButtonDefaults.buttonColors(
                                     containerColor = OrangePrimary,
                                     disabledContainerColor = GreenSuccess

@@ -35,7 +35,9 @@ import kotlinx.datetime.Instant
 import java.util.UUID
 import kotlin.time.Duration.Companion.minutes
 
-class FakeBantuinRepository :
+class FakeBantuinRepository(
+    private val sessionStore: id.bantuin.app.core.session.UserSessionStore = id.bantuin.app.core.session.InMemorySessionStore()
+) :
     CatalogRepository,
     BookingRepository,
     ReviewRepository,
@@ -59,19 +61,6 @@ class FakeBantuinRepository :
     private val bookingsFlow = MutableStateFlow<List<BookingItem>>(emptyList())
     private val reviewsList = FakeData.sampleReviews.toMutableList()
     private val activeLocks = mutableMapOf<String, LockInfo>()
-
-    // Auth state
-    private val currentRoleFlow = MutableStateFlow("customer") // "customer" or "provider"
-    private val currentUserFlow = MutableStateFlow<UserProfile?>(
-        UserProfile(
-            id = "user_demo_rani",
-            fullName = "Rani Wijaya",
-            email = "rani@bantuin.test",
-            phone = "081234567890",
-            roles = setOf("customer", "provider"),
-            avatarUrl = null
-        )
-    )
 
     init {
         // Inisialisasi beberapa pesanan demo
@@ -157,9 +146,9 @@ class FakeBantuinRepository :
                 address = address
             )
         }
-        val user = currentUserFlow.value
+        val user = sessionStore.currentUserValue
         if (user != null) {
-            currentUserFlow.value = user.copy(fullName = name, phone = phone)
+            sessionStore.saveSession(user.copy(fullName = name, phone = phone))
         }
         return AppResult.Success(Unit)
     }
@@ -200,8 +189,8 @@ class FakeBantuinRepository :
         val bookingId = "bti_" + UUID.randomUUID().toString().take(6)
         val newBooking = BookingItem(
             id = bookingId,
-            customerId = currentUserFlow.value?.id ?: "user_guest",
-            customerName = currentUserFlow.value?.fullName ?: "Pelanggan",
+            customerId = sessionStore.currentUserValue?.id ?: "user_guest",
+            customerName = sessionStore.currentUserValue?.fullName ?: "Pelanggan",
             providerId = draft.provider.providerId,
             providerName = draft.provider.name,
             serviceName = draft.service.name,
@@ -235,7 +224,7 @@ class FakeBantuinRepository :
     }
 
     override suspend fun myBookingsCustomer(): AppResult<List<BookingItem>> {
-        val userId = currentUserFlow.value?.id ?: ""
+        val userId = sessionStore.currentUserValue?.id ?: ""
         val list = bookingsFlow.value.filter { it.customerId == userId || it.customerId == "user_demo_rani" }
         return AppResult.Success(list)
     }
@@ -261,7 +250,7 @@ class FakeBantuinRepository :
         val review = ReviewItem(
             id = UUID.randomUUID().toString(),
             bookingId = bookingId,
-            customerName = currentUserFlow.value?.fullName ?: "Pelanggan",
+            customerName = sessionStore.currentUserValue?.fullName ?: "Pelanggan",
             rating = rating,
             comment = comment,
             tags = tags,
@@ -333,7 +322,7 @@ class FakeBantuinRepository :
             phone = "081234567890",
             roles = setOf("customer", "provider")
         )
-        currentUserFlow.value = user
+        sessionStore.saveSession(user)
         return AppResult.Success(user.id)
     }
 
@@ -353,20 +342,20 @@ class FakeBantuinRepository :
             phone = phone,
             roles = roles
         )
-        currentUserFlow.value = user
+        sessionStore.saveSession(user)
         return AppResult.Success(user.id)
     }
 
     override suspend fun signOut(): AppResult<Unit> {
-        currentUserFlow.value = null
+        sessionStore.clearSession()
         return AppResult.Success(Unit)
     }
 
-    override fun activeRole(): Flow<String> = currentRoleFlow.asStateFlow()
+    override fun activeRole(): Flow<String> = sessionStore.activeRole
 
     override suspend fun setActiveRole(role: String) {
-        currentRoleFlow.value = role
+        sessionStore.setActiveRole(role)
     }
 
-    override fun currentUser(): Flow<UserProfile?> = currentUserFlow.asStateFlow()
+    override fun currentUser(): Flow<UserProfile?> = sessionStore.currentUser
 }
