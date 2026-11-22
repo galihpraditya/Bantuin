@@ -318,15 +318,17 @@ class FakeBantuinRepository(
 
     // ================= AUTH REPOSITORY =================
     override suspend fun signIn(email: String, pass: String): AppResult<String> {
-        val user = UserProfile(
-            id = "user_demo_rani",
-            fullName = "Rani Wijaya",
-            email = email,
-            phone = "081234567890",
-            roles = setOf("customer", "provider")
-        )
-        sessionStore.saveSession(user)
-        return AppResult.Success(user.id)
+        val normalizedEmail = email.trim()
+        val account = FakeData.demoAccounts.firstOrNull {
+            it.email.equals(normalizedEmail, ignoreCase = true)
+        }
+        if (account == null || account.password != pass) {
+            return AppResult.Error("Email atau kata sandi salah.")
+        }
+
+        sessionStore.setActiveRole(preferredRole(account.user))
+        sessionStore.saveSession(account.user)
+        return AppResult.Success(account.user.id)
     }
 
     override suspend fun signUp(
@@ -336,18 +338,30 @@ class FakeBantuinRepository(
         phone: String,
         isProvider: Boolean
     ): AppResult<String> {
+        val normalizedEmail = email.trim()
+        if (FakeData.demoAccounts.any { it.email.equals(normalizedEmail, ignoreCase = true) }) {
+            return AppResult.Error("Email sudah terdaftar.")
+        }
+        if (pass.length < 8) {
+            return AppResult.Error("Kata sandi minimal 8 karakter.")
+        }
+
         val roles = mutableSetOf("customer")
         if (isProvider) roles.add("provider")
         val user = UserProfile(
             id = "user_" + UUID.randomUUID().toString().take(6),
-            fullName = name,
-            email = email,
-            phone = phone,
+            fullName = name.trim(),
+            email = normalizedEmail,
+            phone = phone.trim(),
             roles = roles
         )
+        sessionStore.setActiveRole(preferredRole(user))
         sessionStore.saveSession(user)
         return AppResult.Success(user.id)
     }
+
+    private fun preferredRole(user: UserProfile): String =
+        if ("provider" in user.roles && "customer" !in user.roles) "provider" else "customer"
 
     override suspend fun signOut(): AppResult<Unit> {
         sessionStore.clearSession()

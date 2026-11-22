@@ -16,6 +16,7 @@ import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import id.bantuin.app.domain.model.BookingStatus
 import id.bantuin.app.domain.repository.BantuinRepository
+import id.bantuin.app.domain.repository.UserProfile
 import id.bantuin.app.ui.auth.LoginScreen
 import id.bantuin.app.ui.auth.RegisterScreen
 import id.bantuin.app.ui.common.BantuinBottomBar
@@ -40,13 +41,20 @@ import id.bantuin.app.ui.provider.services.ProviderServicesScreen
 @Composable
 fun BantuinNavGraph(
     repository: BantuinRepository,
+    initialUser: UserProfile? = null,
+    initialRole: String = "customer",
     navController: NavHostController = rememberNavController(),
     orderFlow: OrderFlowManager = remember { OrderFlowManager() },
     modifier: Modifier = Modifier
 ) {
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = navBackStackEntry?.destination?.route
-    val activeRole by repository.activeRole().collectAsState(initial = "customer")
+    val activeRole by repository.activeRole().collectAsState(initial = initialRole)
+    val startDestination = when {
+        initialUser == null -> Routes.LOGIN
+        initialRole == "provider" -> Routes.PROVIDER_HOME
+        else -> Routes.CUSTOMER_HOME
+    }
     val customerBookings by repository.observeCustomerBookings().collectAsState(initial = emptyList())
     val hasActiveCustomerOrders = customerBookings.any {
         it.status in listOf(
@@ -85,16 +93,16 @@ fun BantuinNavGraph(
     ) { innerPadding ->
         NavHost(
             navController = navController,
-            startDestination = Routes.CUSTOMER_HOME,
+            startDestination = startDestination,
             modifier = Modifier.padding(innerPadding)
         ) {
             // Auth Routes
             composable(Routes.LOGIN) {
                 LoginScreen(
                     repository = repository,
-                    onLoginSuccess = {
-                        navController.navigate(Routes.CUSTOMER_HOME) {
-                            popUpTo(Routes.LOGIN) { inclusive = true }
+                    onLoginSuccess = { user ->
+                        navController.navigate(homeRouteFor(user)) {
+                            popUpTo(0) { inclusive = true }
                         }
                     },
                     onNavigateToRegister = {
@@ -106,9 +114,9 @@ fun BantuinNavGraph(
             composable(Routes.REGISTER) {
                 RegisterScreen(
                     repository = repository,
-                    onRegisterSuccess = {
-                        navController.navigate(Routes.CUSTOMER_HOME) {
-                            popUpTo(Routes.REGISTER) { inclusive = true }
+                    onRegisterSuccess = { user ->
+                        navController.navigate(homeRouteFor(user)) {
+                            popUpTo(0) { inclusive = true }
                         }
                     },
                     onNavigateToLogin = {
@@ -303,5 +311,14 @@ fun BantuinNavGraph(
                 )
             }
         }
+    }
+}
+
+private fun homeRouteFor(user: UserProfile?): String {
+    val roles = user?.roles.orEmpty()
+    return if ("provider" in roles && "customer" !in roles) {
+        Routes.PROVIDER_HOME
+    } else {
+        Routes.CUSTOMER_HOME
     }
 }

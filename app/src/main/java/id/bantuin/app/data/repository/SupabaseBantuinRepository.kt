@@ -12,7 +12,10 @@ import id.bantuin.app.domain.usecase.matchmaking.MatchmakingUseCase
 import id.bantuin.app.domain.usecase.trust.RecalculateProviderMetricsUseCase
 import io.github.jan.supabase.SupabaseClient
 import io.github.jan.supabase.auth.auth
+import io.github.jan.supabase.auth.exception.AuthErrorCode
+import io.github.jan.supabase.auth.exception.AuthRestException
 import io.github.jan.supabase.auth.providers.builtin.Email
+import io.github.jan.supabase.auth.user.UserInfo
 import io.github.jan.supabase.postgrest.postgrest
 import io.github.jan.supabase.postgrest.rpc
 import kotlinx.coroutines.CoroutineDispatcher
@@ -24,6 +27,13 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
 import kotlinx.datetime.Clock
 import kotlinx.datetime.Instant
+import kotlinx.serialization.json.add
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.put
+import kotlinx.serialization.json.putJsonArray
 import java.util.Locale
 import java.util.UUID
 
@@ -596,22 +606,23 @@ class SupabaseBantuinRepository(
 
     override suspend fun signIn(email: String, pass: String): AppResult<String> = withContext(ioDispatcher) {
         try {
+            client.auth.awaitInitialization()
             client.auth.signInWith(Email) {
-                this.email = email
+                this.email = email.trim()
                 this.password = pass
             }
-            val userId = client.auth.currentUserOrNull()?.id ?: UUID.randomUUID().toString()
-            val user = UserProfile(
-                id = userId,
-                fullName = email.substringBefore("@"),
-                email = email,
-                phone = "081200000000",
-                roles = setOf("customer", "provider")
-            )
+
+            val authUser = client.auth.currentUserOrNull()
+                ?: return@withContext AppResult.Error("Gagal masuk: sesi pengguna tidak ditemukan.")
+
+            val user = loadUserProfile(authUser, email)
+            sessionStore.setActiveRole(preferredRole(user))
             sessionStore.saveSession(user)
-            AppResult.Success(userId)
+            AppResult.Success(user.id)
         } catch (e: Exception) {
-            fallback?.signIn(email, pass) ?: AppResult.Error(e.message ?: "Autentikasi gagal", e)
+            // Jangan pernah fallback ke akun demo di sini. Fallback pada autentikasi
+            // membuat kredensial salah seolah-olah berhasil masuk sebagai Rani Wijaya.
+            AppResult.Error(authErrorMessage(e, "masuk"), e)
         }
     }
 
@@ -624,23 +635,28 @@ class SupabaseBantuinRepository(
     ): AppResult<String> = withContext(ioDispatcher) {
         try {
             val initialRole = if (isProvider) "provider" else "customer"
+            client.auth.awaitInitialization()
             client.auth.signUpWith(Email) {
-                this.email = email
+                this.email = email.trim()
                 this.password = pass
+                data = buildJsonObject {
+                    put("full_name", name.trim())
+                    if (phone.isNotBlank()) put("phone", phone.trim())
+                    putJsonArray("roles") { add(initialRole) }
+                }
             }
-            val userId = client.auth.currentUserOrNull()?.id ?: UUID.randomUUID().toString()
-            val user = UserProfile(
-                id = userId,
-                fullName = name,
-                email = email,
-                phone = phone,
-                roles = setOf(initialRole)
-            )
+
+            val authUser = client.auth.currentUserOrNull()
+                ?: return@withContext AppResult.Error(
+                    "Pendaftaran berhasil. Silakan konfirmasi email Anda sebelum masuk."
+                )
+
+            val user = loadUserProfile(authUser, email)
+            sessionStore.setActiveRole(preferredRole(user))
             sessionStore.saveSession(user)
-            AppResult.Success(userId)
+            AppResult.Success(user.id)
         } catch (e: Exception) {
-            fallback?.signUp(name, email, pass, phone, isProvider)
-                ?: AppResult.Error(e.message ?: "Pendaftaran gagal", e)
+            AppResult.Error(authErrorMessage(e, "mendaftar"), e)
         }
     }
 
@@ -662,6 +678,83 @@ class SupabaseBantuinRepository(
     }
 
     override fun currentUser(): Flow<UserProfile?> = sessionStore.currentUser
+
+    // =========================================================================
+    // AUTH HELPERS
+    // =========================================================================
+
+    /**
+     * Memuat profil asli pengguna dari tabel public.profiles. Metadata auth hanya
+     * dipakai sebagai cadangan bila baris profil belum tersedia (misalnya trigger
+     * handle_new_user belum berjalan).
+     */
+    private suspend fun loadUserProfile(authUser: UserInfo, fallbackEmail: String): UserProfile {
+        val profileDto = try {
+            client.postgrest["profiles"]
+                .select {
+                    filter {
+                        eq("id", authUser.id)
+                    }
+                }
+                .decodeList<ProfileDto>()
+                .firstOrNull()
+        } catch (_: Exception) {
+            null
+        }
+
+        if (profileDto != null) {
+            return UserProfile(
+                id = profileDto.id,
+                fullName = profileDto.fullName,
+                email = authUser.email ?: fallbackEmail.trim(),
+                phone = profileDto.phone.orEmpty(),
+                roles = profileDto.roles.toSet().ifEmpty { setOf("customer") },
+                avatarUrl = profileDto.avatarUrl
+            )
+        }
+
+        val metadata = authUser.userMetadata
+        val name = metadata?.get("full_name")?.jsonPrimitive?.contentOrNull
+            ?.takeIf { it.isNotBlank() }
+            ?: fallbackEmail.substringBefore("@")
+        val phone = metadata?.get("phone")?.jsonPrimitive?.contentOrNull.orEmpty()
+        val roles = metadata?.get("roles")?.jsonArray
+            ?.mapNotNull { it.jsonPrimitive.contentOrNull }
+            ?.filter { it.isNotBlank() }
+            ?.toSet()
+            ?.takeIf { it.isNotEmpty() }
+            ?: setOf("customer")
+
+        return UserProfile(
+            id = authUser.id,
+            fullName = name,
+            email = authUser.email ?: fallbackEmail.trim(),
+            phone = phone,
+            roles = roles
+        )
+    }
+
+    private fun preferredRole(user: UserProfile): String =
+        if ("provider" in user.roles && "customer" !in user.roles) "provider" else "customer"
+
+    private fun authErrorMessage(e: Exception, action: String): String {
+        val code = (e as? AuthRestException)?.errorCode
+        return when (code) {
+            AuthErrorCode.InvalidCredentials -> "Email atau kata sandi salah."
+            AuthErrorCode.EmailNotConfirmed -> "Email belum dikonfirmasi. Cek kotak masuk Anda."
+            AuthErrorCode.UserAlreadyExists, AuthErrorCode.EmailExists -> "Email sudah terdaftar."
+            AuthErrorCode.WeakPassword -> "Kata sandi terlalu lemah. Gunakan minimal 8 karakter."
+            AuthErrorCode.OverRequestRateLimit -> "Terlalu banyak percobaan. Coba lagi beberapa saat lagi."
+            else -> when {
+                e.message?.contains("timeout", ignoreCase = true) == true ->
+                    "Koneksi ke server habis waktu. Periksa internet Anda lalu coba lagi."
+                e.message?.contains("Unable to resolve host", ignoreCase = true) == true ||
+                    e.message?.contains("connect", ignoreCase = true) == true ->
+                    "Tidak dapat terhubung ke server. Periksa koneksi internet Anda."
+                else -> "Gagal $action. Periksa email, kata sandi, dan koneksi internet Anda."
+            }
+        }
+    }
 
     // =========================================================================
     // HELPER MAPPERS

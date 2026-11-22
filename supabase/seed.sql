@@ -48,6 +48,45 @@ values
   ('00000000-0000-0000-0000-000000000015', '00000000-0000-0000-0000-000000000015', 'authenticated', 'authenticated', 'mitra15@bantuin.test', crypt('Demo12345!', gen_salt('bf')), now(), '{"provider":"email","providers":["email"]}', '{"full_name":"Bambang Libur Service","phone":"081200000015","roles":["provider"]}', now(), now())
 on conflict (id) do nothing;
 
+-- GoTrue membaca kolom token sebagai string (bukan nullable). Baris auth.users yang
+-- disisipkan manual tanpa nilai token menyebabkan login gagal dengan
+-- "Database error querying schema". Normalkan menjadi string kosong.
+update auth.users
+set
+  instance_id = '00000000-0000-0000-0000-000000000000',
+  confirmation_token = '',
+  recovery_token = '',
+  email_change_token_new = '',
+  email_change = '',
+  email_change_token_current = '',
+  phone_change = '',
+  phone_change_token = '',
+  reauthentication_token = ''
+where email like '%@bantuin.test';
+
+-- Identitas email diperlukan agar GoTrue dapat mencocokkan akun saat login.
+insert into auth.identities (
+  id, provider_id, user_id, identity_data, provider,
+  last_sign_in_at, created_at, updated_at
+)
+select
+  gen_random_uuid(),
+  u.id::text,
+  u.id,
+  jsonb_build_object(
+    'sub', u.id::text,
+    'email', u.email,
+    'email_verified', true
+  ),
+  'email',
+  now(), now(), now()
+from auth.users u
+where u.email like '%@bantuin.test'
+  and not exists (
+    select 1 from auth.identities i
+    where i.user_id = u.id and i.provider = 'email'
+  );
+
 -- ===== 3. Data Profil Pengguna (public.profiles) =====
 insert into public.profiles (id, full_name, phone, roles)
 values

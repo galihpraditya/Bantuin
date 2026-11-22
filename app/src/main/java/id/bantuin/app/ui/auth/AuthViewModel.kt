@@ -4,9 +4,11 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import id.bantuin.app.core.result.AppResult
 import id.bantuin.app.domain.repository.AuthRepository
+import id.bantuin.app.domain.repository.UserProfile
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
@@ -52,7 +54,7 @@ class AuthViewModel(
         _uiState.update { it.copy(errorMessage = null) }
     }
 
-    fun signIn(onSuccess: (String) -> Unit) {
+    fun signIn(onSuccess: (UserProfile?) -> Unit) {
         val state = _uiState.value
         if (state.email.isBlank() || state.password.isBlank()) {
             _uiState.update { it.copy(errorMessage = "Email dan password wajib diisi") }
@@ -63,8 +65,9 @@ class AuthViewModel(
             _uiState.update { it.copy(isLoading = true, errorMessage = null) }
             when (val result = authRepository.signIn(state.email, state.password)) {
                 is AppResult.Success -> {
+                    val user = authRepository.currentUser().firstOrNull()
                     _uiState.update { it.copy(isLoading = false, isSuccess = true) }
-                    onSuccess(result.data)
+                    onSuccess(user)
                 }
                 is AppResult.Error -> {
                     _uiState.update { it.copy(isLoading = false, errorMessage = result.message) }
@@ -76,7 +79,7 @@ class AuthViewModel(
         }
     }
 
-    fun signUp(onSuccess: (String) -> Unit) {
+    fun signUp(onSuccess: (UserProfile?) -> Unit) {
         val state = _uiState.value
         if (state.name.isBlank() || state.email.isBlank() || state.password.isBlank()) {
             _uiState.update { it.copy(errorMessage = "Nama, email, dan password wajib diisi") }
@@ -94,8 +97,9 @@ class AuthViewModel(
             )
             when (result) {
                 is AppResult.Success -> {
+                    val user = authRepository.currentUser().firstOrNull()
                     _uiState.update { it.copy(isLoading = false, isSuccess = true) }
-                    onSuccess(result.data)
+                    onSuccess(user)
                 }
                 is AppResult.Error -> {
                     _uiState.update { it.copy(isLoading = false, errorMessage = result.message) }

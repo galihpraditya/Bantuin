@@ -29,6 +29,9 @@ class BantuinApp : Application() {
         sessionStore = SharedPreferencesSessionStore(this)
         val fakeRepo = FakeBantuinRepository(sessionStore = sessionStore)
 
+        // Aktifkan sesi Supabase yang persisten sebelum client pertama kali dibuat.
+        SupabaseClientProvider.initialize(this)
+
         // Gunakan Supabase jika URL & ANON_KEY sudah dikonfigurasi, jika belum fallback ke in-memory
         repository = if (SupabaseClientProvider.isConfigured) {
             SupabaseBantuinRepository(

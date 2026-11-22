@@ -92,17 +92,21 @@ fun CustomerProfileScreen(
                         Spacer(modifier = Modifier.width(14.dp))
                         Column {
                             Text(
-                                text = user?.fullName ?: "Rani Wijaya",
+                                text = user?.fullName ?: "Pengguna",
                                 style = MaterialTheme.typography.titleMedium,
                                 color = TextPrimary
                             )
                             Text(
-                                text = user?.email ?: "rani@bantuin.test",
+                                text = user?.email ?: "-",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = TextSecondary
                             )
                             Text(
-                                text = "Peran Aktif: Pelanggan",
+                                text = if (uiState.activeRole == "provider") {
+                                    "Peran Aktif: Mitra Kerja"
+                                } else {
+                                    "Peran Aktif: Pelanggan"
+                                },
                                 style = MaterialTheme.typography.bodySmall,
                                 color = OrangePrimary
                             )

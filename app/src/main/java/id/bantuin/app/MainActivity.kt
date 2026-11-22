@@ -19,6 +19,8 @@ class MainActivity : ComponentActivity() {
 
         val app = application as? BantuinApp
         val repository = app?.repository ?: FakeBantuinRepository()
+        val initialUser = app?.sessionStore?.currentUserValue
+        val initialRole = app?.sessionStore?.activeRoleValue ?: "customer"
 
         setContent {
             BantuinTheme {
@@ -26,7 +28,11 @@ class MainActivity : ComponentActivity() {
                     modifier = Modifier.fillMaxSize(),
                     color = NeutralBackground
                 ) {
-                    BantuinNavGraph(repository = repository)
+                    BantuinNavGraph(
+                        repository = repository,
+                        initialUser = initialUser,
+                        initialRole = initialRole
+                    )
                 }
             }
         }

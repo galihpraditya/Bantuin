@@ -105,7 +105,7 @@ fun CustomerHomeScreen(
         // 1. Header & Sapaan
         item {
             CustomerHeaderSection(
-                customerName = uiState.user?.fullName ?: "Rani",
+                customerName = uiState.user?.fullName ?: "Pengguna",
                 onSwitchRole = onSwitchToProvider
             )
         }

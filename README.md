@@ -68,6 +68,17 @@ Seluruh uji logika bisnis F1 hingga F4 mencakup skenario perhitungan dari spesif
 Laporan hasil pengujian dalam format HTML dapat dilihat di:
 `app/build/reports/tests/testDebugUnitTest/index.html`
 
+## Autentikasi dan akun demo
+
+Aplikasi membuka layar login saat belum ada sesi. Kredensial yang salah akan ditolak, dan pengguna akan masuk ke profil sesuai akun yang digunakan (bukan akun demo bawaan).
+
+Akun demo (kata sandi `Demo12345!`):
+
+- Pelanggan: `pelanggan1@bantuin.test`, `pelanggan2@bantuin.test`
+- Mitra: `mitra01@bantuin.test` … `mitra15@bantuin.test`
+
+Saat Supabase dikonfigurasi, login memakai Supabase Auth. Jalankan `supabase/migrations/001_init.sql`, lalu `supabase/seed.sql`. Untuk proyek yang sudah menjalankan seed versi lama, jalankan juga `supabase/migrations/002_fix_auth_and_grants.sql` agar akun demo dapat login dan hak akses tabel sesuai RLS. Tanpa Supabase, aplikasi memakai repository in-memory dengan akun demo yang sama.
+
 ## Catatan penggunaan demo
 
-Aplikasi ini sudah dilengkapi data awal 15 profil mitra di wilayah Malang (berpusat di sekitar Alun-alun Kota Malang) yang mencakup berbagai kategori layanan, kondisi jadwal sibuk, dan variasi skor metrik. Pengguna dapat langsung berganti peran antara Pelanggan dan Mitra melalui tombol di bagian atas layar beranda tanpa perlu membuat akun baru.
+Aplikasi ini sudah dilengkapi data awal 15 profil mitra di wilayah Malang (berpusat di sekitar Alun-alun Kota Malang) yang mencakup berbagai kategori layanan, kondisi jadwal sibuk, dan variasi skor metrik. Pengguna dapat berganti peran antara Pelanggan dan Mitra melalui profil/beranda selama akun memiliki peran tersebut.

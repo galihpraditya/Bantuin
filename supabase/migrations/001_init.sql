@@ -458,6 +458,25 @@ drop policy if exists snapshots_select_own on public.provider_metric_snapshots;
 create policy snapshots_select_own on public.provider_metric_snapshots for select to authenticated
   using (provider_id = auth.uid());
 
+-- Hak akses dasar (RLS tetap berlaku). Tanpa grant ini PostgREST mengembalikan
+-- "permission denied for table ..." meskipun policy sudah benar.
+grant usage on schema public to anon, authenticated;
+
+grant select on public.service_categories, public.profiles,
+  public.provider_profiles, public.services, public.availability,
+  public.reviews to anon, authenticated;
+
+grant select on public.bookings, public.slot_locks,
+  public.booking_events, public.provider_metric_snapshots to authenticated;
+
+grant update on public.profiles to authenticated;
+grant insert, update, delete on public.services to authenticated;
+grant insert, update, delete on public.provider_profiles to authenticated;
+grant insert, update, delete on public.availability to authenticated;
+grant insert on public.reviews to authenticated;
+
+grant usage, select on all sequences in schema public to anon, authenticated;
+
 -- ===== 5. Publikasi Realtime =====
 do $$
 begin
