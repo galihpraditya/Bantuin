@@ -1,5 +1,6 @@
 package id.bantuin.app.data.repository
 
+import android.util.Log
 import id.bantuin.app.core.result.AppResult
 import id.bantuin.app.core.session.UserSessionStore
 import id.bantuin.app.core.util.TimeUtils
@@ -50,6 +51,10 @@ class SupabaseBantuinRepository(
     }
 
     private val customerBookingsFlow = MutableStateFlow<List<BookingItem>>(emptyList())
+
+    companion object {
+        private const val LOG_TAG_LOGIN = "LOGIN"
+    }
 
     // =========================================================================
     // CATALOG REPOSITORY (CRUD-1, CRUD-2, CRUD-3, F1)
@@ -605,21 +610,39 @@ class SupabaseBantuinRepository(
     // =========================================================================
 
     override suspend fun signIn(email: String, pass: String): AppResult<String> = withContext(ioDispatcher) {
+        val normalizedEmail = email.trim()
         try {
             client.auth.awaitInitialization()
+            logLoginDebug("Mencoba login dengan email: $normalizedEmail")
             client.auth.signInWith(Email) {
-                this.email = email.trim()
+                this.email = normalizedEmail
                 this.password = pass
             }
+            logLoginDebug("Login berhasil")
 
             val authUser = client.auth.currentUserOrNull()
-                ?: return@withContext AppResult.Error("Gagal masuk: sesi pengguna tidak ditemukan.")
+                ?: run {
+                    logLoginError("Login gagal: sesi pengguna tidak ditemukan setelah signInWith")
+                    return@withContext AppResult.Error("Gagal masuk: sesi pengguna tidak ditemukan.")
+                }
+            logLoginDebug("Auth user: id=${authUser.id}, email=${authUser.email}")
 
             val user = loadUserProfile(authUser, email)
             sessionStore.setActiveRole(preferredRole(user))
             sessionStore.saveSession(user)
+            logLoginDebug("Sesi tersimpan: ${user.fullName}, roles=${user.roles}, activeRole=${preferredRole(user)}")
             AppResult.Success(user.id)
         } catch (e: Exception) {
+            // Log diagnostik: jangan pernah mencatat password.
+            logLoginError("Login gagal: ${e.message}", e)
+            if (e is AuthRestException) {
+                logLoginError(
+                    "Detail login gagal | exception=${e::class.java.simpleName} | " +
+                        "code=${e.errorCode?.value ?: e.error} | " +
+                        "description=${e.errorDescription} | " +
+                        "http=${e.response.status.value}"
+                )
+            }
             // Jangan pernah fallback ke akun demo di sini. Fallback pada autentikasi
             // membuat kredensial salah seolah-olah berhasil masuk sebagai Rani Wijaya.
             AppResult.Error(authErrorMessage(e, "masuk"), e)
@@ -736,6 +759,28 @@ class SupabaseBantuinRepository(
 
     private fun preferredRole(user: UserProfile): String =
         if ("provider" in user.roles && "customer" !in user.roles) "provider" else "customer"
+
+    /**
+     * Pembungkus Log agar repository tetap aman dipakai dari local JVM unit test,
+     * di mana android.util.Log merupakan stub yang melempar exception.
+     */
+    private fun logLoginDebug(message: String) {
+        try {
+            Log.d(LOG_TAG_LOGIN, message)
+        } catch (_: Throwable) {
+        }
+    }
+
+    private fun logLoginError(message: String, throwable: Throwable? = null) {
+        try {
+            if (throwable != null) {
+                Log.e(LOG_TAG_LOGIN, message, throwable)
+            } else {
+                Log.e(LOG_TAG_LOGIN, message)
+            }
+        } catch (_: Throwable) {
+        }
+    }
 
     private fun authErrorMessage(e: Exception, action: String): String {
         val code = (e as? AuthRestException)?.errorCode
