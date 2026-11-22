@@ -42,25 +42,20 @@ class SharedPreferencesSessionStore(
 
     private fun readCurrentUser(): UserProfile? {
         return try {
-            val id = prefs.getString(KEY_USER_ID, null) ?: return defaultDemoUser()
-            val name = prefs.getString(KEY_USER_NAME, "Rani Wijaya") ?: "Rani Wijaya"
-            val email = prefs.getString(KEY_USER_EMAIL, "rani@example.com") ?: "rani@example.com"
-            val phone = prefs.getString(KEY_USER_PHONE, "081234567890") ?: "081234567890"
-            val rolesSet = prefs.getStringSet(KEY_USER_ROLES, setOf("customer", "provider")) ?: setOf("customer", "provider")
+            // Tidak ada sesi tersimpan berarti pengguna belum login. Jangan pernah
+            // mengembalikan akun demo secara implisit karena itu membuat kredensial
+            // apa pun tampak berhasil masuk sebagai Rani Wijaya.
+            val id = prefs.getString(KEY_USER_ID, null) ?: return null
+            val name = prefs.getString(KEY_USER_NAME, "") ?: ""
+            val email = prefs.getString(KEY_USER_EMAIL, "") ?: ""
+            val phone = prefs.getString(KEY_USER_PHONE, "") ?: ""
+            val rolesSet = prefs.getStringSet(KEY_USER_ROLES, setOf("customer")) ?: setOf("customer")
             val avatar = prefs.getString(KEY_USER_AVATAR, null)
             UserProfile(id, name, email, phone, rolesSet, avatar)
         } catch (e: Exception) {
-            defaultDemoUser()
+            null
         }
     }
-
-    private fun defaultDemoUser() = UserProfile(
-        id = "user_demo_rani",
-        fullName = "Rani Wijaya",
-        email = "rani@example.com",
-        phone = "081234567890",
-        roles = setOf("customer", "provider")
-    )
 
     override suspend fun setActiveRole(role: String) {
         _activeRole.value = role
@@ -87,6 +82,7 @@ class SharedPreferencesSessionStore(
 
     override suspend fun clearSession() {
         _currentUser.value = null
+        _activeRole.value = "customer"
         try {
             prefs.edit().clear().apply()
         } catch (_: Exception) {

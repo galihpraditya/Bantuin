@@ -1,9 +1,11 @@
 package id.bantuin.app.repository
 
 import id.bantuin.app.core.result.AppResult
+import id.bantuin.app.core.session.InMemorySessionStore
 import id.bantuin.app.data.repository.FakeBantuinRepository
 import id.bantuin.app.domain.model.GeoPoint
 import id.bantuin.app.domain.model.ProviderCandidate
+import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
@@ -16,7 +18,26 @@ class FakeBantuinRepositoryTest {
 
     @Before
     fun setUp() {
-        repo = FakeBantuinRepository()
+        repo = FakeBantuinRepository(sessionStore = InMemorySessionStore(initialUser = null))
+    }
+
+    @Test
+    fun signIn_withWrongCredentials_isRejected() = runBlocking {
+        val result = repo.signIn("pelanggan1@bantuin.test", "salah")
+
+        assertTrue(result is AppResult.Error)
+        assertEquals(null, repo.currentUser().firstOrNull())
+    }
+
+    @Test
+    fun signIn_withMitraCredentials_returnsMitraProfile() = runBlocking {
+        val result = repo.signIn("mitra01@bantuin.test", "Demo12345!")
+
+        assertTrue(result is AppResult.Success)
+        val user = repo.currentUser().firstOrNull()
+        assertEquals("p01", user?.id)
+        assertEquals("Budi Santoso, S.T.", user?.fullName)
+        assertEquals(setOf("provider"), user?.roles)
     }
 
     @Test

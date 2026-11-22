@@ -87,7 +87,7 @@ import id.bantuin.app.ui.theme.TextSecondary
 @Composable
 fun ScheduleScreen(
     orderFlow: OrderFlowManager,
-    repository: id.bantuin.app.data.repository.FakeBantuinRepository,
+    repository: id.bantuin.app.domain.repository.BantuinRepository,
     onNavigateBack: () -> Unit,
     onContinueToEstimate: () -> Unit,
     viewModel: ScheduleViewModel = viewModel(factory = BantuinViewModelFactory(repository)),

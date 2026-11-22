@@ -1,6 +1,7 @@
 package id.bantuin.app.viewmodel
 
 import id.bantuin.app.data.repository.FakeBantuinRepository
+import id.bantuin.app.domain.repository.UserProfile
 import id.bantuin.app.ui.auth.AuthViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -51,14 +52,45 @@ class AuthViewModelTest {
     fun signIn_withValidCredentials_succeeds() = runTest {
         viewModel.onEmailChange("rani@bantuin.test")
         viewModel.onPasswordChange("Demo12345!")
-        var returnedId: String? = null
+        var returnedUser: UserProfile? = null
 
-        viewModel.signIn { id -> returnedId = id }
+        viewModel.signIn { user -> returnedUser = user }
         testDispatcher.scheduler.advanceUntilIdle()
 
-        assertNotNull(returnedId)
+        assertNotNull(returnedUser)
+        assertEquals("user_demo_rani", returnedUser?.id)
+        assertEquals("Rani Wijaya", returnedUser?.fullName)
+        assertEquals("rani@bantuin.test", returnedUser?.email)
         assertTrue(viewModel.uiState.value.isSuccess)
         assertNull(viewModel.uiState.value.errorMessage)
+    }
+
+    @Test
+    fun signIn_withWrongPassword_isRejected() = runTest {
+        viewModel.onEmailChange("pelanggan1@bantuin.test")
+        viewModel.onPasswordChange("kata-sandi-salah")
+        var successCalled = false
+
+        viewModel.signIn { successCalled = true }
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        assertTrue(!successCalled)
+        assertTrue(!viewModel.uiState.value.isSuccess)
+        assertEquals("Email atau kata sandi salah.", viewModel.uiState.value.errorMessage)
+    }
+
+    @Test
+    fun signIn_asProvider_returnsProviderProfile() = runTest {
+        viewModel.onEmailChange("mitra01@bantuin.test")
+        viewModel.onPasswordChange("Demo12345!")
+        var returnedUser: UserProfile? = null
+
+        viewModel.signIn { user -> returnedUser = user }
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        assertEquals("p01", returnedUser?.id)
+        assertEquals("Budi Santoso, S.T.", returnedUser?.fullName)
+        assertEquals(setOf("provider"), returnedUser?.roles)
     }
 
     @Test
@@ -68,12 +100,13 @@ class AuthViewModelTest {
         viewModel.onPasswordChange("Rahasia123!")
         viewModel.onPhoneChange("081298765432")
         viewModel.onRoleToggle(true)
-        var registeredId: String? = null
+        var registeredUser: UserProfile? = null
 
-        viewModel.signUp { id -> registeredId = id }
+        viewModel.signUp { user -> registeredUser = user }
         testDispatcher.scheduler.advanceUntilIdle()
 
-        assertNotNull(registeredId)
+        assertNotNull(registeredUser)
+        assertEquals("Dewi Sartika", registeredUser?.fullName)
         assertTrue(viewModel.uiState.value.isSuccess)
     }
 }

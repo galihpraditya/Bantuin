@@ -69,7 +69,7 @@ import id.bantuin.app.ui.theme.GreenSuccessContainer
 import id.bantuin.app.ui.theme.NeutralBackground
 import androidx.compose.runtime.collectAsState
 import androidx.lifecycle.viewmodel.compose.viewModel
-import id.bantuin.app.data.repository.FakeBantuinRepository
+import id.bantuin.app.domain.repository.BantuinRepository
 import id.bantuin.app.ui.common.BantuinViewModelFactory
 import id.bantuin.app.ui.theme.NeutralSurface
 import id.bantuin.app.ui.theme.OrangeContainer
@@ -84,7 +84,7 @@ import id.bantuin.app.ui.theme.TextSecondary
 fun RecommendationScreen(
     categoryId: Int,
     orderFlow: OrderFlowManager,
-    repository: FakeBantuinRepository,
+    repository: BantuinRepository,
     onNavigateBack: () -> Unit,
     onSelectProvider: (ProviderCandidate) -> Unit,
     viewModel: RecommendationViewModel = viewModel(factory = BantuinViewModelFactory(repository)),

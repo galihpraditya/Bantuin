@@ -35,7 +35,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
-import id.bantuin.app.data.repository.FakeBantuinRepository
+import id.bantuin.app.domain.repository.BantuinRepository
+import id.bantuin.app.domain.repository.UserProfile
 import id.bantuin.app.ui.common.BantuinViewModelFactory
 import id.bantuin.app.ui.theme.NeutralBackground
 import id.bantuin.app.ui.theme.OrangePrimary
@@ -45,19 +46,13 @@ import id.bantuin.app.ui.theme.TextSecondary
 
 @Composable
 fun LoginScreen(
-    repository: FakeBantuinRepository,
-    onLoginSuccess: () -> Unit,
+    repository: BantuinRepository,
+    onLoginSuccess: (UserProfile?) -> Unit,
     onNavigateToRegister: () -> Unit,
     viewModel: AuthViewModel = viewModel(factory = BantuinViewModelFactory(repository)),
     modifier: Modifier = Modifier
 ) {
     val uiState by viewModel.uiState.collectAsState()
-
-    // Initialize with default demo credentials once if empty
-    androidx.compose.runtime.LaunchedEffect(Unit) {
-        if (uiState.email.isEmpty()) viewModel.onEmailChange("rani@bantuin.test")
-        if (uiState.password.isEmpty()) viewModel.onPasswordChange("Demo12345!")
-    }
 
     Column(
         modifier = modifier
@@ -97,7 +92,18 @@ fun LoginScreen(
             color = TextSecondary
         )
 
-        Spacer(modifier = Modifier.height(32.dp))
+        Spacer(modifier = Modifier.height(16.dp))
+
+        Text(
+            text = "Akun demo pelanggan: pelanggan1@bantuin.test\n" +
+                "Akun demo mitra: mitra01@bantuin.test\n" +
+                "Kata sandi: Demo12345!",
+            style = MaterialTheme.typography.bodySmall,
+            color = TextSecondary,
+            textAlign = androidx.compose.ui.text.style.TextAlign.Center
+        )
+
+        Spacer(modifier = Modifier.height(24.dp))
 
         OutlinedTextField(
             value = uiState.email,
@@ -131,7 +137,7 @@ fun LoginScreen(
 
         Button(
             onClick = {
-                viewModel.signIn { onLoginSuccess() }
+                viewModel.signIn { user -> onLoginSuccess(user) }
             },
             enabled = !uiState.isLoading,
             colors = ButtonDefaults.buttonColors(containerColor = OrangePrimary),
@@ -156,8 +162,8 @@ fun LoginScreen(
 
 @Composable
 fun RegisterScreen(
-    repository: FakeBantuinRepository,
-    onRegisterSuccess: () -> Unit,
+    repository: BantuinRepository,
+    onRegisterSuccess: (UserProfile?) -> Unit,
     onNavigateToLogin: () -> Unit,
     viewModel: AuthViewModel = viewModel(factory = BantuinViewModelFactory(repository)),
     modifier: Modifier = Modifier
@@ -258,7 +264,7 @@ fun RegisterScreen(
 
         Button(
             onClick = {
-                viewModel.signUp { onRegisterSuccess() }
+                viewModel.signUp { user -> onRegisterSuccess(user) }
             },
             enabled = !uiState.isLoading,
             colors = ButtonDefaults.buttonColors(containerColor = OrangePrimary),

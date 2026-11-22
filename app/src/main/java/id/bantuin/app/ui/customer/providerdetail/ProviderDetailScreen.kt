@@ -61,7 +61,7 @@ import id.bantuin.app.ui.theme.OrangePrimary
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.lifecycle.viewmodel.compose.viewModel
-import id.bantuin.app.data.repository.FakeBantuinRepository
+import id.bantuin.app.domain.repository.BantuinRepository
 import id.bantuin.app.ui.common.BantuinViewModelFactory
 import id.bantuin.app.ui.theme.TextMuted
 import id.bantuin.app.ui.theme.TextPrimary
@@ -74,7 +74,7 @@ fun ProviderDetailScreen(
     orderFlow: OrderFlowManager,
     onNavigateBack: () -> Unit,
     onServiceSelected: (ServiceItem) -> Unit,
-    repository: FakeBantuinRepository = FakeBantuinRepository(),
+    repository: BantuinRepository,
     viewModel: ProviderDetailViewModel = viewModel(factory = BantuinViewModelFactory(repository)),
     modifier: Modifier = Modifier
 ) {

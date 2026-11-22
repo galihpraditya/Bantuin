@@ -9,6 +9,7 @@ import id.bantuin.app.domain.model.ProviderCandidate
 import id.bantuin.app.domain.model.ReviewItem
 import id.bantuin.app.domain.model.ServiceCategory
 import id.bantuin.app.domain.model.ServiceItem
+import id.bantuin.app.domain.repository.UserProfile
 
 object FakeData {
     val MALANG_CENTER = GeoPoint(-7.9797, 112.6304)
@@ -265,6 +266,76 @@ object FakeData {
             responseTimeText = "-"
         )
     )
+
+    /**
+     * Akun demo untuk mode offline (tanpa Supabase).
+     * Kredensial ini hanya dipakai oleh [id.bantuin.app.data.repository.FakeBantuinRepository]
+     * dan tidak pernah dipakai untuk mode cloud.
+     */
+    data class DemoAccount(
+        val email: String,
+        val password: String,
+        val user: UserProfile
+    )
+
+    val demoAccounts: List<DemoAccount> = buildList {
+        add(
+            DemoAccount(
+                email = "pelanggan1@bantuin.test",
+                password = "Demo12345!",
+                user = UserProfile(
+                    id = "user_demo_rani",
+                    fullName = "Rani Wijaya",
+                    email = "pelanggan1@bantuin.test",
+                    phone = "081234567890",
+                    roles = setOf("customer", "provider")
+                )
+            )
+        )
+        // Alias lama yang masih dipakai oleh test dan dokumentasi demo.
+        add(
+            DemoAccount(
+                email = "rani@bantuin.test",
+                password = "Demo12345!",
+                user = UserProfile(
+                    id = "user_demo_rani",
+                    fullName = "Rani Wijaya",
+                    email = "rani@bantuin.test",
+                    phone = "081234567890",
+                    roles = setOf("customer", "provider")
+                )
+            )
+        )
+        add(
+            DemoAccount(
+                email = "pelanggan2@bantuin.test",
+                password = "Demo12345!",
+                user = UserProfile(
+                    id = "user_demo_dimas",
+                    fullName = "Dimas Arya",
+                    email = "pelanggan2@bantuin.test",
+                    phone = "081234567891",
+                    roles = setOf("customer", "provider")
+                )
+            )
+        )
+        providers.forEachIndexed { index, provider ->
+            val number = (index + 1).toString().padStart(2, '0')
+            add(
+                DemoAccount(
+                    email = "mitra$number@bantuin.test",
+                    password = "Demo12345!",
+                    user = UserProfile(
+                        id = provider.providerId,
+                        fullName = provider.name,
+                        email = "mitra$number@bantuin.test",
+                        phone = "0812000000$number",
+                        roles = setOf("provider")
+                    )
+                )
+            )
+        }
+    }
 
     val services = listOf(
         // Layanan Pak Budi (p01)

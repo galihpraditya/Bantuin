@@ -59,7 +59,7 @@ import androidx.compose.ui.unit.sp
 import id.bantuin.app.data.fake.FakeData
 import androidx.compose.runtime.collectAsState
 import androidx.lifecycle.viewmodel.compose.viewModel
-import id.bantuin.app.data.repository.FakeBantuinRepository
+import id.bantuin.app.domain.repository.BantuinRepository
 import id.bantuin.app.ui.common.BantuinViewModelFactory
 import id.bantuin.app.ui.theme.BorderSubtle
 import id.bantuin.app.ui.theme.GreenSuccess
@@ -77,7 +77,7 @@ import id.bantuin.app.ui.theme.TextSecondary
 @Composable
 fun ProviderDashboardScreen(
     onNavigateToEvaluation: () -> Unit,
-    repository: FakeBantuinRepository = FakeBantuinRepository(),
+    repository: BantuinRepository,
     viewModel: ProviderDashboardViewModel = viewModel(factory = BantuinViewModelFactory(repository)),
     modifier: Modifier = Modifier
 ) {

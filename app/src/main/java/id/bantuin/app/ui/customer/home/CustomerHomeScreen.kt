@@ -66,7 +66,7 @@ import id.bantuin.app.ui.common.OsmMapView
 import id.bantuin.app.ui.customer.OrderFlowManager
 import androidx.compose.runtime.collectAsState
 import androidx.lifecycle.viewmodel.compose.viewModel
-import id.bantuin.app.data.repository.FakeBantuinRepository
+import id.bantuin.app.domain.repository.BantuinRepository
 import id.bantuin.app.ui.common.BantuinViewModelFactory
 import id.bantuin.app.ui.theme.BorderSubtle
 import id.bantuin.app.ui.theme.GreenSuccess
@@ -85,7 +85,7 @@ fun CustomerHomeScreen(
     onCategoryClick: (Int) -> Unit,
     onSwitchToProvider: () -> Unit,
     onEmergencyClick: () -> Unit,
-    repository: FakeBantuinRepository = FakeBantuinRepository(),
+    repository: BantuinRepository,
     viewModel: CustomerHomeViewModel = viewModel(factory = BantuinViewModelFactory(repository)),
     modifier: Modifier = Modifier
 ) {
@@ -105,7 +105,7 @@ fun CustomerHomeScreen(
         // 1. Header & Sapaan
         item {
             CustomerHeaderSection(
-                customerName = uiState.user?.fullName ?: "Rani",
+                customerName = uiState.user?.fullName ?: "Pengguna",
                 onSwitchRole = onSwitchToProvider
             )
         }

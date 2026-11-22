@@ -52,9 +52,9 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import id.bantuin.app.core.result.AppResult
 import id.bantuin.app.core.util.TimeUtils
 import id.bantuin.app.data.fake.FakeData
-import id.bantuin.app.data.repository.FakeBantuinRepository
 import id.bantuin.app.domain.model.AvailabilityMode
 import id.bantuin.app.domain.model.DayAvailability
+import id.bantuin.app.domain.repository.BantuinRepository
 import id.bantuin.app.ui.common.BantuinTopAppBar
 import id.bantuin.app.ui.common.BantuinViewModelFactory
 import id.bantuin.app.ui.theme.BorderSubtle
@@ -70,7 +70,7 @@ import kotlinx.coroutines.launch
 
 @Composable
 fun ProviderCalendarScreen(
-    repository: FakeBantuinRepository,
+    repository: BantuinRepository,
     viewModel: ProviderCalendarViewModel = viewModel(factory = BantuinViewModelFactory(repository)),
     modifier: Modifier = Modifier
 ) {
