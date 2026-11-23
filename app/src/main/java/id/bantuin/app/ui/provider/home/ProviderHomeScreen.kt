@@ -22,13 +22,10 @@ import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.Handyman
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.ReceiptLong
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.rememberCoroutineScope
@@ -60,8 +57,6 @@ import kotlinx.coroutines.launch
 fun ProviderHomeScreen(
     repository: BantuinRepository,
     onNavigateToRoute: (String) -> Unit,
-    onSwitchToCustomer: () -> Unit,
-    onSwitchToCustomerUnauthorized: () -> Unit,
     viewModel: ProviderHomeViewModel = viewModel(factory = BantuinViewModelFactory(repository)),
     modifier: Modifier = Modifier
 ) {
@@ -117,19 +112,6 @@ fun ProviderHomeScreen(
                             }
                         }
 
-                        Button(
-                            onClick = {
-                                viewModel.switchToCustomer(
-                                    onAllowed = onSwitchToCustomer,
-                                    onUnauthorized = onSwitchToCustomerUnauthorized
-                                )
-                            },
-                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFF0EAE1)),
-                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
-                            modifier = Modifier.height(32.dp)
-                        ) {
-                            Text("Pelanggan", style = MaterialTheme.typography.labelSmall, color = TextPrimary)
-                        }
                     }
                 }
             }

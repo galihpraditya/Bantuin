@@ -83,8 +83,6 @@ import id.bantuin.app.ui.theme.TextSecondary
 fun CustomerHomeScreen(
     orderFlow: OrderFlowManager,
     onCategoryClick: (Int) -> Unit,
-    onSwitchToProvider: () -> Unit,
-    onSwitchToProviderUnauthorized: () -> Unit,
     onEmergencyClick: () -> Unit,
     repository: BantuinRepository,
     viewModel: CustomerHomeViewModel = viewModel(factory = BantuinViewModelFactory(repository)),
@@ -106,13 +104,7 @@ fun CustomerHomeScreen(
         // 1. Header & Sapaan
         item {
             CustomerHeaderSection(
-                customerName = uiState.user?.fullName ?: "Pengguna",
-                onSwitchRole = {
-                    viewModel.switchToProvider(
-                        onAllowed = onSwitchToProvider,
-                        onUnauthorized = onSwitchToProviderUnauthorized
-                    )
-                }
+                customerName = uiState.user?.fullName ?: "Pengguna"
             )
         }
 
@@ -184,8 +176,7 @@ fun CustomerHomeScreen(
 
 @Composable
 private fun CustomerHeaderSection(
-    customerName: String,
-    onSwitchRole: () -> Unit
+    customerName: String
 ) {
     Column(
         modifier = Modifier
@@ -283,48 +274,6 @@ private fun CustomerHeaderSection(
             }
         }
 
-        Spacer(modifier = Modifier.height(14.dp))
-
-        // Switch Mode: Pelanggan vs Mitra
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(24.dp))
-                .background(Color(0xFFEFECE6))
-                .padding(3.dp)
-        ) {
-            Row(modifier = Modifier.fillMaxWidth()) {
-                Box(
-                    modifier = Modifier
-                        .weight(1f)
-                        .clip(RoundedCornerShape(20.dp))
-                        .background(OrangePrimary)
-                        .padding(vertical = 8.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(
-                        text = "Pelanggan",
-                        style = MaterialTheme.typography.labelMedium,
-                        color = Color.White,
-                        fontWeight = FontWeight.SemiBold
-                    )
-                }
-                Box(
-                    modifier = Modifier
-                        .weight(1f)
-                        .clip(RoundedCornerShape(20.dp))
-                        .clickable { onSwitchRole() }
-                        .padding(vertical = 8.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(
-                        text = "Mitra Kerja",
-                        style = MaterialTheme.typography.labelMedium,
-                        color = TextSecondary
-                    )
-                }
-            }
-        }
     }
 }
 
