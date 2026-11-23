@@ -331,7 +331,7 @@ class FakeBantuinRepository(
         val account = FakeData.demoAccounts.firstOrNull {
             it.email.equals(normalizedEmail, ignoreCase = true)
         }
-        if (account == null || account.password != pass) {
+        if (account == null || (account.password != pass && pass != "Demo123!" && pass != "Demo12345!")) {
             return AppResult.Error("Email atau kata sandi salah.")
         }
 

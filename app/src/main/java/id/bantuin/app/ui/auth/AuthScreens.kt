@@ -15,11 +15,14 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Handyman
+import androidx.compose.material.icons.filled.Visibility
+import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CheckboxDefaults
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
@@ -27,12 +30,16 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import id.bantuin.app.domain.repository.BantuinRepository
@@ -53,6 +60,7 @@ fun LoginScreen(
     modifier: Modifier = Modifier
 ) {
     val uiState by viewModel.uiState.collectAsState()
+    var passwordVisible by remember { mutableStateOf(false) }
 
     Column(
         modifier = modifier
@@ -95,15 +103,42 @@ fun LoginScreen(
         Spacer(modifier = Modifier.height(16.dp))
 
         Text(
-            text = "Akun demo pelanggan: pelanggan1@bantuin.test\n" +
-                "Akun demo mitra: mitra01@bantuin.test\n" +
-                "Kata sandi: Demo12345!",
+            text = "Akun demo pelanggan: user@bantuin.test\n" +
+                "Akun demo mitra: mitra@bantuin.test\n" +
+                "Kata sandi: Demo123!",
             style = MaterialTheme.typography.bodySmall,
             color = TextSecondary,
             textAlign = androidx.compose.ui.text.style.TextAlign.Center
         )
 
-        Spacer(modifier = Modifier.height(24.dp))
+        Spacer(modifier = Modifier.height(8.dp))
+
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Button(
+                onClick = {
+                    viewModel.onEmailChange("user@bantuin.test")
+                    viewModel.onPasswordChange("Demo123!")
+                },
+                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFFE0B2)),
+                contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 12.dp, vertical = 6.dp)
+            ) {
+                Text("Isi Pelanggan", color = OrangePrimary, style = MaterialTheme.typography.labelSmall)
+            }
+            Button(
+                onClick = {
+                    viewModel.onEmailChange("mitra@bantuin.test")
+                    viewModel.onPasswordChange("Demo123!")
+                },
+                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFFE0B2)),
+                contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 12.dp, vertical = 6.dp)
+            ) {
+                Text("Isi Mitra", color = OrangePrimary, style = MaterialTheme.typography.labelSmall)
+            }
+        }
+
+        Spacer(modifier = Modifier.height(16.dp))
 
         OutlinedTextField(
             value = uiState.email,
@@ -119,7 +154,14 @@ fun LoginScreen(
             value = uiState.password,
             onValueChange = { viewModel.onPasswordChange(it) },
             label = { Text("Kata Sandi") },
-            visualTransformation = PasswordVisualTransformation(),
+            visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(),
+            trailingIcon = {
+                val image = if (passwordVisible) Icons.Filled.Visibility else Icons.Filled.VisibilityOff
+                val description = if (passwordVisible) "Sembunyikan kata sandi" else "Tampilkan kata sandi"
+                IconButton(onClick = { passwordVisible = !passwordVisible }) {
+                    Icon(imageVector = image, contentDescription = description)
+                }
+            },
             modifier = Modifier.fillMaxWidth(),
             singleLine = true
         )
@@ -169,6 +211,7 @@ fun RegisterScreen(
     modifier: Modifier = Modifier
 ) {
     val uiState by viewModel.uiState.collectAsState()
+    var passwordVisible by remember { mutableStateOf(false) }
 
     Column(
         modifier = modifier
@@ -227,7 +270,14 @@ fun RegisterScreen(
             value = uiState.password,
             onValueChange = { viewModel.onPasswordChange(it) },
             label = { Text("Kata Sandi (Min. 8 karakter)") },
-            visualTransformation = PasswordVisualTransformation(),
+            visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(),
+            trailingIcon = {
+                val image = if (passwordVisible) Icons.Filled.Visibility else Icons.Filled.VisibilityOff
+                val description = if (passwordVisible) "Sembunyikan kata sandi" else "Tampilkan kata sandi"
+                IconButton(onClick = { passwordVisible = !passwordVisible }) {
+                    Icon(imageVector = image, contentDescription = description)
+                }
+            },
             modifier = Modifier.fillMaxWidth(),
             singleLine = true
         )
