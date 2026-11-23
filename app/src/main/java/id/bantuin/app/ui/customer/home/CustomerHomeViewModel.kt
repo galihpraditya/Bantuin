@@ -12,6 +12,7 @@ import id.bantuin.app.domain.repository.UserProfile
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
@@ -73,5 +74,25 @@ class CustomerHomeViewModel(
 
     fun setShowLocationDialog(show: Boolean) {
         _uiState.update { it.copy(showLocationDialog = show) }
+    }
+
+    /**
+     * Tombol "mode mitra" di beranda memakai aturan yang sama dengan halaman profil:
+     * akun tanpa role provider tidak boleh masuk ke portal mitra dan diarahkan login.
+     */
+    fun switchToProvider(
+        onAllowed: () -> Unit,
+        onUnauthorized: () -> Unit
+    ) {
+        viewModelScope.launch {
+            val user = authRepository.currentUser().firstOrNull()
+            if (user?.roles?.contains("provider") != true) {
+                authRepository.signOut()
+                onUnauthorized()
+                return@launch
+            }
+            authRepository.setActiveRole("provider")
+            onAllowed()
+        }
     }
 }

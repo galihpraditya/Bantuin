@@ -1,16 +1,20 @@
 package id.bantuin.app.viewmodel
 
+import id.bantuin.app.core.session.InMemorySessionStore
 import id.bantuin.app.data.fake.FakeData
 import id.bantuin.app.core.dispatcher.AppDispatchers
 import id.bantuin.app.data.repository.FakeBantuinRepository
 import id.bantuin.app.domain.model.CompletionStatus
 import id.bantuin.app.domain.model.Complexity
+import id.bantuin.app.domain.model.ConflictReason
 import id.bantuin.app.domain.model.GeoPoint
+import id.bantuin.app.domain.repository.UserProfile
 import id.bantuin.app.ui.customer.estimate.EstimateViewModel
 import id.bantuin.app.ui.customer.home.CustomerHomeViewModel
 import id.bantuin.app.ui.customer.notifications.CustomerNotificationsViewModel
 import id.bantuin.app.ui.customer.notifications.NotificationType
 import id.bantuin.app.ui.customer.orderdetail.OrderDetailViewModel
+import id.bantuin.app.ui.customer.profile.CustomerProfileViewModel
 import id.bantuin.app.ui.customer.recommendation.RecommendationViewModel
 import id.bantuin.app.ui.customer.schedule.ScheduleViewModel
 import kotlinx.coroutines.Dispatchers
@@ -59,6 +63,93 @@ class CustomerViewModelsTest {
     }
 
     @Test
+    fun customerHomeViewModel_switchToProvider_withoutProviderRole_signsOutAndRedirects() = runTest {
+        val sessionStore = InMemorySessionStore(
+            initialRole = "customer",
+            initialUser = UserProfile(
+                id = "user_customer_only",
+                fullName = "Dimas Arya",
+                email = "pelanggan2@bantuin.test",
+                phone = "081234567891",
+                roles = setOf("customer")
+            )
+        )
+        val customerOnlyRepository = FakeBantuinRepository(sessionStore = sessionStore)
+        val vm = CustomerHomeViewModel(customerOnlyRepository, customerOnlyRepository)
+
+        var allowed = false
+        var unauthorized = false
+        vm.switchToProvider(
+            onAllowed = { allowed = true },
+            onUnauthorized = { unauthorized = true }
+        )
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        assertTrue(!allowed)
+        assertTrue(unauthorized)
+        assertEquals(null, sessionStore.currentUserValue)
+        assertEquals("customer", sessionStore.activeRoleValue)
+    }
+
+    @Test
+    fun customerProfileViewModel_switchToProvider_withoutProviderRole_signsOutAndRedirects() = runTest {
+        val sessionStore = InMemorySessionStore(
+            initialRole = "customer",
+            initialUser = UserProfile(
+                id = "user_customer_only",
+                fullName = "Dimas Arya",
+                email = "pelanggan2@bantuin.test",
+                phone = "081234567891",
+                roles = setOf("customer")
+            )
+        )
+        val customerOnlyRepository = FakeBantuinRepository(sessionStore = sessionStore)
+        val vm = CustomerProfileViewModel(customerOnlyRepository)
+
+        var allowed = false
+        var unauthorized = false
+        vm.switchRole(
+            newRole = "provider",
+            onAllowed = { allowed = true },
+            onUnauthorized = { unauthorized = true }
+        )
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        assertTrue(!allowed)
+        assertTrue(unauthorized)
+        assertEquals(null, sessionStore.currentUserValue)
+    }
+
+    @Test
+    fun customerProfileViewModel_switchToProvider_withProviderRole_switchesSuccessfully() = runTest {
+        val sessionStore = InMemorySessionStore(
+            initialRole = "customer",
+            initialUser = UserProfile(
+                id = "user_multi_role",
+                fullName = "Rani Wijaya",
+                email = "pelanggan1@bantuin.test",
+                phone = "081234567890",
+                roles = setOf("customer", "provider")
+            )
+        )
+        val repository = FakeBantuinRepository(sessionStore = sessionStore)
+        val vm = CustomerProfileViewModel(repository)
+
+        var allowed = false
+        var unauthorized = false
+        vm.switchRole(
+            newRole = "provider",
+            onAllowed = { allowed = true },
+            onUnauthorized = { unauthorized = true }
+        )
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        assertTrue(allowed)
+        assertTrue(!unauthorized)
+        assertEquals("provider", sessionStore.activeRoleValue)
+    }
+
+    @Test
     fun recommendationViewModel_filtersAndRanksCandidates() = runTest {
         val vm = RecommendationViewModel(repository)
         vm.initialize(categoryId = 2, customerLocation = FakeData.MALANG_CENTER)
@@ -87,9 +178,22 @@ class CustomerViewModelsTest {
 
         assertEquals(7, vm.uiState.value.dynamicDates.size)
 
-        // Pilih slot jam
+        // Gunakan besok agar validasi PAST_TIME tidak bergantung jam eksekusi test.
+        vm.selectDate(1)
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        assertEquals(1, vm.uiState.value.selectedDateIdx)
+        assertEquals(null, vm.uiState.value.nowMin)
+
+        // Pilih slot jam yang bentrok -> alasan + alternatif harus tersedia
         vm.selectSlot(600) // 10:00 (bentrok dengan busyBlocks demo)
-        assertTrue(vm.uiState.value.slotCheckResult != null)
+        assertEquals(ConflictReason.OVERLAP, vm.uiState.value.slotCheckResult?.reason)
+        assertEquals(600, vm.uiState.value.selectedStartMin)
+        assertEquals(listOf(825, 840, 870), vm.uiState.value.slotCheckResult?.alternativeStartsMin)
+
+        // Slot alternatif pertama sudah lolos seluruh validasi F3 sehingga boleh dikunci
+        vm.selectSlot(825)
+        assertTrue(vm.uiState.value.slotCheckResult?.valid == true)
 
         var lockAcquired = false
         vm.acquireLockAndProceed { lockInfo ->
@@ -100,6 +204,51 @@ class CustomerViewModelsTest {
 
         assertTrue(lockAcquired)
         assertNotNull(vm.uiState.value.lockInfo)
+    }
+
+    @Test
+    fun scheduleViewModel_rejectsLockForInvalidSlot() = runTest {
+        val vm = ScheduleViewModel(repository, repository)
+        val provider = FakeData.providers.first { it.providerId == "p01" }
+        val service = FakeData.services.first { it.providerId == "p01" }
+
+        vm.initialize(provider, service, 1.8, 600)
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        var lockAcquired = false
+        vm.acquireLockAndProceed { lockAcquired = true }
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        assertTrue(!lockAcquired)
+        assertEquals(null, vm.uiState.value.lockInfo)
+    }
+
+    @Test
+    fun scheduleViewModel_dateSelectionUpdatesState() = runTest {
+        val vm = ScheduleViewModel(repository, repository)
+        val provider = FakeData.providers.first { it.providerId == "p01" }
+        val service = FakeData.services.first { it.providerId == "p01" }
+
+        vm.initialize(provider, service, 1.8, 600)
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        vm.selectDate(1)
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        assertEquals(1, vm.uiState.value.selectedDateIdx)
+        assertEquals(null, vm.uiState.value.nowMin)
+    }
+
+    @Test
+    fun orderDetailViewModel_missingBooking_isNotFoundInsteadOfInProgress() = runTest {
+        val vm = OrderDetailViewModel(repository, repository)
+
+        vm.observeBooking("booking_tidak_ada")
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        assertEquals(null, vm.uiState.value.booking)
+        assertTrue(vm.uiState.value.bookingNotFound)
+        assertTrue(!vm.uiState.value.isLoadingBooking)
     }
 
     @Test

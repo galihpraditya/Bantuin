@@ -25,9 +25,12 @@ import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.filled.CalendarToday
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.EditNote
+import androidx.compose.material.icons.filled.ErrorOutline
+import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Payments
 import androidx.compose.material.icons.filled.Receipt
 import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.filled.Timer
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -47,6 +50,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
@@ -119,6 +123,39 @@ fun EstimateScreen(
         )
     }
 
+    val lockInfo = uiState.lockInfo ?: orderFlow.currentLock
+
+    // Kunci dilepas ketika pengguna meninggalkan alur sebelum pesanan berhasil dibuat.
+    DisposableEffect(lockInfo?.lockId) {
+        onDispose {
+            lockInfo?.let { viewModel.releaseLockIfPending(it.lockId) }
+            orderFlow.currentLock = null
+        }
+    }
+
+    // Server menolak slot (bentrok / kunci habis) -> kembali ke Screen 3.
+    androidx.compose.runtime.LaunchedEffect(uiState.errorMessage) {
+        val message = uiState.errorMessage ?: return@LaunchedEffect
+        if (message.contains("SLOT_CONFLICT", ignoreCase = true) ||
+            message.contains("LOCK_EXPIRED", ignoreCase = true)
+        ) {
+            orderFlow.scheduleErrorMessage = "Slot bertabrakan atau reservasi kedaluwarsa. Silakan pilih jadwal lain."
+            onNavigateBack()
+        }
+    }
+
+    androidx.compose.runtime.LaunchedEffect(lockInfo?.expiresAtMillis) {
+        if (lockInfo != null) {
+            while (true) {
+                val now = System.currentTimeMillis()
+                val diffSec = ((lockInfo.expiresAtMillis - now) / 1000).coerceAtLeast(0L)
+                viewModel.updateLockCountdown(diffSec)
+                if (diffSec <= 0L) break
+                kotlinx.coroutines.delay(1000L)
+            }
+        }
+    }
+
     val estimate = uiState.costEstimate ?: CostEstimatorUseCase()(
         baseFare = service.baseFare,
         distanceKm = distanceKm,
@@ -180,17 +217,29 @@ fun EstimateScreen(
 
                     Button(
                         onClick = {
-                            viewModel.confirmOrder { bookingId ->
-                                onOrderConfirmed(bookingId)
+                            if (uiState.isLockExpired) {
+                                onNavigateBack()
+                            } else {
+                                viewModel.confirmOrder { bookingId ->
+                                    onOrderConfirmed(bookingId)
+                                }
                             }
                         },
                         enabled = !uiState.isSubmitting,
-                        colors = ButtonDefaults.buttonColors(containerColor = OrangePrimary),
+                        colors = if (uiState.isLockExpired) {
+                            ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
+                        } else {
+                            ButtonDefaults.buttonColors(containerColor = OrangePrimary)
+                        },
                         shape = RoundedCornerShape(12.dp),
                         contentPadding = PaddingValues(horizontal = 20.dp, vertical = 12.dp)
                     ) {
                         Text(
-                            if (uiState.isSubmitting) "Memproses..." else "Konfirmasi Order",
+                            text = when {
+                                uiState.isLockExpired -> "Pilih Ulang Jadwal"
+                                uiState.isSubmitting -> "Memproses..."
+                                else -> "Kirim Pesanan"
+                            },
                             style = MaterialTheme.typography.labelLarge
                         )
                         Spacer(modifier = Modifier.width(6.dp))
@@ -213,6 +262,98 @@ fun EstimateScreen(
             contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 24.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
+            // Banner Error bila terjadi kegagalan pemesanan
+            if (uiState.errorMessage != null) {
+                item {
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer),
+                        border = CardDefaults.outlinedCardBorder().copy(brush = androidx.compose.ui.graphics.SolidColor(MaterialTheme.colorScheme.error))
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(14.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.ErrorOutline,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.error,
+                                modifier = Modifier.size(24.dp)
+                            )
+                            Spacer(modifier = Modifier.width(10.dp))
+                            Text(
+                                text = uiState.errorMessage ?: "",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onErrorContainer
+                            )
+                        }
+                    }
+                }
+            }
+
+            // Kartu Hitung Mundur Kunci Slot 10 Menit (PRD 7.3 & Screen 4)
+            item {
+                val remainingSec = uiState.remainingLockSeconds
+                val minutes = remainingSec / 60
+                val seconds = remainingSec % 60
+                val isExpired = uiState.isLockExpired
+
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp),
+                    colors = CardDefaults.cardColors(
+                        containerColor = if (isExpired) MaterialTheme.colorScheme.errorContainer else Color(0xFFE8F5E9)
+                    ),
+                    border = CardDefaults.outlinedCardBorder().copy(
+                        brush = androidx.compose.ui.graphics.SolidColor(
+                            if (isExpired) MaterialTheme.colorScheme.error else GreenSuccess
+                        )
+                    )
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(14.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(36.dp)
+                                .clip(CircleShape)
+                                .background(if (isExpired) MaterialTheme.colorScheme.error.copy(alpha = 0.2f) else GreenSuccessContainer),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = if (isExpired) Icons.Default.Timer else Icons.Default.Lock,
+                                contentDescription = null,
+                                tint = if (isExpired) MaterialTheme.colorScheme.error else GreenSuccess,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = if (isExpired) "Kunci Slot Kedaluwarsa" else "Slot Jadwal Terkunci Sementara",
+                                style = MaterialTheme.typography.labelLarge,
+                                color = if (isExpired) MaterialTheme.colorScheme.error else GreenSuccess,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Text(
+                                text = if (isExpired) {
+                                    "Batas waktu reservasi 10 menit telah habis. Silakan pilih kembali jam layanan."
+                                } else {
+                                    String.format(java.util.Locale.getDefault(), "Tersisa %02d:%02d sebelum slot dilepas ke pelanggan lain", minutes, seconds)
+                                },
+                                style = MaterialTheme.typography.bodySmall,
+                                color = TextSecondary
+                            )
+                        }
+                    }
+                }
+            }
             // 1. Ringkasan Pesanan & Jadwal
             item {
                 Card(
@@ -293,7 +434,7 @@ fun EstimateScreen(
                                 .padding(horizontal = 8.dp, vertical = 2.dp)
                         ) {
                             Text(
-                                text = "${orderFlow.selectedComplexity.weight}x Tarif",
+                                text = "${uiState.complexity.weight}x Tarif",
                                 style = MaterialTheme.typography.labelSmall,
                                 color = OrangePrimary,
                                 fontWeight = FontWeight.Bold
@@ -304,13 +445,16 @@ fun EstimateScreen(
                     Spacer(modifier = Modifier.height(10.dp))
 
                     Complexity.entries.forEach { comp ->
-                        val isSelected = orderFlow.selectedComplexity == comp
+                        val isSelected = uiState.complexity == comp
                         Card(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .padding(vertical = 4.dp)
                                 .clip(RoundedCornerShape(12.dp))
-                                .clickable { orderFlow.selectedComplexity = comp },
+                                .clickable {
+                                    orderFlow.selectedComplexity = comp
+                                    viewModel.setComplexity(comp)
+                                },
                             shape = RoundedCornerShape(12.dp),
                             colors = CardDefaults.cardColors(
                                 containerColor = if (isSelected) OrangeContainer.copy(alpha = 0.25f) else NeutralSurface
@@ -329,7 +473,10 @@ fun EstimateScreen(
                             ) {
                                 RadioButton(
                                     selected = isSelected,
-                                    onClick = { orderFlow.selectedComplexity = comp },
+                                    onClick = {
+                                        orderFlow.selectedComplexity = comp
+                                        viewModel.setComplexity(comp)
+                                    },
                                     colors = RadioButtonDefaults.colors(selectedColor = OrangePrimary)
                                 )
                                 Spacer(modifier = Modifier.width(8.dp))
@@ -411,8 +558,11 @@ fun EstimateScreen(
                         }
 
                         Switch(
-                            checked = orderFlow.isUrgent,
-                            onCheckedChange = { orderFlow.isUrgent = it },
+                            checked = uiState.isUrgent,
+                            onCheckedChange = {
+                                orderFlow.isUrgent = it
+                                viewModel.setUrgent(it)
+                            },
                             colors = SwitchDefaults.colors(
                                 checkedThumbColor = Color.White,
                                 checkedTrackColor = OrangePrimary
@@ -521,8 +671,8 @@ fun EstimateScreen(
                             amount = CurrencyUtils.formatRupiah(estimate.baseCost)
                         )
                         CostRow(
-                            label = "Faktor Kompleksitas (${orderFlow.selectedComplexity.displayName} ${orderFlow.selectedComplexity.weight}x)",
-                            amount = "+ ${CurrencyUtils.formatRupiah((estimate.baseCost * (orderFlow.selectedComplexity.weight.toDouble() - 1.0)).toInt())}"
+                            label = "Faktor Kompleksitas (${uiState.complexity.displayName} ${uiState.complexity.weight}x)",
+                            amount = "+ ${CurrencyUtils.formatRupiah((estimate.baseCost * (uiState.complexity.weight.toDouble() - 1.0)).toInt())}"
                         )
 
                         if (estimate.surgeApplied) {
@@ -591,8 +741,11 @@ fun EstimateScreen(
                         }
                         Spacer(modifier = Modifier.height(8.dp))
                         OutlinedTextField(
-                            value = orderFlow.orderNotes,
-                            onValueChange = { orderFlow.orderNotes = it },
+                            value = uiState.notes,
+                            onValueChange = {
+                                orderFlow.orderNotes = it
+                                viewModel.setNotes(it)
+                            },
                             placeholder = { Text("Contoh: AC meneteskan air di kamar lantai 2...") },
                             modifier = Modifier.fillMaxWidth(),
                             maxLines = 3

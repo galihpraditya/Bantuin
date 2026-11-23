@@ -27,10 +27,12 @@ select setval('public.service_categories_id_seq', (select max(id) from public.se
 -- Catatan: Password terenkripsi bcrypt untuk 'Demo12345!'
 insert into auth.users (id, instance_id, aud, role, email, encrypted_password, email_confirmed_at, raw_app_meta_data, raw_user_meta_data, created_at, updated_at)
 values
-  -- 2 Pelanggan Demo
+  -- Pelanggan Demo
+  ('c0000000-0000-0000-0000-000000000000', '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated', 'user@bantuin.test', crypt('Demo123!', gen_salt('bf')), now(), '{"provider":"email","providers":["email"]}', '{"full_name":"Rani Wijaya","phone":"081234567890","roles":["customer"]}', now(), now()),
   ('c0000000-0000-0000-0000-000000000001', '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated', 'pelanggan1@bantuin.test', crypt('Demo12345!', gen_salt('bf')), now(), '{"provider":"email","providers":["email"]}', '{"full_name":"Rani Wijaya","phone":"081234567890","roles":["customer"]}', now(), now()),
   ('c0000000-0000-0000-0000-000000000002', '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated', 'pelanggan2@bantuin.test', crypt('Demo12345!', gen_salt('bf')), now(), '{"provider":"email","providers":["email"]}', '{"full_name":"Dimas Arya","phone":"081234567891","roles":["customer"]}', now(), now()),
-  -- 15 Mitra Demo
+  -- Mitra Demo
+  ('00000000-0000-0000-0000-000000000000', '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated', 'mitra@bantuin.test', crypt('Demo123!', gen_salt('bf')), now(), '{"provider":"email","providers":["email"]}', '{"full_name":"Budi Santoso, S.T.","phone":"081200000001","roles":["provider"]}', now(), now()),
   ('00000000-0000-0000-0000-000000000001', '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated', 'mitra01@bantuin.test', crypt('Demo12345!', gen_salt('bf')), now(), '{"provider":"email","providers":["email"]}', '{"full_name":"Budi Santoso, S.T.","phone":"081200000001","roles":["provider"]}', now(), now()),
   ('00000000-0000-0000-0000-000000000002', '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated', 'mitra02@bantuin.test', crypt('Demo12345!', gen_salt('bf')), now(), '{"provider":"email","providers":["email"]}', '{"full_name":"Ahmad Fauzi","phone":"081200000002","roles":["provider"]}', now(), now()),
   ('00000000-0000-0000-0000-000000000003', '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated', 'mitra03@bantuin.test', crypt('Demo12345!', gen_salt('bf')), now(), '{"provider":"email","providers":["email"]}', '{"full_name":"Surya Citra Teknik","phone":"081200000003","roles":["provider"]}', now(), now()),

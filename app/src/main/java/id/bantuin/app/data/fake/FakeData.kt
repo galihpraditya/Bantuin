@@ -280,6 +280,32 @@ object FakeData {
     val demoAccounts: List<DemoAccount> = buildList {
         add(
             DemoAccount(
+                email = "user@bantuin.test",
+                password = "Demo123!",
+                user = UserProfile(
+                    id = "user_demo_rani",
+                    fullName = "Rani Wijaya",
+                    email = "user@bantuin.test",
+                    phone = "081234567890",
+                    roles = setOf("customer")
+                )
+            )
+        )
+        add(
+            DemoAccount(
+                email = "mitra@bantuin.test",
+                password = "Demo123!",
+                user = UserProfile(
+                    id = "p01",
+                    fullName = "Budi Santoso, S.T.",
+                    email = "mitra@bantuin.test",
+                    phone = "081200000001",
+                    roles = setOf("provider")
+                )
+            )
+        )
+        add(
+            DemoAccount(
                 email = "pelanggan1@bantuin.test",
                 password = "Demo12345!",
                 user = UserProfile(
@@ -287,7 +313,7 @@ object FakeData {
                     fullName = "Rani Wijaya",
                     email = "pelanggan1@bantuin.test",
                     phone = "081234567890",
-                    roles = setOf("customer", "provider")
+                    roles = setOf("customer")
                 )
             )
         )
@@ -301,7 +327,7 @@ object FakeData {
                     fullName = "Rani Wijaya",
                     email = "rani@bantuin.test",
                     phone = "081234567890",
-                    roles = setOf("customer", "provider")
+                    roles = setOf("customer")
                 )
             )
         )
@@ -314,7 +340,7 @@ object FakeData {
                     fullName = "Dimas Arya",
                     email = "pelanggan2@bantuin.test",
                     phone = "081234567891",
-                    roles = setOf("customer", "provider")
+                    roles = setOf("customer")
                 )
             )
         )

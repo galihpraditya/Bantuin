@@ -7,6 +7,7 @@ import id.bantuin.app.domain.repository.UserProfile
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
@@ -40,10 +41,25 @@ class CustomerProfileViewModel(
         }
     }
 
-    fun switchRole(newRole: String, onComplete: () -> Unit) {
+    /**
+     * Beralih peran hanya diperbolehkan bila akun memang memiliki role tersebut.
+     * Untuk mode mitra, akun tanpa role "provider" diarahkan ke halaman login
+     * (sesi dibersihkan) agar tidak menampilkan profil mitra demo orang lain.
+     */
+    fun switchRole(
+        newRole: String,
+        onAllowed: () -> Unit,
+        onUnauthorized: () -> Unit
+    ) {
         viewModelScope.launch {
+            val user = authRepository.currentUser().firstOrNull()
+            if (newRole == "provider" && user?.roles?.contains("provider") != true) {
+                authRepository.signOut()
+                onUnauthorized()
+                return@launch
+            }
             authRepository.setActiveRole(newRole)
-            onComplete()
+            onAllowed()
         }
     }
 

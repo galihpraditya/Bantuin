@@ -69,8 +69,8 @@ class CustomerNotificationsViewModel(
                 )
                 BookingStatus.DIKONFIRMASI -> CustomerNotificationItem(
                     id = "notif_confirmed_${booking.id}",
-                    title = "Pesanan Dikonfirmasi Mitra",
-                    message = "${booking.providerName} telah mengonfirmasi pesanan Anda. Teknisi siap hadir sesuai jadwal.",
+                    title = "Mitra Menuju Lokasi",
+                    message = "${booking.providerName} telah menerima pesanan Anda dan sedang menuju lokasi. Pengerjaan belum dimulai.",
                     timeFormatted = "${booking.scheduledDate} • ${booking.scheduledTime}",
                     type = NotificationType.ORDER_CONFIRMED,
                     bookingId = booking.id,

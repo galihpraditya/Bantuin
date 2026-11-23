@@ -96,10 +96,22 @@ class ProviderHomeViewModel(
         }
     }
 
-    fun switchToCustomer(onSuccess: () -> Unit) {
+    fun switchToCustomer(
+        onAllowed: () -> Unit,
+        onUnauthorized: () -> Unit
+    ) {
         viewModelScope.launch {
+            val user = authRepository.currentUser().firstOrNull()
+            if (user?.roles?.contains("customer") != true) {
+                authRepository.signOut()
+                onUnauthorized()
+                return@launch
+            }
             authRepository.setActiveRole("customer")
-            onSuccess()
+            onAllowed()
         }
     }
+
+    fun switchToCustomer(onSuccess: () -> Unit) =
+        switchToCustomer(onAllowed = onSuccess, onUnauthorized = {})
 }

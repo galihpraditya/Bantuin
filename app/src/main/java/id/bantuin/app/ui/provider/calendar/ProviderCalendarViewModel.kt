@@ -5,15 +5,17 @@ import androidx.lifecycle.viewModelScope
 import id.bantuin.app.core.result.AppResult
 import id.bantuin.app.domain.model.AvailabilityMode
 import id.bantuin.app.domain.model.DayAvailability
+import id.bantuin.app.domain.repository.AuthRepository
 import id.bantuin.app.domain.repository.CatalogRepository
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
 data class ProviderCalendarUiState(
-    val providerId: String = "p01",
+    val providerId: String = "",
     val availabilities: List<DayAvailability> = emptyList(),
     val selectedDayOfWeek: Int = 1,
     val isSaving: Boolean = false,
@@ -22,7 +24,8 @@ data class ProviderCalendarUiState(
 )
 
 class ProviderCalendarViewModel(
-    private val catalogRepository: CatalogRepository
+    private val catalogRepository: CatalogRepository,
+    private val authRepository: AuthRepository
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(ProviderCalendarUiState())
@@ -32,10 +35,16 @@ class ProviderCalendarViewModel(
         loadAvailability()
     }
 
-    fun loadAvailability(providerId: String = "p01") {
+    fun loadAvailability(providerId: String? = null) {
         viewModelScope.launch {
-            _uiState.update { it.copy(providerId = providerId, errorMessage = null) }
-            when (val res = catalogRepository.availability(providerId)) {
+            val user = authRepository.currentUser().firstOrNull()
+            val resolvedId = providerId?.takeIf { it.isNotBlank() } ?: user?.id
+            if (resolvedId.isNullOrBlank()) {
+                _uiState.update { it.copy(errorMessage = "Akun mitra tidak ditemukan") }
+                return@launch
+            }
+            _uiState.update { it.copy(providerId = resolvedId, errorMessage = null) }
+            when (val res = catalogRepository.availability(resolvedId)) {
                 is AppResult.Success -> {
                     _uiState.update { it.copy(availabilities = res.data) }
                 }
@@ -71,6 +80,27 @@ class ProviderCalendarViewModel(
             } else item
         }
         _uiState.update { it.copy(availabilities = list, errorMessage = null, saveSuccess = false) }
+    }
+
+    /** Menyimpan jadwal edits dari layar dengan id mitra yang sedang login. */
+    fun saveDays(days: List<DayAvailability>) {
+        val providerId = _uiState.value.providerId
+        if (providerId.isBlank()) {
+            _uiState.update { it.copy(errorMessage = "Akun mitra tidak ditemukan") }
+            return
+        }
+        viewModelScope.launch {
+            _uiState.update { it.copy(isSaving = true, errorMessage = null, saveSuccess = false) }
+            when (val res = catalogRepository.saveAvailability(providerId, days)) {
+                is AppResult.Success -> {
+                    _uiState.update { it.copy(isSaving = false, saveSuccess = true, availabilities = days) }
+                }
+                is AppResult.Error -> {
+                    _uiState.update { it.copy(isSaving = false, errorMessage = res.message) }
+                }
+                is AppResult.Loading -> {}
+            }
+        }
     }
 
     fun saveChanges() {

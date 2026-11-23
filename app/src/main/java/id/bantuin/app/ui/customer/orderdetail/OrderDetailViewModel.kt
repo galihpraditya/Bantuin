@@ -24,6 +24,11 @@ data class OrderDetailUiState(
     val booking: BookingItem? = null,
     val events: List<BookingEvent> = emptyList(),
     val completion: CompletionStatus? = null,
+    val isLoadingBooking: Boolean = true,
+    val bookingNotFound: Boolean = false,
+    val reviewSubmitted: Boolean = false,
+    val isSubmittingReview: Boolean = false,
+    val isUpdatingStatus: Boolean = false,
     val rating: Int = 5,
     val reviewComment: String = "",
     val selectedTags: Set<String> = emptySet(),
@@ -38,7 +43,6 @@ class OrderDetailViewModel(
     private val reviewRepository: ReviewRepository,
     private val dispatchers: AppDispatchers = AppDispatchers()
 ) : ViewModel() {
-
     private val _uiState = MutableStateFlow(OrderDetailUiState())
     val uiState = _uiState.asStateFlow()
     private val requests = Mutex()
@@ -54,6 +58,16 @@ class OrderDetailViewModel(
         if (loadJob?.isActive == true || _uiState.value.isSaving) return
         loadJob = viewModelScope.launch {
             requests.withLock { load(bookingId, background) }
+            bookingRepository.observeBooking(bookingId).collect { item ->
+                _uiState.update {
+                    it.copy(
+                        booking = item,
+                        bookingNotFound = item == null,
+                        isLoadingBooking = false,
+                        reviewSubmitted = item?.review != null
+                    )
+                }
+            }
         }
     }
 
@@ -70,8 +84,11 @@ class OrderDetailViewModel(
                 _uiState.update { state ->
                     val updated = state.copy(
                         booking = booking,
+                        bookingNotFound = booking == null,
+                        isLoadingBooking = false,
                         events = timeline ?: state.events,
                         isLoading = false,
+                        reviewSubmitted = review != null,
                         errorMessage = when {
                             booking == null -> "Pesanan tidak ditemukan"
                             background -> state.errorMessage
@@ -87,18 +104,16 @@ class OrderDetailViewModel(
                 }
             }
             is AppResult.Error -> _uiState.update {
-                it.copy(isLoading = false, errorMessage = if (background && it.booking != null) it.errorMessage else detail.message)
+                it.copy(isLoading = false, isLoadingBooking = false,
+                    errorMessage = if (background && it.booking != null) it.errorMessage else detail.message)
             }
             AppResult.Loading -> Unit
         }
     }
 
     fun setCompletion(status: CompletionStatus) = edit { it.copy(completion = status) }
-
     fun setRating(rating: Int) = edit { it.copy(rating = rating.coerceIn(1, 5)) }
-
     fun setReviewComment(comment: String) = edit { it.copy(reviewComment = comment.take(300)) }
-
     fun toggleTag(tag: String) = edit {
         it.copy(selectedTags = if (tag in it.selectedTags) it.selectedTags - tag else it.selectedTags + tag)
     }
@@ -121,9 +136,33 @@ class OrderDetailViewModel(
         }
     }
 
-    fun deleteReview() = mutate("Ulasan dihapus") { reviewRepository.deleteReview(it) }
+    fun submitReview(onSuccess: () -> Unit) = submitReview()
 
+    fun deleteReview() = mutate("Ulasan dihapus") { reviewRepository.deleteReview(it) }
     fun deleteConfirmation() = mutate("Konfirmasi dihapus") { reviewRepository.deleteTransactionOutcome(it) }
+
+    fun updateStatus(status: BookingStatus) {
+        val state = _uiState.value
+        val current = state.booking?.status
+        if (current == null) {
+            _uiState.update { it.copy(errorMessage = "Data pesanan belum tersedia") }
+            return
+        }
+        if (!current.canTransitionTo(status)) {
+            _uiState.update {
+                it.copy(errorMessage = "Status ${current.displayName} tidak bisa diubah menjadi ${status.displayName}")
+            }
+            return
+        }
+        viewModelScope.launch {
+            _uiState.update { it.copy(isUpdatingStatus = true, errorMessage = null) }
+            when (val result = withContext(dispatchers.io) { bookingRepository.updateStatus(state.bookingId, status) }) {
+                is AppResult.Success -> _uiState.update { it.copy(isUpdatingStatus = false) }
+                is AppResult.Error -> _uiState.update { it.copy(isUpdatingStatus = false, errorMessage = result.message) }
+                AppResult.Loading -> _uiState.update { it.copy(isUpdatingStatus = false) }
+            }
+        }
+    }
 
     private fun mutate(message: String, action: suspend (String) -> AppResult<Unit>) {
         val state = _uiState.value

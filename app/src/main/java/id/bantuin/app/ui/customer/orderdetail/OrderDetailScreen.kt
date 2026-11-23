@@ -78,6 +78,8 @@ fun OrderDetailScreen(
     }
 
     val booking = uiState.booking
+    val currentStatus = booking?.status
+    val isMitraAssigned = currentStatus?.isProviderAssigned == true
 
     Scaffold(
         topBar = {
@@ -222,7 +224,7 @@ fun OrderDetailScreen(
                             Spacer(modifier = Modifier.width(12.dp))
                             Column(modifier = Modifier.weight(1f)) {
                                 Text(
-                                    text = booking.providerName,
+                                    text = if (isMitraAssigned) booking.providerName else "Mitra belum ditampilkan",
                                     style = MaterialTheme.typography.titleMedium,
                                     color = TextPrimary
                                 )
@@ -313,6 +315,20 @@ fun OrderDetailScreen(
                                 isLast = index == uiState.events.lastIndex
                             )
                         }
+                    }
+                }
+            }
+
+            // 5. Pelanggan hanya dapat membatalkan sebelum pengerjaan dimulai.
+            if (currentStatus?.canCustomerCancel == true) {
+                item {
+                    OutlinedButton(
+                        onClick = { viewModel.updateStatus(BookingStatus.DIBATALKAN_PELANGGAN) },
+                        enabled = !uiState.isUpdatingStatus,
+                        shape = RoundedCornerShape(10.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text("Batalkan Pesanan", color = RedError)
                     }
                 }
             }

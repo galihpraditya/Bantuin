@@ -51,6 +51,34 @@ class FakeBantuinRepositoryTest {
     }
 
     @Test
+    fun updateStatus_rejectsSkippingArrival() = runBlocking {
+        val invalid = repo.updateStatus("b01", BookingStatus.PENDING)
+        assertTrue(invalid is AppResult.Error)
+
+        val valid = repo.updateStatus("b01", BookingStatus.SELESAI)
+        assertTrue(valid is AppResult.Success)
+
+        val booking = repo.observeBooking("b01").firstOrNull()
+        assertEquals(BookingStatus.SELESAI, booking?.status)
+    }
+
+    @Test
+    fun bookingStatus_exposesTrackingGuards() {
+        assertTrue(BookingStatus.PENDING.canCustomerCancel)
+        assertTrue(BookingStatus.DIKONFIRMASI.canCustomerCancel)
+        assertTrue(!BookingStatus.DALAM_PENGERJAAN.canCustomerCancel)
+
+        assertTrue(!BookingStatus.PENDING.isProviderAssigned)
+        assertTrue(BookingStatus.DIKONFIRMASI.isProviderAssigned)
+        assertTrue(BookingStatus.DALAM_PENGERJAAN.isProviderAssigned)
+
+        assertTrue(BookingStatus.PENDING.canTransitionTo(BookingStatus.DIKONFIRMASI))
+        assertTrue(!BookingStatus.PENDING.canTransitionTo(BookingStatus.SELESAI))
+        assertTrue(!BookingStatus.DIKONFIRMASI.canTransitionTo(BookingStatus.SELESAI))
+        assertTrue(BookingStatus.DALAM_PENGERJAAN.canTransitionTo(BookingStatus.SELESAI))
+    }
+
+    @Test
     fun confirmationUpsertsReviewAndChangesRecommendationPriority() = runBlocking {
         repo.signIn("pelanggan1@bantuin.test", "Demo12345!")
         val before = candidate("p01")

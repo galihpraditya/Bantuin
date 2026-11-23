@@ -33,6 +33,8 @@ data class EstimateUiState(
     val isUrgent: Boolean = false,
     val notes: String = "",
     val costEstimate: CostEstimate? = null,
+    val remainingLockSeconds: Long = 600L,
+    val isLockExpired: Boolean = false,
     val isSubmitting: Boolean = false,
     val createdBookingId: String? = null,
     val errorMessage: String? = null
@@ -129,8 +131,29 @@ class EstimateViewModel(
         _uiState.update { it.copy(notes = notes) }
     }
 
+    /** Melepas kunci saat pengguna keluar dari alur sebelum pesanan dibuat. */
+    fun releaseLockIfPending(lockId: String) {
+        if (_uiState.value.createdBookingId != null) return
+        viewModelScope.launch {
+            bookingRepository.releaseLock(lockId)
+        }
+    }
+
+    fun updateLockCountdown(seconds: Long) {
+        _uiState.update {
+            it.copy(
+                remainingLockSeconds = seconds.coerceAtLeast(0L),
+                isLockExpired = seconds <= 0L
+            )
+        }
+    }
+
     fun confirmOrder(onSuccess: (String) -> Unit) {
         val state = _uiState.value
+        if (state.isLockExpired) {
+            _uiState.update { it.copy(errorMessage = "Waktu reservasi slot telah kedaluwarsa. Silakan pilih kembali jadwal.") }
+            return
+        }
         val provider = state.provider ?: return
         val service = state.service ?: return
         val estimate = state.costEstimate ?: return

@@ -29,6 +29,7 @@ class OrderFlowManager {
     var orderNotes by mutableStateOf("AC di kamar lantai 2 meneteskan air terus dan tidak dingin.")
     var currentEstimate by mutableStateOf<CostEstimate?>(null)
     var currentLock by mutableStateOf<LockInfo?>(null)
+    var scheduleErrorMessage by mutableStateOf<String?>(null)
 
     fun toDraft(): OrderDraft? {
         val provider = selectedProvider ?: return null
@@ -56,5 +57,6 @@ class OrderFlowManager {
         selectedService = null
         currentEstimate = null
         currentLock = null
+        scheduleErrorMessage = null
     }
 }

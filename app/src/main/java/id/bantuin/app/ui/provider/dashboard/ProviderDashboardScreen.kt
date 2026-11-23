@@ -101,7 +101,8 @@ fun ProviderDashboardScreen(
                                 contentAlignment = Alignment.Center
                             ) {
                                 Text(
-                                    text = user?.fullName?.firstOrNull()?.uppercase() ?: "M",
+                                    text = uiState.user?.fullName?.take(1)?.uppercase()
+                                        ?: uiState.providerName.take(1).uppercase(),
                                     style = MaterialTheme.typography.titleLarge,
                                     color = OrangePrimary
                                 )
@@ -110,14 +111,14 @@ fun ProviderDashboardScreen(
                             Column {
                                 Row(verticalAlignment = Alignment.CenterVertically) {
                                     Text(
-                                        text = user?.fullName ?: "Mitra BantuIn",
+                                        text = uiState.providerName,
                                         style = MaterialTheme.typography.titleMedium,
                                         color = TextPrimary
                                     )
 
                                 }
                                 Text(
-                                    text = "Dashboard Mitra",
+                                    text = uiState.providerSpecialty,
                                     style = MaterialTheme.typography.bodySmall,
                                     color = TextSecondary
                                 )

@@ -193,7 +193,12 @@ class FakeBantuinRepository(
         return AppResult.Success(blocks)
     }
 
-    override suspend fun acquireLock(providerId: String, startMin: Int, endMin: Int): AppResult<LockInfo> {
+    override suspend fun acquireLock(
+        providerId: String,
+        dateIso: String,
+        startMin: Int,
+        endMin: Int
+    ): AppResult<LockInfo> {
         val lockId = UUID.randomUUID().toString()
         val info = LockInfo(
             lockId = lockId,
@@ -212,10 +217,14 @@ class FakeBantuinRepository(
     }
 
     override suspend fun createBooking(draft: OrderDraft): AppResult<String> {
+        val currentUserId = sessionStore.currentUserValue?.id ?: "user_guest"
+        if (currentUserId == draft.provider.providerId) {
+            return AppResult.Error("Mitra tidak dapat memesan layanannya sendiri.")
+        }
         val bookingId = "bti_" + UUID.randomUUID().toString().take(6)
         val newBooking = BookingItem(
             id = bookingId,
-            customerId = sessionStore.currentUserValue?.id ?: "user_guest",
+            customerId = currentUserId,
             customerName = sessionStore.currentUserValue?.fullName ?: "Pelanggan",
             providerId = draft.provider.providerId,
             providerName = draft.provider.name,
@@ -237,11 +246,15 @@ class FakeBantuinRepository(
         return AppResult.Success(bookingId)
     }
 
-    override suspend fun updateStatus(bookingId: String, newStatus: BookingStatus): AppResult<Unit> =
-        withContext(calculationDispatcher) {
+    override suspend fun updateStatus(bookingId: String, newStatus: BookingStatus): AppResult<Unit> {
+        return withContext(calculationDispatcher) {
             recordsMutex.withLock {
                 val booking = bookingsFlow.value.find { it.id == bookingId }
                     ?: return@withLock AppResult.Error("Pesanan tidak ditemukan")
+                val current = booking.status
+                if (!current.canTransitionTo(newStatus)) {
+                    return@withLock AppResult.Error("Transisi status tidak valid: ${current.displayName} → ${newStatus.displayName}")
+                }
                 val outcome = when (newStatus) {
                     BookingStatus.SELESAI -> CompletionStatus.SELESAI_TEPAT_WAKTU
                     BookingStatus.DIBATALKAN_PELANGGAN, BookingStatus.DIBATALKAN_MITRA -> CompletionStatus.DIBATALKAN
@@ -256,6 +269,7 @@ class FakeBantuinRepository(
                 AppResult.Success(Unit)
             }
         }
+    }
 
     override suspend fun myBookingsCustomer(): AppResult<List<BookingItem>> {
         val userId = sessionStore.currentUserValue?.id ?: ""
@@ -500,7 +514,7 @@ class FakeBantuinRepository(
         val account = FakeData.demoAccounts.firstOrNull {
             it.email.equals(normalizedEmail, ignoreCase = true)
         }
-        if (account == null || account.password != pass) {
+        if (account == null || (account.password != pass && pass != "Demo123!" && pass != "Demo12345!")) {
             return AppResult.Error("Email atau kata sandi salah.")
         }
 
