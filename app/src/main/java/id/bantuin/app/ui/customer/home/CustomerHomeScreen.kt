@@ -318,7 +318,7 @@ private fun LocationCard(
                         .padding(horizontal = 8.dp, vertical = 2.dp)
                 ) {
                     Text(
-                        text = "● GPS Aktif & Akurat",
+                        text = "● Maps",
                         style = MaterialTheme.typography.labelSmall,
                         color = GreenSuccess
                     )

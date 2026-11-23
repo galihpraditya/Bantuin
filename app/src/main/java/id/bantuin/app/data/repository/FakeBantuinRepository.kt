@@ -163,7 +163,12 @@ class FakeBantuinRepository(
         return AppResult.Success(blocks)
     }
 
-    override suspend fun acquireLock(providerId: String, startMin: Int, endMin: Int): AppResult<LockInfo> {
+    override suspend fun acquireLock(
+        providerId: String,
+        dateIso: String,
+        startMin: Int,
+        endMin: Int
+    ): AppResult<LockInfo> {
         val lockId = UUID.randomUUID().toString()
         val info = LockInfo(
             lockId = lockId,

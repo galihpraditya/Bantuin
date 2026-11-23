@@ -2,6 +2,7 @@ package id.bantuin.app.ui.customer.schedule
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import id.bantuin.app.core.config.BantuinConfig
 import id.bantuin.app.core.result.AppResult
 import id.bantuin.app.domain.model.AvailabilityMode
 import id.bantuin.app.domain.model.DayAvailability
@@ -20,22 +21,29 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import java.time.LocalDate
 import java.time.LocalTime
+import java.time.ZoneId
 
 data class ScheduleUiState(
     val provider: ProviderCandidate? = null,
     val service: ServiceItem? = null,
     val distanceKm: Double = 1.8,
     val selectedDateIdx: Int = 0,
-    val selectedDate: LocalDate = LocalDate.now(),
+    val selectedDate: LocalDate = LocalDate.now(WIB_ZONE),
     val dynamicDates: List<Triple<String, String, LocalDate>> = emptyList(),
     val providerAvailability: List<DayAvailability> = emptyList(),
     val existingBlocks: List<TimeBlock> = emptyList(),
+    val currentDayAvailability: DayAvailability? = null,
     val selectedStartMin: Int = 540,
+    val nowMin: Int? = null,
     val slotCheckResult: SlotCheckResult? = null,
     val lockInfo: LockInfo? = null,
     val isLocking: Boolean = false,
     val errorMessage: String? = null
-)
+) {
+    companion object {
+        val WIB_ZONE: ZoneId = ZoneId.of(BantuinConfig.TIMEZONE_ID)
+    }
+}
 
 class ScheduleViewModel(
     private val catalogRepository: CatalogRepository,
@@ -52,7 +60,7 @@ class ScheduleViewModel(
         distanceKm: Double,
         initialStartMin: Int = 540
     ) {
-        val today = LocalDate.now()
+        val today = LocalDate.now(ScheduleUiState.WIB_ZONE)
         val dynamicDates = (0..6).map { i ->
             val d = today.plusDays(i.toLong())
             val dayName = when (d.dayOfWeek.value) {
@@ -75,7 +83,9 @@ class ScheduleViewModel(
                 selectedDateIdx = 0,
                 selectedDate = today,
                 selectedStartMin = initialStartMin,
-                dynamicDates = dynamicDates
+                dynamicDates = dynamicDates,
+                lockInfo = null,
+                errorMessage = null
             )
         }
         loadAvailabilityAndBlocks(provider.providerId, today)
@@ -88,12 +98,18 @@ class ScheduleViewModel(
             _uiState.update {
                 it.copy(
                     selectedDateIdx = idx,
-                    selectedDate = date
+                    selectedDate = date,
+                    errorMessage = null
                 )
             }
             val providerId = state.provider?.providerId ?: return
             loadAvailabilityAndBlocks(providerId, date)
         }
+    }
+
+    fun selectSlot(startMin: Int) {
+        _uiState.update { it.copy(selectedStartMin = startMin, errorMessage = null) }
+        recomputeSlotCheck()
     }
 
     private fun loadAvailabilityAndBlocks(providerId: String, date: LocalDate) {
@@ -115,11 +131,6 @@ class ScheduleViewModel(
         }
     }
 
-    fun selectSlot(startMin: Int) {
-        _uiState.update { it.copy(selectedStartMin = startMin) }
-        recomputeSlotCheck()
-    }
-
     private fun recomputeSlotCheck() {
         val state = _uiState.value
         val service = state.service ?: return
@@ -131,8 +142,9 @@ class ScheduleViewModel(
             closeMin = 1020
         )
 
-        val nowMin = if (state.selectedDateIdx == 0) {
-            val now = LocalTime.now()
+        // "nowMin" harus memakai WIB, bukan zona perangkat.
+        val nowMin = if (state.selectedDate == LocalDate.now(ScheduleUiState.WIB_ZONE)) {
+            val now = LocalTime.now(ScheduleUiState.WIB_ZONE)
             now.hour * 60 + now.minute
         } else null
 
@@ -144,18 +156,36 @@ class ScheduleViewModel(
             nowMin = nowMin
         )
 
-        _uiState.update { it.copy(slotCheckResult = check) }
+        _uiState.update {
+            it.copy(
+                currentDayAvailability = dayAvail,
+                nowMin = nowMin,
+                slotCheckResult = check
+            )
+        }
     }
 
     fun acquireLockAndProceed(onSuccess: (LockInfo) -> Unit) {
         val state = _uiState.value
         val providerId = state.provider?.providerId ?: return
-        val startMin = state.selectedStartMin
-        val durationMin = state.service?.durationMin ?: 60
+        val check = state.slotCheckResult
+        if (check?.valid != true) {
+            _uiState.update { it.copy(errorMessage = check?.reason?.message ?: "Jadwal tidak valid") }
+            return
+        }
 
+        // Blok yang dikunci harus sama dengan blok yang divalidasi F3 (termasuk buffer 30 menit).
+        val block = check.block
         viewModelScope.launch {
             _uiState.update { it.copy(isLocking = true, errorMessage = null) }
-            when (val lockRes = bookingRepository.acquireLock(providerId, startMin, startMin + durationMin)) {
+            when (
+                val lockRes = bookingRepository.acquireLock(
+                    providerId = providerId,
+                    dateIso = state.selectedDate.toString(),
+                    startMin = block.startMin,
+                    endMin = block.endMin
+                )
+            ) {
                 is AppResult.Success -> {
                     _uiState.update { it.copy(isLocking = false, lockInfo = lockRes.data) }
                     onSuccess(lockRes.data)

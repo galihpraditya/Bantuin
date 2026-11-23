@@ -50,6 +50,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
@@ -123,6 +124,26 @@ fun EstimateScreen(
     }
 
     val lockInfo = uiState.lockInfo ?: orderFlow.currentLock
+
+    // Kunci dilepas ketika pengguna meninggalkan alur sebelum pesanan berhasil dibuat.
+    DisposableEffect(lockInfo?.lockId) {
+        onDispose {
+            lockInfo?.let { viewModel.releaseLockIfPending(it.lockId) }
+            orderFlow.currentLock = null
+        }
+    }
+
+    // Server menolak slot (bentrok / kunci habis) -> kembali ke Screen 3.
+    androidx.compose.runtime.LaunchedEffect(uiState.errorMessage) {
+        val message = uiState.errorMessage ?: return@LaunchedEffect
+        if (message.contains("SLOT_CONFLICT", ignoreCase = true) ||
+            message.contains("LOCK_EXPIRED", ignoreCase = true)
+        ) {
+            orderFlow.scheduleErrorMessage = "Slot bertabrakan atau reservasi kedaluwarsa. Silakan pilih jadwal lain."
+            onNavigateBack()
+        }
+    }
+
     androidx.compose.runtime.LaunchedEffect(lockInfo?.expiresAtMillis) {
         if (lockInfo != null) {
             while (true) {

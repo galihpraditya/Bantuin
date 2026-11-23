@@ -46,7 +46,12 @@ class EstimateViewModelTest {
         override suspend fun busyBlocks(providerId: String, dateIso: String): AppResult<List<id.bantuin.app.domain.model.TimeBlock>> =
             AppResult.Success(emptyList())
 
-        override suspend fun acquireLock(providerId: String, startMin: Int, endMin: Int): AppResult<LockInfo> =
+        override suspend fun acquireLock(
+            providerId: String,
+            dateIso: String,
+            startMin: Int,
+            endMin: Int
+        ): AppResult<LockInfo> =
             AppResult.Success(LockInfo("lock_1", "p01", startMin, endMin, System.currentTimeMillis() + 600_000))
 
         override suspend fun releaseLock(lockId: String): AppResult<Unit> = AppResult.Success(Unit)

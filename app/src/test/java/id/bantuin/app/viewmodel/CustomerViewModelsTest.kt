@@ -4,6 +4,7 @@ import id.bantuin.app.core.session.InMemorySessionStore
 import id.bantuin.app.data.fake.FakeData
 import id.bantuin.app.data.repository.FakeBantuinRepository
 import id.bantuin.app.domain.model.Complexity
+import id.bantuin.app.domain.model.ConflictReason
 import id.bantuin.app.domain.model.GeoPoint
 import id.bantuin.app.domain.repository.UserProfile
 import id.bantuin.app.ui.customer.estimate.EstimateViewModel
@@ -175,9 +176,22 @@ class CustomerViewModelsTest {
 
         assertEquals(7, vm.uiState.value.dynamicDates.size)
 
-        // Pilih slot jam
+        // Gunakan besok agar validasi PAST_TIME tidak bergantung jam eksekusi test.
+        vm.selectDate(1)
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        assertEquals(1, vm.uiState.value.selectedDateIdx)
+        assertEquals(null, vm.uiState.value.nowMin)
+
+        // Pilih slot jam yang bentrok -> alasan + alternatif harus tersedia
         vm.selectSlot(600) // 10:00 (bentrok dengan busyBlocks demo)
-        assertTrue(vm.uiState.value.slotCheckResult != null)
+        assertEquals(ConflictReason.OVERLAP, vm.uiState.value.slotCheckResult?.reason)
+        assertEquals(600, vm.uiState.value.selectedStartMin)
+        assertEquals(listOf(825, 840, 870), vm.uiState.value.slotCheckResult?.alternativeStartsMin)
+
+        // Slot alternatif pertama sudah lolos seluruh validasi F3 sehingga boleh dikunci
+        vm.selectSlot(825)
+        assertTrue(vm.uiState.value.slotCheckResult?.valid == true)
 
         var lockAcquired = false
         vm.acquireLockAndProceed { lockInfo ->
@@ -188,6 +202,39 @@ class CustomerViewModelsTest {
 
         assertTrue(lockAcquired)
         assertNotNull(vm.uiState.value.lockInfo)
+    }
+
+    @Test
+    fun scheduleViewModel_rejectsLockForInvalidSlot() = runTest {
+        val vm = ScheduleViewModel(repository, repository)
+        val provider = FakeData.providers.first { it.providerId == "p01" }
+        val service = FakeData.services.first { it.providerId == "p01" }
+
+        vm.initialize(provider, service, 1.8, 600)
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        var lockAcquired = false
+        vm.acquireLockAndProceed { lockAcquired = true }
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        assertTrue(!lockAcquired)
+        assertEquals(null, vm.uiState.value.lockInfo)
+    }
+
+    @Test
+    fun scheduleViewModel_dateSelectionUpdatesState() = runTest {
+        val vm = ScheduleViewModel(repository, repository)
+        val provider = FakeData.providers.first { it.providerId == "p01" }
+        val service = FakeData.services.first { it.providerId == "p01" }
+
+        vm.initialize(provider, service, 1.8, 600)
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        vm.selectDate(1)
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        assertEquals(1, vm.uiState.value.selectedDateIdx)
+        assertEquals(null, vm.uiState.value.nowMin)
     }
 
     @Test

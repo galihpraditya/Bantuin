@@ -131,6 +131,14 @@ class EstimateViewModel(
         _uiState.update { it.copy(notes = notes) }
     }
 
+    /** Melepas kunci saat pengguna keluar dari alur sebelum pesanan dibuat. */
+    fun releaseLockIfPending(lockId: String) {
+        if (_uiState.value.createdBookingId != null) return
+        viewModelScope.launch {
+            bookingRepository.releaseLock(lockId)
+        }
+    }
+
     fun updateLockCountdown(seconds: Long) {
         _uiState.update {
             it.copy(

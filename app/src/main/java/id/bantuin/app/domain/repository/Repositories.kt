@@ -37,7 +37,12 @@ interface CatalogRepository {
 
 interface BookingRepository {
     suspend fun busyBlocks(providerId: String, dateIso: String): AppResult<List<TimeBlock>>
-    suspend fun acquireLock(providerId: String, startMin: Int, endMin: Int): AppResult<LockInfo>
+    suspend fun acquireLock(
+        providerId: String,
+        dateIso: String,
+        startMin: Int,
+        endMin: Int
+    ): AppResult<LockInfo>
     suspend fun releaseLock(lockId: String): AppResult<Unit>
     suspend fun createBooking(draft: OrderDraft): AppResult<String>
     suspend fun updateStatus(bookingId: String, newStatus: BookingStatus): AppResult<Unit>

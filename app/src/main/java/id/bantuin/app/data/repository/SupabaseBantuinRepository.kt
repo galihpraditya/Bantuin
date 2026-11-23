@@ -326,11 +326,15 @@ class SupabaseBantuinRepository(
         }
     }
 
-    override suspend fun acquireLock(providerId: String, startMin: Int, endMin: Int): AppResult<LockInfo> = withContext(ioDispatcher) {
+    override suspend fun acquireLock(
+        providerId: String,
+        dateIso: String,
+        startMin: Int,
+        endMin: Int
+    ): AppResult<LockInfo> = withContext(ioDispatcher) {
         try {
-            val todayIso = TimeUtils.todayIso()
-            val startIso = TimeUtils.toIsoString(todayIso, startMin)
-            val endIso = TimeUtils.toIsoString(todayIso, endMin)
+            val startIso = TimeUtils.toIsoString(dateIso, startMin)
+            val endIso = TimeUtils.toIsoString(dateIso, endMin)
 
             val lockId = client.postgrest.rpc(
                 function = "acquire_slot_lock",
@@ -350,7 +354,7 @@ class SupabaseBantuinRepository(
             )
             AppResult.Success(lockInfo)
         } catch (e: Exception) {
-            fallback?.acquireLock(providerId, startMin, endMin)
+            fallback?.acquireLock(providerId, dateIso, startMin, endMin)
                 ?: AppResult.Error(e.message ?: "Slot sedang dikunci pengguna lain", e)
         }
     }
