@@ -39,14 +39,49 @@ class ProviderDetailViewModel(
             val servicesRes = catalogRepository.servicesOf(providerId)
             val reviewsRes = reviewRepository.reviewsOf(providerId)
 
-            val services = if (servicesRes is AppResult.Success) servicesRes.data else emptyList()
-            val reviews = if (reviewsRes is AppResult.Success) reviewsRes.data else emptyList()
+            var resolvedProvider = initialProvider ?: _uiState.value.provider
+            if (resolvedProvider == null) {
+                val cats = catalogRepository.categories()
+                if (cats is AppResult.Success) {
+                    for (cat in cats.data) {
+                        val candRes = catalogRepository.candidates(cat.id)
+                        if (candRes is AppResult.Success) {
+                            val found = candRes.data.find { it.providerId == providerId }
+                            if (found != null) {
+                                resolvedProvider = found
+                                break
+                            }
+                        }
+                    }
+                }
+                if (resolvedProvider == null) {
+                    resolvedProvider = FakeData.providers.find { it.providerId == providerId }
+                }
+            }
+
+            val services = when (servicesRes) {
+                is AppResult.Success -> servicesRes.data.filter { it.isActive }
+                is AppResult.Error -> FakeData.services.filter { it.providerId == providerId && it.isActive }
+                is AppResult.Loading -> emptyList()
+            }
+
+            val reviews = when (reviewsRes) {
+                is AppResult.Success -> reviewsRes.data
+                is AppResult.Error -> FakeData.sampleReviews
+                is AppResult.Loading -> emptyList()
+            }
+
+            val error = if (servicesRes is AppResult.Error && services.isEmpty()) {
+                servicesRes.message
+            } else null
 
             _uiState.update {
                 it.copy(
+                    provider = resolvedProvider,
                     services = services,
                     reviews = reviews,
-                    isLoading = false
+                    isLoading = false,
+                    errorMessage = error
                 )
             }
         }

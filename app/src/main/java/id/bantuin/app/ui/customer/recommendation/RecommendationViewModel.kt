@@ -41,15 +41,25 @@ class RecommendationViewModel(
     val uiState: StateFlow<RecommendationUiState> = _uiState.asStateFlow()
 
     fun initialize(categoryId: Int, customerLocation: GeoPoint) {
-        val cat = FakeData.categories.find { it.id == categoryId } ?: FakeData.categories[1]
-        _uiState.update {
-            it.copy(
-                categoryId = categoryId,
-                category = cat,
-                customerLocation = customerLocation
-            )
+        viewModelScope.launch {
+            val catRes = catalogRepository.categories()
+            val cat = if (catRes is AppResult.Success) {
+                catRes.data.find { it.id == categoryId }
+            } else null
+            val resolvedCategory = cat 
+                ?: FakeData.categories.find { it.id == categoryId } 
+                ?: FakeData.categories.firstOrNull() 
+                ?: ServiceCategory(categoryId, "Layanan", "build", 60)
+
+            _uiState.update {
+                it.copy(
+                    categoryId = categoryId,
+                    category = resolvedCategory,
+                    customerLocation = customerLocation
+                )
+            }
+            loadCandidates(categoryId, customerLocation)
         }
-        loadCandidates(categoryId, customerLocation)
     }
 
     fun loadCandidates(
@@ -88,6 +98,28 @@ class RecommendationViewModel(
 
     fun setOnlyTrusted(onlyTrusted: Boolean) {
         _uiState.update { it.copy(onlyTrusted = onlyTrusted) }
+        recomputeFiltered()
+    }
+
+    fun setFilters(maxDist: Double, minRating: Double, onlyTrusted: Boolean) {
+        _uiState.update {
+            it.copy(
+                maxDistanceFilter = maxDist,
+                minRatingFilter = minRating,
+                onlyTrusted = onlyTrusted
+            )
+        }
+        recomputeFiltered()
+    }
+
+    fun resetFilters() {
+        _uiState.update {
+            it.copy(
+                maxDistanceFilter = 10.0,
+                minRatingFilter = 0.0,
+                onlyTrusted = false
+            )
+        }
         recomputeFiltered()
     }
 
