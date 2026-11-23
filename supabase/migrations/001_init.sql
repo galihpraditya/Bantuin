@@ -273,6 +273,7 @@ begin
 
   select provider_id into v_provider from public.services where id = p_service_id and is_active;
   if v_provider is null or v_provider <> l.provider_id then raise exception 'INVALID_SERVICE'; end if;
+  if v_user = l.provider_id then raise exception 'SELF_BOOKING_FORBIDDEN'; end if;
 
   insert into public.bookings (
     customer_id, provider_id, service_id, start_at, end_at, complexity,

@@ -37,6 +37,7 @@ captures/
 .idea/workspace.xml
 .idea/shelf
 .idea/assetWizardSettings.xml
+.vscode/
 
 # Kotlin
 .kotlin/
