@@ -89,7 +89,7 @@ fun ProviderDetailScreen(
 
     val provider = uiState.provider ?: orderFlow.selectedProvider ?: FakeData.providers.first()
     val services = uiState.services.ifEmpty { FakeData.services.filter { it.providerId == providerId && it.isActive } }
-    val reviews = uiState.reviews.ifEmpty { FakeData.sampleReviews }
+    val reviews = uiState.reviews
 
     Scaffold(
         topBar = {
@@ -301,6 +301,9 @@ fun ProviderDetailScreen(
                 )
             }
 
+            if (reviews.isEmpty() && !uiState.isLoading) {
+                item { Text("Belum ada ulasan.", color = TextSecondary) }
+            }
             items(reviews, key = { it.id }) { review ->
                 Card(
                     modifier = Modifier.fillMaxWidth(),

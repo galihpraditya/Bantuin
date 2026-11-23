@@ -296,6 +296,7 @@ fun BantuinNavGraph(
 
             composable(Routes.PROVIDER_EVALUATION) {
                 ProviderEvaluationScreen(
+                    repository = repository,
                     onNavigateBack = { navController.popBackStack() }
                 )
             }

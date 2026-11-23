@@ -1,6 +1,8 @@
 package id.bantuin.app.viewmodel
 
+import id.bantuin.app.core.dispatcher.AppDispatchers
 import id.bantuin.app.data.repository.FakeBantuinRepository
+import id.bantuin.app.domain.model.CompletionStatus
 import id.bantuin.app.domain.model.AvailabilityMode
 import id.bantuin.app.domain.model.BookingStatus
 import id.bantuin.app.domain.model.GeoPoint
@@ -34,7 +36,7 @@ class ProviderViewModelsTest {
     @Before
     fun setUp() {
         Dispatchers.setMain(testDispatcher)
-        repository = FakeBantuinRepository()
+        repository = FakeBantuinRepository(calculationDispatcher = testDispatcher)
     }
 
     @After
@@ -44,7 +46,7 @@ class ProviderViewModelsTest {
 
     @Test
     fun providerHomeViewModel_loadsDataAndSwitchesToCustomer() = runTest {
-        val vm = ProviderHomeViewModel(repository, repository, repository)
+        val vm = ProviderHomeViewModel(repository, repository, repository, repository)
         testDispatcher.scheduler.advanceUntilIdle()
 
         assertNotNull(vm.uiState.value.provider)
@@ -124,21 +126,25 @@ class ProviderViewModelsTest {
     }
 
     @Test
-    fun providerDashboardViewModel_evaluatesTrustAndSimulatesAnomaly() = runTest {
-        val vm = ProviderDashboardViewModel(repository)
+    fun providerDashboardViewModel_evaluatesTheSelectedProvidersHistory() = runTest {
+        val vm = ProviderDashboardViewModel(repository, dispatchers = AppDispatchers(
+            io = testDispatcher, default = testDispatcher
+        ))
+        vm.loadData("p01")
         testDispatcher.scheduler.advanceUntilIdle()
-
         assertNotNull(vm.uiState.value.trustResult)
-        val initialTrust = vm.uiState.value.trustResult?.trustScore ?: 0.0
-        assertTrue(initialTrust >= 60.0)
+        assertTrue(vm.uiState.value.trustResult?.flagAnomaly == false)
 
-        // Simulasikan rating anjlok ke 1.0 dan cancel rate tinggi
-        vm.updateSimulation(rating = 1.0, lateCount = 10, cancelCount = 15)
+        vm.loadData("p05")
         testDispatcher.scheduler.advanceUntilIdle()
+        assertEquals("p05", vm.uiState.value.providerId)
+        assertTrue(vm.uiState.value.trustResult?.flagAnomaly == true)
+        assertTrue(vm.uiState.value.transactions.any { it.status == CompletionStatus.DIBATALKAN })
 
-        assertTrue(vm.uiState.value.isSimulationActive)
-        val simTrust = vm.uiState.value.simResult?.trustScore ?: 100.0
-        assertTrue(simTrust < 60.0)
-        assertTrue(vm.uiState.value.simResult?.flagAnomaly == true)
+        vm.filterHistory(CompletionStatus.DIBATALKAN)
+        assertEquals(CompletionStatus.DIBATALKAN, vm.uiState.value.historyFilter)
+        vm.refresh()
+        testDispatcher.scheduler.advanceUntilIdle()
+        assertTrue(vm.uiState.value.snapshots.isNotEmpty())
     }
 }

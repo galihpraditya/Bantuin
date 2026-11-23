@@ -12,6 +12,7 @@ import id.bantuin.app.domain.model.RankedProvider
 import id.bantuin.app.domain.model.ServiceCategory
 import id.bantuin.app.domain.repository.CatalogRepository
 import id.bantuin.app.domain.usecase.matchmaking.MatchmakingUseCase
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -40,6 +41,8 @@ class RecommendationViewModel(
     private val _uiState = MutableStateFlow(RecommendationUiState())
     val uiState: StateFlow<RecommendationUiState> = _uiState.asStateFlow()
 
+    private var loadJob: Job? = null
+
     fun initialize(categoryId: Int, customerLocation: GeoPoint) {
         val cat = FakeData.categories.find { it.id == categoryId } ?: FakeData.categories[1]
         _uiState.update {
@@ -49,15 +52,18 @@ class RecommendationViewModel(
                 customerLocation = customerLocation
             )
         }
-        loadCandidates(categoryId, customerLocation)
+        loadJob?.cancel()
+        loadCandidates(categoryId, customerLocation, background = _uiState.value.rawCandidates.isNotEmpty())
     }
 
     fun loadCandidates(
         categoryId: Int = _uiState.value.categoryId,
-        customerLocation: GeoPoint = _uiState.value.customerLocation
+        customerLocation: GeoPoint = _uiState.value.customerLocation,
+        background: Boolean = false
     ) {
-        viewModelScope.launch {
-            _uiState.update { it.copy(isLoading = true, errorMessage = null) }
+        if (loadJob?.isActive == true) return
+        loadJob = viewModelScope.launch {
+            if (!background) _uiState.update { it.copy(isLoading = true, errorMessage = null) }
             when (val res = catalogRepository.candidates(categoryId)) {
                 is AppResult.Success -> {
                     recomputeRankings(
@@ -69,7 +75,9 @@ class RecommendationViewModel(
                     )
                 }
                 is AppResult.Error -> {
-                    _uiState.update { it.copy(isLoading = false, errorMessage = res.message) }
+                    if (!background || _uiState.value.rawCandidates.isEmpty()) {
+                        _uiState.update { it.copy(isLoading = false, errorMessage = res.message) }
+                    }
                 }
                 is AppResult.Loading -> {}
             }
@@ -110,7 +118,8 @@ class RecommendationViewModel(
                 rawCandidates = candidates,
                 matchResult = matchResult,
                 filteredList = filtered,
-                isLoading = false
+                isLoading = false,
+                errorMessage = null
             )
         }
     }

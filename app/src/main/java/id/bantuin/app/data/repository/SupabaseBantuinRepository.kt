@@ -4,13 +4,17 @@ import android.util.Log
 import id.bantuin.app.core.result.AppResult
 import id.bantuin.app.core.session.UserSessionStore
 import id.bantuin.app.core.util.TimeUtils
+import id.bantuin.app.core.config.BantuinConfig
+import id.bantuin.app.data.remote.ProviderTrustDataSource
 import id.bantuin.app.data.remote.SupabaseClientProvider
+import id.bantuin.app.domain.usecase.trust.TrustScoreUseCase
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.flow.update
+import kotlin.time.Duration.Companion.days
 import id.bantuin.app.data.remote.dto.*
 import id.bantuin.app.domain.model.*
 import id.bantuin.app.domain.repository.BantuinRepository
 import id.bantuin.app.domain.repository.UserProfile
-import id.bantuin.app.domain.usecase.matchmaking.MatchmakingUseCase
-import id.bantuin.app.domain.usecase.trust.RecalculateProviderMetricsUseCase
 import io.github.jan.supabase.SupabaseClient
 import io.github.jan.supabase.auth.auth
 import io.github.jan.supabase.auth.exception.AuthErrorCode
@@ -18,6 +22,7 @@ import io.github.jan.supabase.auth.exception.AuthRestException
 import io.github.jan.supabase.auth.providers.builtin.Email
 import io.github.jan.supabase.auth.user.UserInfo
 import io.github.jan.supabase.postgrest.postgrest
+import io.github.jan.supabase.postgrest.query.Columns
 import io.github.jan.supabase.postgrest.rpc
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
@@ -45,10 +50,10 @@ class SupabaseBantuinRepository(
     private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO
 ) : BantuinRepository {
 
-    private val matchmakingUseCase = MatchmakingUseCase()
-    private val recalculateMetricsUseCase by lazy {
-        RecalculateProviderMetricsUseCase(this)
-    }
+    private val trustSource = ProviderTrustDataSource(client)
+    private val trustScore = TrustScoreUseCase()
+    private val metricRevisions = MutableStateFlow(0L)
+    override val trustChanges = metricRevisions.asStateFlow()
 
     private val customerBookingsFlow = MutableStateFlow<List<BookingItem>>(emptyList())
 
@@ -93,7 +98,7 @@ class SupabaseBantuinRepository(
 
             val providerIds = servicesDto.map { it.providerId }.distinct()
             if (providerIds.isEmpty()) {
-                return@withContext AppResult.Success(emptyList())
+                return@withContext fallback?.candidates(categoryId) ?: AppResult.Success(emptyList())
             }
 
             val ppDtoList = client.postgrest["provider_profiles"]
@@ -121,6 +126,11 @@ class SupabaseBantuinRepository(
                 }
                 .decodeList<AvailabilityDto>()
 
+            val inputs = trustSource.inputs(ppDtoList.map { it.userId }, BantuinConfig.TRUST_WINDOW_DAYS)
+                .associateBy { it.providerId }
+            val assessments = withContext(Dispatchers.Default) {
+                inputs.mapValues { (_, input) -> trustScore(input.toDomain()) }
+            }
             val candidates = ppDtoList.mapNotNull { pp ->
                 val profile = profilesDto.find { it.id == pp.userId } ?: return@mapNotNull null
                 val userAvail = availDtoList.filter { it.providerId == pp.userId }
@@ -130,6 +140,7 @@ class SupabaseBantuinRepository(
                 val pServices = servicesDto.filter { it.providerId == pp.userId }
                 val minFare = pServices.minOfOrNull { it.baseFare } ?: 50000
 
+                val assessment = assessments[pp.userId]
                 ProviderCandidate(
                     providerId = pp.userId,
                     name = profile.fullName,
@@ -137,15 +148,11 @@ class SupabaseBantuinRepository(
                     location = GeoPoint(pp.lat, pp.lng),
                     address = pp.address ?: "Malang, Jawa Timur",
                     bio = pp.bio ?: "Teknisi profesional Bantuin",
-                    ratingAvg = pp.ratingAvg,
-                    reviewCount = pp.txCount30d,
-                    completionRate = pp.completionRate,
-                    flagAnomaly = pp.flagAnomaly,
-                    badge = when (pp.badge) {
-                        "TRUSTED" -> ProviderBadge.TRUSTED
-                        "NEW" -> ProviderBadge.NEW
-                        else -> ProviderBadge.NONE
-                    },
+                    ratingAvg = assessment?.ratingAvg,
+                    reviewCount = inputs[pp.userId]?.ratingCount ?: 0,
+                    completionRate = assessment?.completionRate,
+                    flagAnomaly = assessment?.flagAnomaly ?: true,
+                    badge = assessment?.badge ?: ProviderBadge.NONE,
                     minBaseFare = minFare,
                     responseTimeText = when {
                         pp.trustScore >= 90.0 -> "< 5 mnt"
@@ -156,6 +163,7 @@ class SupabaseBantuinRepository(
             }
             AppResult.Success(candidates)
         } catch (e: Exception) {
+            if (e is CancellationException) throw e
             fallback?.candidates(categoryId) ?: AppResult.Error(e.message ?: "Gagal memuat mitra", e)
         }
     }
@@ -399,6 +407,9 @@ class SupabaseBantuinRepository(
     }
 
     override suspend fun updateStatus(bookingId: String, newStatus: BookingStatus): AppResult<Unit> = withContext(ioDispatcher) {
+        if (fallback?.hasLocalBooking(bookingId) == true) {
+            return@withContext localTrustWrite { fallback.updateStatus(bookingId, newStatus) }
+        }
         try {
             client.postgrest.rpc(
                 function = "update_booking_status",
@@ -407,12 +418,14 @@ class SupabaseBantuinRepository(
                     newStatus = newStatus.name
                 )
             )
+            metricRevisions.update { it + 1 }
             myBookingsCustomer()
             myBookingsProvider()
             AppResult.Success(Unit)
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
-            fallback?.updateStatus(bookingId, newStatus)
-                ?: AppResult.Error(e.message ?: "Gagal memperbarui status", e)
+            AppResult.Error(e.message ?: "Gagal memperbarui status", e)
         }
     }
 
@@ -447,163 +460,155 @@ class SupabaseBantuinRepository(
     }
 
     override fun observeBooking(bookingId: String): Flow<BookingItem?> {
-        return customerBookingsFlow.map { list ->
-            list.find { it.id == bookingId }
+        if (fallback?.hasLocalBooking(bookingId) == true) return fallback.observeBooking(bookingId)
+        return customerBookingsFlow.map { list -> list.find { it.id == bookingId } }
+    }
+
+    override fun observeCustomerBookings(): Flow<List<BookingItem>> = customerBookingsFlow.asStateFlow()
+
+    override suspend fun bookingDetails(bookingId: String): AppResult<BookingItem?> {
+        if (fallback?.hasLocalBooking(bookingId) == true) return fallback.bookingDetails(bookingId)
+        return trustRequest("Gagal memuat pesanan") {
+            val dto = client.postgrest["bookings"].select(Columns.raw("*,reviews(*),booking_outcomes(*)")) {
+                filter { eq("id", bookingId) }
+            }.decodeList<BookingDto>().firstOrNull() ?: return@trustRequest null
+            val item = mapDtoToBookingItem(dto).copy(review = dto.review?.toDomain(), outcome = dto.outcome?.toDomain())
+            customerBookingsFlow.update { items -> items.filterNot { it.id == bookingId } + item }
+            item
         }
     }
 
-    override fun observeCustomerBookings(): Flow<List<BookingItem>> {
-        return customerBookingsFlow.asStateFlow()
+    override suspend fun bookingEvents(bookingId: String): AppResult<List<BookingEvent>> {
+        if (fallback?.hasLocalBooking(bookingId) == true) return fallback.bookingEvents(bookingId)
+        return trustRequest("Gagal memuat riwayat status") {
+            trustSource.bookingEvents(bookingId).mapNotNull { event ->
+                val status = BookingStatus.entries.find { it.name == event.status } ?: return@mapNotNull null
+                val date = event.createdAt?.let(Instant::parse) ?: return@mapNotNull null
+                BookingEvent(status, date)
+            }
+        }
     }
-
-    // =========================================================================
-    // REVIEW REPOSITORY (CRUD-4, F4 Feedback Loop)
-    // =========================================================================
 
     override suspend fun submitReview(
-        bookingId: String,
-        providerId: String,
-        rating: Int,
-        comment: String?,
-        tags: List<String>
-    ): AppResult<Unit> = withContext(ioDispatcher) {
-        try {
-            val currentUserId = sessionStore.currentUserValue?.id ?: "c0000000-0000-0000-0000-000000000001"
-            val reviewDto = ReviewDto(
-                id = UUID.randomUUID().toString(),
-                bookingId = bookingId,
-                customerId = currentUserId,
-                providerId = providerId,
-                rating = rating,
-                comment = comment
-            )
-            client.postgrest["reviews"].insert(reviewDto)
-
-            // Jalankan feedback loop rekalkulasi metrik mitra (F4)
-            recalculateMetricsUseCase(providerId)
-
-            AppResult.Success(Unit)
-        } catch (e: Exception) {
-            fallback?.submitReview(bookingId, providerId, rating, comment, tags)
-                ?: AppResult.Error(e.message ?: "Gagal mengirim ulasan", e)
+        bookingId: String, providerId: String, rating: Int, comment: String?, tags: List<String>
+    ): AppResult<Unit> {
+        if (fallback?.hasLocalBooking(bookingId) == true) {
+            return localTrustWrite { fallback.submitReview(bookingId, providerId, rating, comment, tags) }
+        }
+        return trustWrite("Gagal menyimpan ulasan") {
+            trustSource.saveReview(bookingId, rating, comment, tags, null)
         }
     }
 
-    override suspend fun reviewsOf(providerId: String): AppResult<List<ReviewItem>> = withContext(ioDispatcher) {
-        try {
-            val listDto = client.postgrest["reviews"]
-                .select {
-                    filter {
-                        eq("provider_id", providerId)
-                    }
-                }
-                .decodeList<ReviewDto>()
-
-            val reviews = listDto.map { dto ->
-                ReviewItem(
-                    id = dto.id,
-                    bookingId = dto.bookingId,
-                    customerName = "Pelanggan Terverifikasi",
-                    rating = dto.rating,
-                    comment = dto.comment,
-                    tags = listOf("Pekerjaan Rapi", "Tepat Waktu"),
-                    createdAtText = dto.createdAt?.take(10) ?: "Baru saja"
-                )
-            }
-            AppResult.Success(reviews)
-        } catch (e: Exception) {
-            fallback?.reviewsOf(providerId) ?: AppResult.Error(e.message ?: "Gagal memuat ulasan", e)
+    override suspend fun confirmCompletion(
+        bookingId: String, providerId: String, status: CompletionStatus,
+        rating: Int, comment: String?, tags: List<String>
+    ): AppResult<Unit> {
+        if (fallback?.hasLocalBooking(bookingId) == true) {
+            return localTrustWrite { fallback.confirmCompletion(bookingId, providerId, status, rating, comment, tags) }
+        }
+        return trustWrite("Gagal menyimpan konfirmasi") {
+            trustSource.saveReview(bookingId, rating, comment, tags, status)
         }
     }
 
-    // =========================================================================
-    // METRICS REPOSITORY (F4 Trust & Anomaly)
-    // =========================================================================
+    override suspend fun deleteReview(bookingId: String): AppResult<Unit> {
+        if (fallback?.hasLocalBooking(bookingId) == true) return localTrustWrite { fallback.deleteReview(bookingId) }
+        return trustWrite("Gagal menghapus ulasan") { trustSource.deleteReview(bookingId) }
+    }
 
-    override suspend fun trustInput(providerId: String, sinceDays: Int): AppResult<TrustInput> = withContext(ioDispatcher) {
-        try {
-            val reviewsRes = reviewsOf(providerId)
-            val ratings = if (reviewsRes is AppResult.Success) {
-                reviewsRes.data.map { it.rating }
-            } else emptyList()
+    override suspend fun deleteTransactionOutcome(bookingId: String): AppResult<Unit> {
+        if (fallback?.hasLocalBooking(bookingId) == true) {
+            return localTrustWrite { fallback.deleteTransactionOutcome(bookingId) }
+        }
+        return trustWrite("Gagal menghapus konfirmasi") { trustSource.deleteOutcome(bookingId) }
+    }
 
-            val bookingsDto = client.postgrest["bookings"]
-                .select {
-                    filter {
-                        eq("provider_id", providerId)
-                    }
-                }
-                .decodeList<BookingDto>()
+    override suspend fun reviewsOf(providerId: String): AppResult<List<ReviewItem>> {
+        if (fallback?.hasDemoProvider(providerId) == true) return fallback.reviewsOf(providerId)
+        return trustRequest("Gagal memuat ulasan") { trustSource.reviewsOf(providerId).map { it.toDomain() } }
+    }
 
-            val finished = bookingsDto.filter { it.status == "SELESAI" }
-            val cancelledByProvider = bookingsDto.filter { it.status == "DIBATALKAN_MITRA" }
-
-            val jobs = finished.map { b ->
-                val startInstant = try { Instant.parse(b.startAt) } catch (_: Exception) { Clock.System.now() }
-                val startedInstant = try { b.startedAt?.let { Instant.parse(it) } ?: startInstant } catch (_: Exception) { startInstant }
-                CompletedJob(startAt = startInstant, startedAt = startedInstant)
-            }
-
-            val input = TrustInput(
-                completed = jobs,
-                mitraCancelledCount = cancelledByProvider.size,
-                ratings = ratings
-            )
-            AppResult.Success(input)
-        } catch (e: Exception) {
-            fallback?.trustInput(providerId, sinceDays)
-                ?: AppResult.Error(e.message ?: "Gagal menghitung data trust", e)
+    override suspend fun trustInput(providerId: String, sinceDays: Int): AppResult<TrustInput> {
+        if (fallback?.hasDemoProvider(providerId) == true) return fallback.trustInput(providerId, sinceDays)
+        return trustRequest("Gagal memuat metrik") {
+            trustSource.inputs(listOf(providerId), sinceDays).firstOrNull()?.toDomain() ?: TrustInput()
         }
     }
 
-    override suspend fun apply(providerId: String, result: TrustResult): AppResult<Unit> = withContext(ioDispatcher) {
-        try {
-            client.postgrest.rpc(
-                function = "apply_provider_metrics",
-                parameters = ApplyProviderMetricsRpcParams(
-                    providerId = providerId,
-                    ratingAvg = result.ratingAvg,
-                    completionRate = result.completionRate,
-                    onTimeRate = result.onTimeRate,
-                    cancelRate = result.cancelRate,
-                    trustScore = result.trustScore,
-                    txCount = result.txCount,
-                    flagAnomaly = result.flagAnomaly,
-                    badge = result.badge.name,
-                    ratingScore = result.ratingScore
-                )
-            )
-            AppResult.Success(Unit)
-        } catch (e: Exception) {
-            fallback?.apply(providerId, result)
-                ?: AppResult.Error(e.message ?: "Gagal menerapkan metrik", e)
+    override suspend fun transactionHistory(
+        providerId: String, sinceDays: Int, status: CompletionStatus?
+    ): AppResult<List<TransactionOutcome>> {
+        if (fallback?.hasDemoProvider(providerId) == true) return fallback.transactionHistory(providerId, sinceDays, status)
+        return trustRequest("Gagal memuat riwayat transaksi") {
+            val now = Clock.System.now()
+            val since = now - sinceDays.coerceIn(1, BantuinConfig.TRUST_WINDOW_DAYS).days
+            trustSource.outcomes(providerId, since, now, status).map { it.toDomain() }
         }
     }
 
-    override suspend fun history(providerId: String): AppResult<List<MetricSnapshot>> = withContext(ioDispatcher) {
-        try {
-            val listDto = client.postgrest["provider_metric_snapshots"]
-                .select {
-                    filter {
-                        eq("provider_id", providerId)
-                    }
-                }
-                .decodeList<ProviderMetricSnapshotDto>()
+    override suspend fun refreshTrust(providerId: String): AppResult<Unit> {
+        if (fallback?.hasDemoProvider(providerId) == true) {
+            return localTrustWrite { fallback.refreshTrust(providerId) }
+        }
+        if (sessionStore.currentUserValue?.id != providerId) return AppResult.Error("Sesi mitra diperlukan")
+        return trustWrite("Gagal menghitung ulang metrik") { trustSource.refresh() }
+    }
 
-            val history = listDto.map { dto ->
+    override suspend fun history(providerId: String): AppResult<List<MetricSnapshot>> {
+        if (fallback?.hasDemoProvider(providerId) == true) return fallback.history(providerId)
+        return trustRequest("Gagal memuat grafik performa") {
+            val since = Clock.System.now() - BantuinConfig.TRUST_WINDOW_DAYS.days
+            trustSource.snapshots(providerId, since).map { snapshot ->
                 MetricSnapshot(
-                    label = dto.computedAt?.take(10) ?: "Snapshot",
-                    trustScore = dto.trustScore,
-                    ratingScore = dto.ratingScore ?: 70.0,
-                    onTimeRate = dto.onTimeRate ?: 90.0,
-                    cancelRate = dto.cancelRate ?: 0.0
+                    label = snapshot.computedAt?.take(10).orEmpty(),
+                    trustScore = snapshot.trustScore,
+                    ratingScore = snapshot.ratingScore ?: 0.0,
+                    onTimeRate = snapshot.onTimeRate ?: 0.0,
+                    cancelRate = snapshot.cancelRate ?: 0.0
                 )
             }
-            AppResult.Success(history)
-        } catch (e: Exception) {
-            fallback?.history(providerId) ?: AppResult.Error(e.message ?: "Gagal memuat snapshot metrik", e)
         }
     }
+
+    private suspend fun <T> trustRequest(error: String, request: suspend () -> T): AppResult<T> =
+        withContext(ioDispatcher) {
+            try {
+                AppResult.Success(request())
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                AppResult.Error(error, e)
+            }
+        }
+
+    private suspend fun trustWrite(error: String, request: suspend () -> Unit): AppResult<Unit> =
+        trustRequest(error) {
+            request()
+            metricRevisions.update { it + 1 }
+        }
+
+    private suspend fun localTrustWrite(request: suspend () -> AppResult<Unit>): AppResult<Unit> =
+        request().also { if (it is AppResult.Success) metricRevisions.update { revision -> revision + 1 } }
+
+    private fun ReviewDto.toDomain() = ReviewItem(
+        id = id,
+        bookingId = bookingId,
+        customerName = "Pelanggan Terverifikasi",
+        rating = rating,
+        comment = comment,
+        tags = tags,
+        createdAtText = createdAt?.take(10) ?: "Baru saja",
+        providerId = providerId,
+        createdAt = createdAt?.let(Instant::parse)
+    )
+
+    private fun BookingOutcomeDto.toDomain() = TransactionOutcome(
+        bookingId, providerId, CompletionStatus.valueOf(status), Instant.parse(resolvedAt), customerConfirmed
+    )
+
+    private fun ProviderTrustInputDto.toDomain() =
+        TrustInput(onTimeCount, lateCount, cancelledCount, ratingCount, ratingTotal, otherCount)
 
     // =========================================================================
     // AUTH REPOSITORY (CRUD-0 Multi-Role)

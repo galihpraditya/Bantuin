@@ -3,130 +3,122 @@ package id.bantuin.app.ui.provider.dashboard
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import id.bantuin.app.core.config.BantuinConfig
+import id.bantuin.app.core.dispatcher.AppDispatchers
 import id.bantuin.app.core.result.AppResult
+import id.bantuin.app.domain.model.CompletionStatus
 import id.bantuin.app.domain.model.MetricSnapshot
-import id.bantuin.app.domain.model.TrustInput
+import id.bantuin.app.domain.model.TransactionOutcome
 import id.bantuin.app.domain.model.TrustResult
 import id.bantuin.app.domain.repository.MetricsRepository
+import id.bantuin.app.domain.usecase.trust.RecalculateProviderMetricsUseCase
 import id.bantuin.app.domain.usecase.trust.TrustScoreUseCase
-import kotlin.math.roundToInt
-import kotlin.time.Duration.Companion.minutes
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import kotlinx.datetime.Clock
+import kotlinx.datetime.Instant
 
 data class ProviderDashboardUiState(
-    val providerId: String = "p01",
-    val trustInput: TrustInput? = null,
+    val providerId: String = "",
     val trustResult: TrustResult? = null,
     val snapshots: List<MetricSnapshot> = emptyList(),
-    // Nilai simulasi
-    val simRating: Double = 4.9,
-    val simLateCount: Int = 0,
-    val simCancelCount: Int = 0,
-    val simResult: TrustResult? = null,
-    val isSimulationActive: Boolean = false,
-    val isLoading: Boolean = false,
-    val errorMessage: String? = null
+    val transactions: List<TransactionOutcome> = emptyList(),
+    val historyFilter: CompletionStatus? = null,
+    val demoExamples: List<TrustExample> = emptyList(),
+    val checkedAt: Instant? = null,
+    val isLoading: Boolean = true,
+    val isRefreshing: Boolean = false,
+    val errorMessage: String? = null,
+    val historyError: String? = null
 )
+
+data class TrustExample(val name: String, val result: TrustResult)
 
 class ProviderDashboardViewModel(
     private val metricsRepository: MetricsRepository,
-    private val trustScoreUseCase: TrustScoreUseCase = TrustScoreUseCase()
+    private val trustScoreUseCase: TrustScoreUseCase = TrustScoreUseCase(),
+    private val dispatchers: AppDispatchers = AppDispatchers()
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(ProviderDashboardUiState())
-    val uiState: StateFlow<ProviderDashboardUiState> = _uiState.asStateFlow()
+    val uiState = _uiState.asStateFlow()
+    private val recalculate = RecalculateProviderMetricsUseCase(metricsRepository)
+    private var request: Job? = null
 
-    init {
-        loadData()
-    }
+    fun loadData(providerId: String, background: Boolean = false) {
+        if (_uiState.value.providerId != providerId) {
+            request?.cancel()
+            _uiState.value = ProviderDashboardUiState(providerId = providerId)
+        } else if (request?.isActive == true) return
 
-    fun loadData(providerId: String = "p01") {
-        viewModelScope.launch {
-            _uiState.update { it.copy(providerId = providerId, isLoading = true, errorMessage = null) }
-            val inputRes = metricsRepository.trustInput(providerId, 30)
-            val historyRes = metricsRepository.history(providerId)
-
-            val input = if (inputRes is AppResult.Success) inputRes.data else null
-            val snapshots = if (historyRes is AppResult.Success) historyRes.data else emptyList()
-
-            val result = if (input != null) {
-                trustScoreUseCase(input)
-            } else null
-
-            val tolerance = BantuinConfig.LATE_TOLERANCE_MIN.minutes
-            val avgRating = input?.ratings?.takeIf { it.isNotEmpty() }?.average() ?: 4.9
-            val lateCount = input?.completed?.count { it.startedAt > it.startAt + tolerance } ?: 0
-            val cancelCount = input?.mitraCancelledCount ?: 0
-
-            _uiState.update {
-                it.copy(
-                    trustInput = input,
-                    trustResult = result,
-                    snapshots = snapshots,
-                    simRating = avgRating,
-                    simLateCount = lateCount,
-                    simCancelCount = cancelCount,
-                    simResult = result,
-                    isLoading = false
-                )
-            }
+        request = viewModelScope.launch {
+            load(providerId, background)
         }
     }
 
-    fun updateSimulation(rating: Double, lateCount: Int, cancelCount: Int) {
-        val baseInput = _uiState.value.trustInput ?: return
-        val tolerance = BantuinConfig.LATE_TOLERANCE_MIN.minutes
-
-        val simulatedCompleted = baseInput.completed.mapIndexed { idx, job ->
-            if (idx < lateCount) {
-                job.copy(startedAt = job.startAt + tolerance + 5.minutes)
-            } else {
-                job.copy(startedAt = job.startAt)
+    fun refresh() {
+        val providerId = _uiState.value.providerId.takeIf { it.isNotBlank() } ?: return
+        if (_uiState.value.isRefreshing) return
+        request?.cancel()
+        _uiState.update { it.copy(isRefreshing = true, errorMessage = null) }
+        request = viewModelScope.launch {
+            when (val result = withContext(dispatchers.io) { recalculate(providerId) }) {
+                is AppResult.Success -> load(providerId, background = false)
+                is AppResult.Error -> _uiState.update { it.copy(errorMessage = result.message) }
+                AppResult.Loading -> Unit
             }
+            _uiState.update { it.copy(isRefreshing = false) }
         }
+    }
 
-        val roundedRating = rating.roundToInt().coerceIn(1, 5)
-        val simulatedRatings = List(baseInput.ratings.size.coerceAtLeast(1)) { roundedRating }
+    fun filterHistory(status: CompletionStatus?) {
+        _uiState.update { it.copy(historyFilter = status) }
+    }
 
-        val simulatedInput = baseInput.copy(
-            completed = simulatedCompleted,
-            mitraCancelledCount = cancelCount,
-            ratings = simulatedRatings
-        )
+    private suspend fun load(providerId: String, background: Boolean) = coroutineScope {
+        if (!background && _uiState.value.trustResult == null) _uiState.update { it.copy(isLoading = true) }
+        val days = BantuinConfig.TRUST_WINDOW_DAYS
+        val inputs = async(dispatchers.io) { metricsRepository.trustInput(providerId, days) }
+        val snapshots = async(dispatchers.io) { metricsRepository.history(providerId) }
+        val transactions = async(dispatchers.io) { metricsRepository.transactionHistory(providerId, days) }
 
-        val newResult = trustScoreUseCase(simulatedInput)
-
-        _uiState.update {
-            it.copy(
-                simRating = rating,
-                simLateCount = lateCount,
-                simCancelCount = cancelCount,
-                simResult = newResult,
-                isSimulationActive = true
+        val inputResult = inputs.await()
+        val input = (inputResult as? AppResult.Success)?.data
+        val result = input?.let { withContext(dispatchers.default) { trustScoreUseCase(it) } }
+        val examples = if (input?.hasEvidence != true) {
+            _uiState.value.demoExamples.ifEmpty { demoExamples(days) }
+        } else emptyList()
+        val snapshotsResult = snapshots.await()
+        val transactionsResult = transactions.await()
+        _uiState.update { state ->
+            state.copy(
+                trustResult = result ?: state.trustResult,
+                snapshots = (snapshotsResult as? AppResult.Success)?.data ?: state.snapshots,
+                transactions = (transactionsResult as? AppResult.Success)?.data ?: state.transactions,
+                demoExamples = examples,
+                checkedAt = if (result == null) state.checkedAt else Clock.System.now(),
+                isLoading = false,
+                errorMessage = (inputResult as? AppResult.Error)?.message,
+                historyError = (transactionsResult as? AppResult.Error)?.message
             )
         }
     }
 
-    fun resetSimulation() {
-        val baseInput = _uiState.value.trustInput
-        val baseResult = _uiState.value.trustResult
-        val tolerance = BantuinConfig.LATE_TOLERANCE_MIN.minutes
-        val avgRating = baseInput?.ratings?.takeIf { it.isNotEmpty() }?.average() ?: 4.9
-        val lateCount = baseInput?.completed?.count { it.startedAt > it.startAt + tolerance } ?: 0
-        val cancelCount = baseInput?.mitraCancelledCount ?: 0
-
-        _uiState.update {
-            it.copy(
-                simRating = avgRating,
-                simLateCount = lateCount,
-                simCancelCount = cancelCount,
-                simResult = baseResult,
-                isSimulationActive = false
-            )
+    private suspend fun demoExamples(days: Int): List<TrustExample> {
+        val fixtures = listOf("p01" to "Budi Santoso", "p05" to "Joko Hendro")
+        val inputs = withContext(dispatchers.io) {
+            fixtures.mapNotNull { (id, name) ->
+                val input = (metricsRepository.trustInput(id, days) as? AppResult.Success)?.data
+                input?.takeIf { it.hasEvidence }?.let { name to it }
+            }
+        }
+        return withContext(dispatchers.default) {
+            inputs.map { (name, input) -> TrustExample(name, trustScoreUseCase(input)) }
         }
     }
 }

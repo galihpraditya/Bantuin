@@ -31,6 +31,8 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
@@ -71,6 +73,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.lifecycle.viewmodel.compose.viewModel
 import id.bantuin.app.domain.repository.BantuinRepository
 import id.bantuin.app.ui.common.BantuinViewModelFactory
+import id.bantuin.app.ui.common.LiveTrustRefresh
 import id.bantuin.app.ui.theme.NeutralSurface
 import id.bantuin.app.ui.theme.OrangeContainer
 import id.bantuin.app.ui.theme.OrangePrimary
@@ -92,8 +95,9 @@ fun RecommendationScreen(
 ) {
     val uiState by viewModel.uiState.collectAsState()
 
-    androidx.compose.runtime.LaunchedEffect(categoryId, orderFlow.customerLocation) {
-        viewModel.initialize(categoryId, orderFlow.customerLocation)
+    LiveTrustRefresh(repository.trustChanges, categoryId to orderFlow.customerLocation) { background ->
+        if (background) viewModel.loadCandidates(background = true)
+        else viewModel.initialize(categoryId, orderFlow.customerLocation)
     }
 
     val category = uiState.category
@@ -213,8 +217,21 @@ fun RecommendationScreen(
                 SmartMatchmakingExplainerBanner()
             }
 
+            if (uiState.rawCandidates.any { it.isDemo }) {
+                item { Text("Data mitra demo", style = MaterialTheme.typography.labelMedium, color = TextSecondary) }
+            }
+
             // 3. Daftar Kartu Rekomendasi Mitra Terurut
-            if (filteredList.isEmpty()) {
+            if (uiState.isLoading && uiState.rawCandidates.isEmpty()) {
+                item { CircularProgressIndicator() }
+            } else if (uiState.errorMessage != null) {
+                item {
+                    Column {
+                        Text(uiState.errorMessage.orEmpty(), color = RedError)
+                        TextButton(onClick = { viewModel.loadCandidates() }) { Text("Coba lagi") }
+                    }
+                }
+            } else if (filteredList.isEmpty()) {
                 item {
                     Box(
                         modifier = Modifier

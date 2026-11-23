@@ -1,7 +1,9 @@
 package id.bantuin.app.viewmodel
 
 import id.bantuin.app.data.fake.FakeData
+import id.bantuin.app.core.dispatcher.AppDispatchers
 import id.bantuin.app.data.repository.FakeBantuinRepository
+import id.bantuin.app.domain.model.CompletionStatus
 import id.bantuin.app.domain.model.Complexity
 import id.bantuin.app.domain.model.GeoPoint
 import id.bantuin.app.ui.customer.estimate.EstimateViewModel
@@ -33,7 +35,7 @@ class CustomerViewModelsTest {
     @Before
     fun setUp() {
         Dispatchers.setMain(testDispatcher)
-        repository = FakeBantuinRepository()
+        repository = FakeBantuinRepository(calculationDispatcher = testDispatcher)
     }
 
     @After
@@ -137,7 +139,7 @@ class CustomerViewModelsTest {
 
     @Test
     fun orderDetailViewModel_observesAndSubmitsReview() = runTest {
-        val vm = OrderDetailViewModel(repository, repository)
+        val vm = OrderDetailViewModel(repository, repository, AppDispatchers(io = testDispatcher))
         vm.observeBooking("b01")
         testDispatcher.scheduler.advanceUntilIdle()
 
@@ -145,12 +147,12 @@ class CustomerViewModelsTest {
         vm.setReviewComment("Sangat memuaskan")
         vm.toggleTag("Tepat Waktu")
 
-        var reviewDone = false
-        vm.submitReview { reviewDone = true }
+        vm.setCompletion(CompletionStatus.TERLAMBAT)
+        vm.submitReview()
         testDispatcher.scheduler.advanceUntilIdle()
 
-        assertTrue(reviewDone)
-        assertTrue(vm.uiState.value.reviewSubmitted)
+        assertEquals("Sangat memuaskan", vm.uiState.value.booking?.review?.comment)
+        assertEquals(CompletionStatus.TERLAMBAT, vm.uiState.value.booking?.outcome?.status)
     }
 
     @Test

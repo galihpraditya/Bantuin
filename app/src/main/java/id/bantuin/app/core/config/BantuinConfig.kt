@@ -35,12 +35,9 @@ object BantuinConfig {
 
     // F4 - Provider Trust Score
     const val TRUST_WINDOW_DAYS = 30
-    const val MIN_TX_FOR_EVALUATION = 5
-    const val NEW_PROVIDER_TRUST = 70.0
     const val W_TRUST_RATING = 0.45
     const val W_TRUST_ONTIME = 0.35
-    const val W_TRUST_RELIABILITY = 0.20
+    const val W_TRUST_CANCELLATION = 0.20
     const val TRUST_MIN_THRESHOLD = 60.0
     const val CANCEL_RATE_MAX_PCT = 20.0
-    const val LATE_TOLERANCE_MIN = 15
 }
