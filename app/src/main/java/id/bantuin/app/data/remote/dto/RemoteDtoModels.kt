@@ -84,7 +84,9 @@ data class BookingDto(
     @SerialName("expires_at") val expiresAt: String,
     @SerialName("started_at") val startedAt: String? = null,
     @SerialName("finished_at") val finishedAt: String? = null,
-    @SerialName("created_at") val createdAt: String? = null
+    @SerialName("created_at") val createdAt: String? = null,
+    @SerialName("reviews") val review: ReviewDto? = null,
+    @SerialName("booking_outcomes") val outcome: BookingOutcomeDto? = null
 )
 
 @Serializable
@@ -105,6 +107,7 @@ data class ReviewDto(
     @SerialName("provider_id") val providerId: String,
     @SerialName("rating") val rating: Int,
     @SerialName("comment") val comment: String? = null,
+    @SerialName("tags") val tags: List<String> = emptyList(),
     @SerialName("created_at") val createdAt: String? = null
 )
 
@@ -128,6 +131,26 @@ data class ProviderMetricSnapshotDto(
     @SerialName("cancel_rate") val cancelRate: Double? = null,
     @SerialName("tx_count") val txCount: Int,
     @SerialName("flag_anomaly") val flagAnomaly: Boolean
+)
+
+@Serializable
+data class BookingOutcomeDto(
+    @SerialName("booking_id") val bookingId: String,
+    @SerialName("provider_id") val providerId: String,
+    val status: String,
+    @SerialName("resolved_at") val resolvedAt: String,
+    @SerialName("customer_confirmed") val customerConfirmed: Boolean = false
+)
+
+@Serializable
+data class ProviderTrustInputDto(
+    @SerialName("provider_id") val providerId: String,
+    @SerialName("on_time_count") val onTimeCount: Int,
+    @SerialName("late_count") val lateCount: Int,
+    @SerialName("cancelled_count") val cancelledCount: Int,
+    @SerialName("rating_count") val ratingCount: Int,
+    @SerialName("rating_total") val ratingTotal: Long,
+    @SerialName("other_count") val otherCount: Int
 )
 
 // ===== RPC DTOs =====
@@ -165,18 +188,4 @@ data class CreateBookingRpcParams(
 data class UpdateBookingStatusRpcParams(
     @SerialName("p_booking") val bookingId: String,
     @SerialName("p_new") val newStatus: String
-)
-
-@Serializable
-data class ApplyProviderMetricsRpcParams(
-    @SerialName("p_provider") val providerId: String,
-    @SerialName("p_rating_avg") val ratingAvg: Double?,
-    @SerialName("p_completion_rate") val completionRate: Double?,
-    @SerialName("p_on_time_rate") val onTimeRate: Double?,
-    @SerialName("p_cancel_rate") val cancelRate: Double,
-    @SerialName("p_trust_score") val trustScore: Double,
-    @SerialName("p_tx_count") val txCount: Int,
-    @SerialName("p_flag") val flagAnomaly: Boolean,
-    @SerialName("p_badge") val badge: String,
-    @SerialName("p_rating_score") val ratingScore: Double?
 )

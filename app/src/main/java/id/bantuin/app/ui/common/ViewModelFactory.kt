@@ -48,7 +48,7 @@ class BantuinViewModelFactory(
             modelClass.isAssignableFrom(CustomerProfileViewModel::class.java) ->
                 CustomerProfileViewModel(repository) as T
             modelClass.isAssignableFrom(ProviderHomeViewModel::class.java) ->
-                ProviderHomeViewModel(repository, repository, repository) as T
+                ProviderHomeViewModel(repository, repository, repository, repository) as T
             modelClass.isAssignableFrom(ProviderOrdersViewModel::class.java) ->
                 ProviderOrdersViewModel(repository) as T
             modelClass.isAssignableFrom(ProviderCalendarViewModel::class.java) ->

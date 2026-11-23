@@ -116,55 +116,45 @@ on conflict (id) do update set
 
 -- ===== 4. Profil Spesifik 15 Mitra (public.provider_profiles) =====
 insert into public.provider_profiles (
-  user_id, bio, address, lat, lng, is_suspended,
-  rating_avg, completion_rate, on_time_rate, cancel_rate, trust_score, tx_count_30d, flag_anomaly, badge, metrics_updated_at
+  user_id, bio, address, lat, lng, is_suspended
 )
 values
   -- 1. Pak Budi Santoso (AC - Terpercaya, rujukan F1-F4)
-  ('00000000-0000-0000-0000-000000000001', 'Teknisi AC Berlisensi BNSP dengan 7+ tahun pengalaman.', 'Jl. Kaliurang No. 14, Lowokwaru, Malang', -7.9650, 112.6320, false, 4.90, 0.9900, 96.40, 1.00, 92.00, 184, false, 'TRUSTED', now()),
+  ('00000000-0000-0000-0000-000000000001', 'Teknisi AC Berlisensi BNSP dengan 7+ tahun pengalaman.', 'Jl. Kaliurang No. 14, Lowokwaru, Malang', -7.9650, 112.6320, false),
   -- 2. Ahmad Fauzi (AC - Terpercaya)
-  ('00000000-0000-0000-0000-000000000002', 'Spesialis pendingin ruangan dan elektronik rumah tangga.', 'Jl. Soekarno Hatta No. 88, Malang', -7.9520, 112.6250, false, 4.80, 0.9700, 95.00, 2.00, 89.00, 92, false, 'TRUSTED', now()),
+  ('00000000-0000-0000-0000-000000000002', 'Spesialis pendingin ruangan dan elektronik rumah tangga.', 'Jl. Soekarno Hatta No. 88, Malang', -7.9520, 112.6250, false),
   -- 3. Surya Citra Teknik (AC - Terpercaya)
-  ('00000000-0000-0000-0000-000000000003', 'Solusi Cepat AC Split, Multi-split & Inverter.', 'Jl. Danau Toba G9/E12, Sawojajar, Malang', -7.9300, 112.6400, false, 4.70, 0.9500, 93.00, 3.00, 86.00, 64, false, 'TRUSTED', now()),
+  ('00000000-0000-0000-0000-000000000003', 'Solusi Cepat AC Split, Multi-split & Inverter.', 'Jl. Danau Toba G9/E12, Sawojajar, Malang', -7.9300, 112.6400, false),
   -- 4. Pak Sugeng W. (Listrik - Terpercaya)
-  ('00000000-0000-0000-0000-000000000004', 'Spesialis Listrik Arus Kuat & Lemah, instalasi MCB rumah/kos.', 'Jl. Ijen No. 25, Klojen, Malang', -7.9750, 112.6310, false, 4.90, 0.9800, 97.00, 1.50, 94.00, 128, false, 'TRUSTED', now()),
+  ('00000000-0000-0000-0000-000000000004', 'Spesialis Listrik Arus Kuat & Lemah, instalasi MCB rumah/kos.', 'Jl. Ijen No. 25, Klojen, Malang', -7.9750, 112.6310, false),
   -- 5. Joko Hendro (Listrik - Anomali Cancel > 20%)
-  ('00000000-0000-0000-0000-000000000005', 'Perbaikan lampu dan kelistrikan darurat.', 'Jl. Bondowoso No. 4, Malang', -7.9700, 112.6200, false, 4.10, 0.7500, 90.00, 25.00, 62.00, 20, true, 'NONE', now()),
+  ('00000000-0000-0000-0000-000000000005', 'Perbaikan lampu dan kelistrikan darurat.', 'Jl. Bondowoso No. 4, Malang', -7.9700, 112.6200, false),
   -- 6. Rudi Hartono (Listrik - Anomali Trust Score < 60)
-  ('00000000-0000-0000-0000-000000000006', 'Layanan instalasi listrik kos.', 'Jl. Sulfat No. 12, Blimbing, Malang', -7.9600, 112.6450, false, 2.40, 0.8500, 80.00, 15.00, 54.00, 15, true, 'NONE', now()),
-  -- 7. Rian Pratama (Listrik - Mitra Baru < 5 tx)
-  ('00000000-0000-0000-0000-000000000007', 'Teknisi muda bersertifikasi vokasi.', 'Jl. Kawi No. 10, Klojen, Malang', -7.9850, 112.6350, false, null, null, null, 0.00, 70.00, 2, false, 'NEW', now()),
+  ('00000000-0000-0000-0000-000000000006', 'Layanan instalasi listrik kos.', 'Jl. Sulfat No. 12, Blimbing, Malang', -7.9600, 112.6450, false),
+  -- 7. Rian Pratama (Listrik - Mitra Baru)
+  ('00000000-0000-0000-0000-000000000007', 'Teknisi muda bersertifikasi vokasi.', 'Jl. Kawi No. 10, Klojen, Malang', -7.9850, 112.6350, false),
   -- 8. Pak Slamet Renovasi (Bangunan - Terpercaya)
-  ('00000000-0000-0000-0000-000000000008', 'Ahli perbaikan kebocoran atap dan instalasi kran sanitasi.', 'Jl. MT Haryono No. 50, Dinoyo, Malang', -7.9550, 112.6100, false, 4.80, 0.9600, 94.00, 2.00, 88.00, 55, false, 'TRUSTED', now()),
+  ('00000000-0000-0000-0000-000000000008', 'Ahli perbaikan kebocoran atap dan instalasi kran sanitasi.', 'Jl. MT Haryono No. 50, Dinoyo, Malang', -7.9550, 112.6100, false),
   -- 9. Tukang Siaga 24 Jam (Bangunan - ALWAYS_ON)
-  ('00000000-0000-0000-0000-000000000009', 'Siap meluncur 24 jam untuk kondisi kebocoran pipa darurat.', 'Jl. Veteran No. 1, Klojen, Malang', -7.9700, 112.6350, false, 4.60, 0.9400, 92.00, 3.00, 84.00, 78, false, 'TRUSTED', now()),
+  ('00000000-0000-0000-0000-000000000009', 'Siap meluncur 24 jam untuk kondisi kebocoran pipa darurat.', 'Jl. Veteran No. 1, Klojen, Malang', -7.9700, 112.6350, false),
   -- 10. Bu Siti Deep Clean (Kebersihan - Terpercaya)
-  ('00000000-0000-0000-0000-000000000010', 'Pembersihan total kamar mandi berkerak dan kamar kos.', 'Jl. Gajayana No. 22, Lowokwaru, Malang', -7.9620, 112.6150, false, 4.90, 0.9800, 96.00, 1.00, 93.00, 110, false, 'TRUSTED', now()),
+  ('00000000-0000-0000-0000-000000000010', 'Pembersihan total kamar mandi berkerak dan kamar kos.', 'Jl. Gajayana No. 22, Lowokwaru, Malang', -7.9620, 112.6150, false),
   -- 11. Klin Kos Ceria (Kebersihan - Baru < 5 tx)
-  ('00000000-0000-0000-0000-000000000011', 'Jasa kebersihan higienis untuk kos mahasiswa.', 'Jl. Semeru No. 3, Klojen, Malang', -7.9780, 112.6280, false, null, null, null, 0.00, 70.00, 1, false, 'NEW', now()),
+  ('00000000-0000-0000-0000-000000000011', 'Jasa kebersihan higienis untuk kos mahasiswa.', 'Jl. Semeru No. 3, Klojen, Malang', -7.9780, 112.6280, false),
   -- 12. Dimas Pick-up Angkut (Angkut - Terpercaya)
-  ('00000000-0000-0000-0000-000000000012', 'Armada bersih, terpal aman, bantu angkat barang sampai kamar.', 'Jl. Tlogomas No. 15, Malang', -7.9400, 112.6200, false, 4.80, 0.9500, 93.00, 2.50, 87.00, 42, false, 'TRUSTED', now()),
+  ('00000000-0000-0000-0000-000000000012', 'Armada bersih, terpal aman, bantu angkat barang sampai kamar.', 'Jl. Tlogomas No. 15, Malang', -7.9400, 112.6200, false),
   -- 13. Anisa Rahmawati, S.Si. (Privat - Terpercaya)
-  ('00000000-0000-0000-0000-000000000013', 'Tutor Sains & Matematika, alumni UB berprestasi.', 'Jl. Bandung No. 8, Klojen, Malang', -7.9720, 112.6350, false, 5.00, 1.0000, 99.00, 0.00, 96.00, 35, false, 'TRUSTED', now()),
+  ('00000000-0000-0000-0000-000000000013', 'Tutor Sains & Matematika, alumni UB berprestasi.', 'Jl. Bandung No. 8, Klojen, Malang', -7.9720, 112.6350, false),
   -- 14. Teknisi Kepanjen Mandiri (Luar Radius 17 km)
-  ('00000000-0000-0000-0000-000000000014', 'Layanan spesialis wilayah Malang Selatan.', 'Jl. Panji No. 80, Kepanjen, Malang', -8.1300, 112.5700, false, 4.70, 0.9500, 91.00, 2.00, 82.00, 18, false, 'TRUSTED', now()),
+  ('00000000-0000-0000-0000-000000000014', 'Layanan spesialis wilayah Malang Selatan.', 'Jl. Panji No. 80, Kepanjen, Malang', -8.1300, 112.5700, false),
   -- 15. Bambang Libur Service (Semua Hari OFF)
-  ('00000000-0000-0000-0000-000000000015', 'Sedang cuti operasional sementara.', 'Jl. Merdeka Barat, Malang', -7.9780, 112.6300, false, 4.50, 0.9000, 88.00, 4.00, 75.00, 10, false, 'NONE', now())
+  ('00000000-0000-0000-0000-000000000015', 'Sedang cuti operasional sementara.', 'Jl. Merdeka Barat, Malang', -7.9780, 112.6300, false)
 on conflict (user_id) do update set
   bio = excluded.bio,
   address = excluded.address,
   lat = excluded.lat,
   lng = excluded.lng,
-  is_suspended = excluded.is_suspended,
-  rating_avg = excluded.rating_avg,
-  completion_rate = excluded.completion_rate,
-  on_time_rate = excluded.on_time_rate,
-  cancel_rate = excluded.cancel_rate,
-  trust_score = excluded.trust_score,
-  tx_count_30d = excluded.tx_count_30d,
-  flag_anomaly = excluded.flag_anomaly,
-  badge = excluded.badge,
-  metrics_updated_at = excluded.metrics_updated_at;
+  is_suspended = excluded.is_suspended;
 
 -- ===== 5. Katalog Layanan Mitra (public.services) =====
 insert into public.services (id, provider_id, category_id, name, description, base_fare, duration_min, is_active)
@@ -329,10 +319,57 @@ values (
 )
 on conflict (id) do nothing;
 
--- ===== 8. Snapshot Historis Metrik Mitra Pak Budi (public.provider_metric_snapshots) =====
-insert into public.provider_metric_snapshots (provider_id, computed_at, trust_score, rating_score, on_time_rate, cancel_rate, tx_count, flag_anomaly)
-values
-  ('00000000-0000-0000-0000-000000000001', now() - interval '21 days', 88.00, 90.00, 92.00, 2.00, 160, false),
-  ('00000000-0000-0000-0000-000000000001', now() - interval '14 days', 90.00, 92.00, 95.00, 1.80, 170, false),
-  ('00000000-0000-0000-0000-000000000001', now() - interval '7 days', 91.00, 94.00, 96.00, 1.50, 178, false),
-  ('00000000-0000-0000-0000-000000000001', now(), 92.00, 96.40, 96.40, 1.00, 184, false);
+-- ===== 8. Skenario F4 dari pesanan dan ulasan aktual =====
+-- Sugeng (AMAN), Joko (rasio batal tinggi), Rudi (skor rendah dan rasio batal tinggi).
+with demo(job, provider, service, days_ago, booking_status, delay_minutes) as (
+  values
+    (10, 4, 6, 1, 'SELESAI', 5),
+    (11, 4, 6, 4, 'SELESAI', 5),
+    (12, 5, 8, 1, 'SELESAI', 5),
+    (13, 5, 8, 3, 'SELESAI', 5),
+    (14, 5, 8, 5, 'SELESAI', 5),
+    (15, 5, 8, 8, 'DIBATALKAN_MITRA', null),
+    (16, 6, 9, 2, 'SELESAI', 25),
+    (17, 6, 9, 4, 'SELESAI', 30),
+    (18, 6, 9, 7, 'DIBATALKAN_PELANGGAN', null),
+    (19, 6, 9, 9, 'DIBATALKAN_MITRA', null),
+    (20, 1, 1, 0, 'DALAM_PENGERJAAN', 5)
+), schedule as (
+  select demo.*, now() - days_ago * interval '1 day' - interval '1 hour' as starts
+  from demo
+)
+insert into public.bookings (
+  id, customer_id, provider_id, service_id, start_at, end_at, complexity, is_urgent,
+  distance_km, base_fare, base_cost, surge_applied, total_cost,
+  customer_lat, customer_lng, status, expires_at, started_at, finished_at, created_at
+)
+select
+  ('20000000-0000-0000-0000-' || lpad(job::text, 12, '0'))::uuid,
+  'c0000000-0000-0000-0000-000000000001',
+  ('00000000-0000-0000-0000-' || lpad(provider::text, 12, '0'))::uuid,
+  s.id, starts, starts + interval '90 minutes', 'RINGAN', false,
+  1.5, s.base_fare, s.base_fare + 3000, false, s.base_fare + 3000,
+  -7.9797, 112.6304, booking_status, starts, starts + delay_minutes * interval '1 minute',
+  case when booking_status <> 'DALAM_PENGERJAAN' then starts + interval '45 minutes' end,
+  starts - interval '2 hours'
+from schedule
+join public.services s on s.id = ('10000000-0000-0000-0000-' || lpad(service::text, 12, '0'))::uuid
+on conflict (id) do nothing;
+
+with demo(job, rating, comment) as (
+  values
+    (10, 5, 'Datang sesuai jadwal dan instalasi rapi.'),
+    (11, 5, 'Perbaikan selesai tepat waktu.'),
+    (12, 5, 'Perbaikan tuntas dan rapi.'),
+    (13, 5, 'Pelayanan baik dan cepat.'),
+    (14, 5, 'Datang sesuai jadwal.'),
+    (16, 2, 'Tiba jauh melebihi jadwal.'),
+    (17, 2, 'Pengerjaan dimulai terlambat.')
+)
+insert into public.reviews (id, booking_id, customer_id, provider_id, rating, comment, created_at)
+select
+  ('30000000-0000-0000-0000-' || lpad(job::text, 12, '0'))::uuid,
+  b.id, b.customer_id, b.provider_id, demo.rating, demo.comment, b.finished_at
+from demo
+join public.bookings b on b.id = ('20000000-0000-0000-0000-' || lpad(job::text, 12, '0'))::uuid
+on conflict do nothing;

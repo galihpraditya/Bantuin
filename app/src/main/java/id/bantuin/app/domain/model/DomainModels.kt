@@ -98,7 +98,8 @@ data class ProviderCandidate(
     val flagAnomaly: Boolean,
     val badge: ProviderBadge,
     val minBaseFare: Int?,
-    val responseTimeText: String = "< 15 mnt"
+    val responseTimeText: String = "< 15 mnt",
+    val isDemo: Boolean = false
 )
 
 data class RankedProvider(
@@ -161,20 +162,37 @@ data class LockInfo(
     val expiresAtMillis: Long
 )
 
-data class CompletedJob(
-    val startAt: Instant,
-    val startedAt: Instant
+enum class CompletionStatus(val label: String) {
+    SELESAI_TEPAT_WAKTU("Selesai Tepat Waktu"),
+    TERLAMBAT("Terlambat"),
+    DIBATALKAN("Dibatalkan")
+}
+
+data class TransactionOutcome(
+    val bookingId: String,
+    val providerId: String,
+    val status: CompletionStatus,
+    val resolvedAt: Instant,
+    val customerConfirmed: Boolean = false
 )
 
+data class BookingEvent(val status: BookingStatus, val occurredAt: Instant)
+
 data class TrustInput(
-    val completed: List<CompletedJob>,
-    val mitraCancelledCount: Int,
-    val ratings: List<Int>
-)
+    val onTimeCount: Int = 0,
+    val lateCount: Int = 0,
+    val cancelledCount: Int = 0,
+    val ratingCount: Int = 0,
+    val ratingTotal: Long = 0,
+    val otherCount: Int = 0
+) {
+    val transactionCount get() = onTimeCount + lateCount + cancelledCount + otherCount
+    val hasEvidence get() = transactionCount > 0 || ratingCount > 0
+}
 
 enum class AnomalyReason(val description: String) {
     LOW_TRUST_SCORE("Trust Score di bawah 60"),
-    HIGH_CANCEL_RATE("Rasio pembatalan mitra di atas 20%")
+    HIGH_CANCEL_RATE("Rasio pembatalan di atas 20%")
 }
 
 data class TrustResult(
@@ -229,7 +247,8 @@ data class BookingItem(
     val address: String,
     val createdAt: Instant,
     val notes: String? = null,
-    val review: ReviewItem? = null
+    val review: ReviewItem? = null,
+    val outcome: TransactionOutcome? = null
 )
 
 data class ReviewItem(
@@ -239,5 +258,7 @@ data class ReviewItem(
     val rating: Int,
     val comment: String?,
     val tags: List<String> = emptyList(),
-    val createdAtText: String = "Baru saja"
+    val createdAtText: String = "Baru saja",
+    val providerId: String = "",
+    val createdAt: Instant? = null
 )

@@ -1,7 +1,9 @@
 package id.bantuin.app.viewmodel
 
+import id.bantuin.app.core.dispatcher.AppDispatchers
 import id.bantuin.app.core.session.InMemorySessionStore
 import id.bantuin.app.data.repository.FakeBantuinRepository
+import id.bantuin.app.domain.model.CompletionStatus
 import id.bantuin.app.domain.model.AvailabilityMode
 import id.bantuin.app.domain.model.BookingStatus
 import id.bantuin.app.domain.model.GeoPoint
@@ -36,7 +38,7 @@ class ProviderViewModelsTest {
     @Before
     fun setUp() {
         Dispatchers.setMain(testDispatcher)
-        repository = FakeBantuinRepository()
+        repository = FakeBantuinRepository(calculationDispatcher = testDispatcher)
     }
 
     @After
@@ -59,6 +61,21 @@ class ProviderViewModelsTest {
     }
 
     @Test
+    fun providerHomeViewModel_loadsDataAndSwitchesToCustomer() = runTest {
+        val vm = ProviderHomeViewModel(repository, repository, repository, repository)
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        assertNotNull(vm.uiState.value.provider)
+
+        var switched = false
+        vm.switchToCustomer { switched = true }
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        assertTrue(switched)
+        assertEquals("customer", repository.activeRole().first())
+    }
+
+    @Test
     fun providerHomeViewModel_usesLoggedInMitra_notBudisProfile() = runTest {
         val mitraRepository = mitraRepository("p02", "Ahmad Fauzi")
         val vm = ProviderHomeViewModel(mitraRepository, mitraRepository, mitraRepository)
@@ -66,18 +83,6 @@ class ProviderViewModelsTest {
 
         assertEquals("p02", vm.uiState.value.provider?.providerId)
         assertEquals("Ahmad Fauzi", vm.uiState.value.user?.fullName)
-
-        var switched = false
-        var unauthorized = false
-        vm.switchToCustomer(
-            onAllowed = { switched = true },
-            onUnauthorized = { unauthorized = true }
-        )
-        testDispatcher.scheduler.advanceUntilIdle()
-
-        assertTrue(switched)
-        assertTrue(!unauthorized)
-        assertEquals("customer", mitraRepository.activeRole().first())
     }
 
     @Test
@@ -96,7 +101,7 @@ class ProviderViewModelsTest {
 
     @Test
     fun providerCalendarViewModel_validatesOperatingHours() = runTest {
-        val vm = ProviderCalendarViewModel(repository, repository)
+        val vm = ProviderCalendarViewModel(repository)
         testDispatcher.scheduler.advanceUntilIdle()
 
         assertTrue(vm.uiState.value.availabilities.isNotEmpty())
@@ -112,8 +117,7 @@ class ProviderViewModelsTest {
 
     @Test
     fun providerServicesViewModel_savesService() = runTest {
-        val mitraRepository = mitraRepository("p01", "Budi Santoso, S.T.")
-        val vm = ProviderServicesViewModel(mitraRepository, mitraRepository)
+        val vm = ProviderServicesViewModel(repository)
         testDispatcher.scheduler.advanceUntilIdle()
 
         val newService = ServiceItem(
@@ -134,7 +138,7 @@ class ProviderViewModelsTest {
 
     @Test
     fun providerProfileEditViewModel_updatesProfile() = runTest {
-        val vm = ProviderProfileEditViewModel(repository, repository)
+        val vm = ProviderProfileEditViewModel(repository)
         vm.loadProfile("p01")
         testDispatcher.scheduler.advanceUntilIdle()
 
@@ -159,22 +163,25 @@ class ProviderViewModelsTest {
     }
 
     @Test
-    fun providerDashboardViewModel_evaluatesTrustAndSimulatesAnomaly() = runTest {
-        val mitraRepository = mitraRepository("p02", "Ahmad Fauzi")
-        val vm = ProviderDashboardViewModel(mitraRepository, mitraRepository, mitraRepository)
+    fun providerDashboardViewModel_evaluatesTheSelectedProvidersHistory() = runTest {
+        val vm = ProviderDashboardViewModel(repository, dispatchers = AppDispatchers(
+            io = testDispatcher, default = testDispatcher
+        ))
+        vm.loadData("p01")
         testDispatcher.scheduler.advanceUntilIdle()
-
         assertNotNull(vm.uiState.value.trustResult)
-        val initialTrust = vm.uiState.value.trustResult?.trustScore ?: 0.0
-        assertTrue(initialTrust >= 60.0)
+        assertTrue(vm.uiState.value.trustResult?.flagAnomaly == false)
 
-        // Simulasikan rating anjlok ke 1.0 dan cancel rate tinggi
-        vm.updateSimulation(rating = 1.0, lateCount = 10, cancelCount = 15)
+        vm.loadData("p05")
         testDispatcher.scheduler.advanceUntilIdle()
+        assertEquals("p05", vm.uiState.value.providerId)
+        assertTrue(vm.uiState.value.trustResult?.flagAnomaly == true)
+        assertTrue(vm.uiState.value.transactions.any { it.status == CompletionStatus.DIBATALKAN })
 
-        assertTrue(vm.uiState.value.isSimulationActive)
-        val simTrust = vm.uiState.value.simResult?.trustScore ?: 100.0
-        assertTrue(simTrust < 60.0)
-        assertTrue(vm.uiState.value.simResult?.flagAnomaly == true)
+        vm.filterHistory(CompletionStatus.DIBATALKAN)
+        assertEquals(CompletionStatus.DIBATALKAN, vm.uiState.value.historyFilter)
+        vm.refresh()
+        testDispatcher.scheduler.advanceUntilIdle()
+        assertTrue(vm.uiState.value.snapshots.isNotEmpty())
     }
 }

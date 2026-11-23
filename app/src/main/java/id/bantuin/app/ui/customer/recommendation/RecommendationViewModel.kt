@@ -12,6 +12,7 @@ import id.bantuin.app.domain.model.RankedProvider
 import id.bantuin.app.domain.model.ServiceCategory
 import id.bantuin.app.domain.repository.CatalogRepository
 import id.bantuin.app.domain.usecase.matchmaking.MatchmakingUseCase
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -40,34 +41,29 @@ class RecommendationViewModel(
     private val _uiState = MutableStateFlow(RecommendationUiState())
     val uiState: StateFlow<RecommendationUiState> = _uiState.asStateFlow()
 
-    fun initialize(categoryId: Int, customerLocation: GeoPoint) {
-        viewModelScope.launch {
-            val catRes = catalogRepository.categories()
-            val cat = if (catRes is AppResult.Success) {
-                catRes.data.find { it.id == categoryId }
-            } else null
-            val resolvedCategory = cat 
-                ?: FakeData.categories.find { it.id == categoryId } 
-                ?: FakeData.categories.firstOrNull() 
-                ?: ServiceCategory(categoryId, "Layanan", "build", 60)
+    private var loadJob: Job? = null
 
-            _uiState.update {
-                it.copy(
-                    categoryId = categoryId,
-                    category = resolvedCategory,
-                    customerLocation = customerLocation
-                )
-            }
-            loadCandidates(categoryId, customerLocation)
+    fun initialize(categoryId: Int, customerLocation: GeoPoint) {
+        val cat = FakeData.categories.find { it.id == categoryId } ?: FakeData.categories[1]
+        _uiState.update {
+            it.copy(
+                categoryId = categoryId,
+                category = cat,
+                customerLocation = customerLocation
+            )
         }
+        loadJob?.cancel()
+        loadCandidates(categoryId, customerLocation, background = _uiState.value.rawCandidates.isNotEmpty())
     }
 
     fun loadCandidates(
         categoryId: Int = _uiState.value.categoryId,
-        customerLocation: GeoPoint = _uiState.value.customerLocation
+        customerLocation: GeoPoint = _uiState.value.customerLocation,
+        background: Boolean = false
     ) {
-        viewModelScope.launch {
-            _uiState.update { it.copy(isLoading = true, errorMessage = null) }
+        if (loadJob?.isActive == true) return
+        loadJob = viewModelScope.launch {
+            if (!background) _uiState.update { it.copy(isLoading = true, errorMessage = null) }
             when (val res = catalogRepository.candidates(categoryId)) {
                 is AppResult.Success -> {
                     recomputeRankings(
@@ -79,7 +75,9 @@ class RecommendationViewModel(
                     )
                 }
                 is AppResult.Error -> {
-                    _uiState.update { it.copy(isLoading = false, errorMessage = res.message) }
+                    if (!background || _uiState.value.rawCandidates.isEmpty()) {
+                        _uiState.update { it.copy(isLoading = false, errorMessage = res.message) }
+                    }
                 }
                 is AppResult.Loading -> {}
             }
@@ -98,28 +96,6 @@ class RecommendationViewModel(
 
     fun setOnlyTrusted(onlyTrusted: Boolean) {
         _uiState.update { it.copy(onlyTrusted = onlyTrusted) }
-        recomputeFiltered()
-    }
-
-    fun setFilters(maxDist: Double, minRating: Double, onlyTrusted: Boolean) {
-        _uiState.update {
-            it.copy(
-                maxDistanceFilter = maxDist,
-                minRatingFilter = minRating,
-                onlyTrusted = onlyTrusted
-            )
-        }
-        recomputeFiltered()
-    }
-
-    fun resetFilters() {
-        _uiState.update {
-            it.copy(
-                maxDistanceFilter = 10.0,
-                minRatingFilter = 0.0,
-                onlyTrusted = false
-            )
-        }
         recomputeFiltered()
     }
 
@@ -142,7 +118,8 @@ class RecommendationViewModel(
                 rawCandidates = candidates,
                 matchResult = matchResult,
                 filteredList = filtered,
-                isLoading = false
+                isLoading = false,
+                errorMessage = null
             )
         }
     }

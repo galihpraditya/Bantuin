@@ -430,7 +430,7 @@ fun ScheduleScreen(
                             }
                         }
 
-                        
+
                     }
                 }
             }

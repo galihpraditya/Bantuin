@@ -3,7 +3,6 @@ package id.bantuin.app.data.fake
 import id.bantuin.app.domain.model.AvailabilityMode
 import id.bantuin.app.domain.model.DayAvailability
 import id.bantuin.app.domain.model.GeoPoint
-import id.bantuin.app.domain.model.MetricSnapshot
 import id.bantuin.app.domain.model.ProviderBadge
 import id.bantuin.app.domain.model.ProviderCandidate
 import id.bantuin.app.domain.model.ReviewItem
@@ -404,13 +403,5 @@ object FakeData {
         ReviewItem("r01", "b01", "Rani Wijaya", 5, "Pak Budi datang cepat sekali, AC langsung dingin dan kamar tetap bersih!", listOf("Tepat Waktu", "Pekerjaan Rapi"), "1 hari lalu"),
         ReviewItem("r02", "b02", "Dimas Arya", 5, "Teknisi sangat sopan, dijelaskan kenapa air AC menetes dan langsung tuntas.", listOf("Sopan & Ramah", "Harga Sesuai"), "3 hari lalu"),
         ReviewItem("r03", "b03", "Eka Putri", 5, "Sangat terbantu di kos, tarif jelas transparan tanpa biaya tersembunyi.", listOf("Pekerjaan Rapi"), "1 minggu lalu")
-    )
-
-    // Riwayat snapshot mingguan untuk Screen 6 Canvas Chart
-    val sampleSnapshots = listOf(
-        MetricSnapshot("M-1", 88.0, 90.0, 92.0, 2.0),
-        MetricSnapshot("M-2", 90.0, 92.0, 95.0, 1.8),
-        MetricSnapshot("M-3", 91.0, 94.0, 96.0, 1.5),
-        MetricSnapshot("Sekarang", 92.0, 96.4, 96.4, 1.8)
     )
 }

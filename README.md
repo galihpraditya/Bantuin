@@ -77,7 +77,9 @@ Akun demo (kata sandi `Demo12345!`):
 - Pelanggan: `pelanggan1@bantuin.test`, `pelanggan2@bantuin.test`
 - Mitra: `mitra01@bantuin.test` … `mitra15@bantuin.test`
 
-Saat Supabase dikonfigurasi, login memakai Supabase Auth. Jalankan `supabase/migrations/001_init.sql`, lalu `supabase/seed.sql`. Untuk proyek yang sudah menjalankan seed versi lama, jalankan juga `supabase/migrations/002_fix_auth_and_grants.sql` agar akun demo dapat login dan hak akses tabel sesuai RLS. Tanpa Supabase, aplikasi memakai repository in-memory dengan akun demo yang sama.
+Saat Supabase dikonfigurasi, login memakai Supabase Auth. Terapkan migrasi di `supabase/migrations/` secara berurutan. Proyek yang sudah memakai migrasi 001 dan 002 cukup menerapkan `003_provider_trust_and_completion.sql`. Jalankan `supabase/seed.sql` pada database demo untuk menyiapkan akun dan skenario Trust Score. Tanpa konfigurasi Supabase, aplikasi memakai data demo in-memory.
+
+Untuk mendemokan konfirmasi dan ulasan, buka pesanan yang sedang dikerjakan sebagai `pelanggan1@bantuin.test`. Di Dashboard Mitra, akun `mitra01@bantuin.test` menunjukkan performa aman dan `mitra05@bantuin.test` menunjukkan rasio pembatalan tinggi. Pada rekomendasi kategori Teknisi Listrik, Pak Sugeng mendapat Badge Mitra Terpercaya dan Joko terkena penalti prioritas.
 
 ## Catatan penggunaan demo
 

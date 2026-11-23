@@ -6,19 +6,21 @@ import id.bantuin.app.data.fake.FakeData
 import id.bantuin.app.domain.model.AvailabilityMode
 import id.bantuin.app.domain.model.BookingItem
 import id.bantuin.app.domain.model.BookingStatus
-import id.bantuin.app.domain.model.CompletedJob
+import id.bantuin.app.core.config.BantuinConfig
+import id.bantuin.app.domain.model.BookingEvent
+import id.bantuin.app.domain.model.CompletionStatus
+import id.bantuin.app.domain.model.TransactionOutcome
+import id.bantuin.app.domain.usecase.trust.TrustScoreUseCase
 import id.bantuin.app.domain.model.DayAvailability
 import id.bantuin.app.domain.model.LockInfo
 import id.bantuin.app.domain.model.MetricSnapshot
 import id.bantuin.app.domain.model.OrderDraft
-import id.bantuin.app.domain.model.ProviderBadge
 import id.bantuin.app.domain.model.ProviderCandidate
 import id.bantuin.app.domain.model.ReviewItem
 import id.bantuin.app.domain.model.ServiceCategory
 import id.bantuin.app.domain.model.ServiceItem
 import id.bantuin.app.domain.model.TimeBlock
 import id.bantuin.app.domain.model.TrustInput
-import id.bantuin.app.domain.model.TrustResult
 import id.bantuin.app.domain.repository.AuthRepository
 import id.bantuin.app.domain.repository.BantuinRepository
 import id.bantuin.app.domain.repository.BookingRepository
@@ -26,24 +28,32 @@ import id.bantuin.app.domain.repository.CatalogRepository
 import id.bantuin.app.domain.repository.MetricsRepository
 import id.bantuin.app.domain.repository.ReviewRepository
 import id.bantuin.app.domain.repository.UserProfile
-import id.bantuin.app.domain.usecase.matchmaking.MatchmakingUseCase
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.datetime.Clock
 import kotlinx.datetime.Instant
 import java.util.UUID
-import kotlin.time.Duration.Companion.minutes
+import kotlin.time.Duration.Companion.days
+import kotlin.math.roundToInt
 
 class FakeBantuinRepository(
-    private val sessionStore: id.bantuin.app.core.session.UserSessionStore = id.bantuin.app.core.session.InMemorySessionStore()
+    private val sessionStore: id.bantuin.app.core.session.UserSessionStore = id.bantuin.app.core.session.InMemorySessionStore(),
+    private val clock: Clock = Clock.System,
+    private val calculationDispatcher: CoroutineDispatcher = Dispatchers.Default
 ) : BantuinRepository {
 
-    private val matchmakingUseCase = MatchmakingUseCase()
-    private val recalculateMetricsUseCase by lazy {
-        id.bantuin.app.domain.usecase.trust.RecalculateProviderMetricsUseCase(this)
-    }
+    private val trustScore = TrustScoreUseCase()
+    private val recordsMutex = Mutex()
+    private val metricRevisions = MutableStateFlow(0L)
+    override val trustChanges = metricRevisions.asStateFlow()
 
     // Data in-memory
     private val categoriesList = FakeData.categories.toMutableList()
@@ -55,7 +65,10 @@ class FakeBantuinRepository(
         }
     }
     private val bookingsFlow = MutableStateFlow<List<BookingItem>>(emptyList())
-    private val reviewsList = FakeData.sampleReviews.toMutableList()
+    private val outcomes = mutableMapOf<String, TransactionOutcome>()
+    private val reviews = mutableMapOf<String, ReviewItem>()
+    private val events = mutableMapOf<String, List<BookingEvent>>()
+    private val snapshots = mutableMapOf<String, List<MetricSnapshot>>()
     private val activeLocks = mutableMapOf<String, LockInfo>()
 
     init {
@@ -72,10 +85,12 @@ class FakeBantuinRepository(
             totalCost = 94220,
             status = BookingStatus.DALAM_PENGERJAAN,
             address = "Kost Putri Griya Asri, Jl. Kaliurang KM 5, Gang Wuni No. 12, Sleman",
-            createdAt = Clock.System.now(),
+            createdAt = clock.now(),
             notes = "AC di kamar lantai 2 meneteskan air terus dan tidak dingin."
         )
         bookingsFlow.value = listOf(initialBooking)
+        events[initialBooking.id] = listOf(BookingEvent(initialBooking.status, initialBooking.createdAt))
+        seedTrustExamples()
     }
 
     // ================= CATALOG REPOSITORY =================
@@ -91,7 +106,22 @@ class FakeBantuinRepository(
             val hasActiveDays = days.any { it.mode != AvailabilityMode.OFF }
             hasService && hasActiveDays
         }
-        return AppResult.Success(activeProviders)
+        return withContext(calculationDispatcher) {
+            recordsMutex.withLock {
+                AppResult.Success(activeProviders.map { candidate ->
+                    val input = trustInputFor(candidate.providerId, BantuinConfig.TRUST_WINDOW_DAYS)
+                    val result = trustScore(input)
+                    candidate.copy(
+                        ratingAvg = result.ratingAvg,
+                        reviewCount = input.ratingCount,
+                        completionRate = result.completionRate,
+                        flagAnomaly = result.flagAnomaly,
+                        badge = result.badge,
+                        isDemo = true
+                    )
+                })
+            }
+        }
     }
 
     override suspend fun servicesOf(providerId: String): AppResult<List<ServiceItem>> {
@@ -204,7 +234,7 @@ class FakeBantuinRepository(
             totalCost = draft.costEstimate?.total ?: draft.service.baseFare,
             status = BookingStatus.PENDING,
             address = draft.customerAddress,
-            createdAt = Clock.System.now(),
+            createdAt = clock.now(),
             notes = draft.notes.ifBlank { null }
         )
 
@@ -217,18 +247,28 @@ class FakeBantuinRepository(
     }
 
     override suspend fun updateStatus(bookingId: String, newStatus: BookingStatus): AppResult<Unit> {
-        val list = bookingsFlow.value.toMutableList()
-        val idx = list.indexOfFirst { it.id == bookingId }
-        if (idx < 0) return AppResult.Error("Pesanan tidak ditemukan")
-
-        val current = list[idx].status
-        if (!current.canTransitionTo(newStatus)) {
-            return AppResult.Error("Transisi status tidak valid: ${current.displayName} → ${newStatus.displayName}")
+        return withContext(calculationDispatcher) {
+            recordsMutex.withLock {
+                val booking = bookingsFlow.value.find { it.id == bookingId }
+                    ?: return@withLock AppResult.Error("Pesanan tidak ditemukan")
+                val current = booking.status
+                if (!current.canTransitionTo(newStatus)) {
+                    return@withLock AppResult.Error("Transisi status tidak valid: ${current.displayName} → ${newStatus.displayName}")
+                }
+                val outcome = when (newStatus) {
+                    BookingStatus.SELESAI -> CompletionStatus.SELESAI_TEPAT_WAKTU
+                    BookingStatus.DIBATALKAN_PELANGGAN, BookingStatus.DIBATALKAN_MITRA -> CompletionStatus.DIBATALKAN
+                    else -> null
+                }
+                val newOutcome = outcome != null && bookingId !in outcomes
+                if (outcome != null && newOutcome) {
+                    outcomes[bookingId] = TransactionOutcome(bookingId, booking.providerId, outcome, clock.now())
+                }
+                replaceBooking(booking.copy(status = newStatus, outcome = outcomes[bookingId]))
+                if (newOutcome) publishTrustChange(booking.providerId)
+                AppResult.Success(Unit)
+            }
         }
-
-        list[idx] = list[idx].copy(status = newStatus)
-        bookingsFlow.value = list
-        return AppResult.Success(Unit)
     }
 
     override suspend fun myBookingsCustomer(): AppResult<List<BookingItem>> {
@@ -254,79 +294,219 @@ class FakeBantuinRepository(
         }
     }
 
-    // ================= REVIEW REPOSITORY =================
+    internal fun hasLocalBooking(bookingId: String) = bookingsFlow.value.any { it.id == bookingId }
+    internal fun hasDemoProvider(providerId: String) = FakeData.providers.any { it.providerId == providerId }
+
+    override suspend fun bookingDetails(bookingId: String): AppResult<BookingItem?> =
+        AppResult.Success(bookingsFlow.value.find { it.id == bookingId })
+
+    override suspend fun bookingEvents(bookingId: String): AppResult<List<BookingEvent>> = recordsMutex.withLock {
+        val booking = bookingsFlow.value.find { it.id == bookingId }
+            ?: return@withLock AppResult.Success(emptyList())
+        AppResult.Success(events[bookingId] ?: listOf(BookingEvent(booking.status, booking.createdAt)))
+    }
+
     override suspend fun submitReview(
-        bookingId: String,
-        providerId: String,
-        rating: Int,
-        comment: String?,
-        tags: List<String>
-    ): AppResult<Unit> {
-        val review = ReviewItem(
-            id = UUID.randomUUID().toString(),
-            bookingId = bookingId,
-            customerName = sessionStore.currentUserValue?.fullName ?: "Pelanggan",
-            rating = rating,
-            comment = comment,
-            tags = tags,
-            createdAtText = "Baru saja"
-        )
-        reviewsList.add(0, review)
+        bookingId: String, providerId: String, rating: Int, comment: String?, tags: List<String>
+    ): AppResult<Unit> = saveReview(bookingId, providerId, rating, comment, tags, null)
 
-        // Update booking dengan ulasan
-        val list = bookingsFlow.value.toMutableList()
-        val idx = list.indexOfFirst { it.id == bookingId }
-        if (idx >= 0) {
-            list[idx] = list[idx].copy(review = review)
-            bookingsFlow.value = list
+    override suspend fun confirmCompletion(
+        bookingId: String, providerId: String, status: CompletionStatus,
+        rating: Int, comment: String?, tags: List<String>
+    ): AppResult<Unit> = saveReview(bookingId, providerId, rating, comment, tags, status)
+
+    private suspend fun saveReview(
+        bookingId: String, providerId: String, rating: Int, comment: String?, tags: List<String>,
+        status: CompletionStatus?
+    ): AppResult<Unit> = withContext(calculationDispatcher) {
+        recordsMutex.withLock {
+            val booking = ownedBooking(bookingId)?.takeIf { it.providerId == providerId }
+                ?: return@withLock AppResult.Error("Pesanan tidak ditemukan atau bukan milik Anda")
+            if (rating !in 1..5 || (comment?.length ?: 0) > 300 || tags.size > 4 || tags.any { it.length > 40 }) {
+                return@withLock AppResult.Error("Rating atau ulasan tidak valid")
+            }
+            val nextStatus = when (status) {
+                null -> booking.status.takeIf { it in reviewableStatuses }
+                CompletionStatus.DIBATALKAN -> when {
+                    booking.status.isActive -> BookingStatus.DIBATALKAN_PELANGGAN
+                    booking.status in cancelledStatuses -> booking.status
+                    else -> null
+                }
+                else -> BookingStatus.SELESAI.takeIf {
+                    booking.status in listOf(BookingStatus.DALAM_PENGERJAAN, BookingStatus.SELESAI)
+                }
+            } ?: return@withLock AppResult.Error("Status pesanan tidak mendukung konfirmasi ini")
+
+            val now = clock.now()
+            val oldOutcome = outcomes[bookingId]
+            if (status != null) {
+                outcomes[bookingId] = TransactionOutcome(
+                    bookingId, providerId, status, oldOutcome?.resolvedAt ?: now, customerConfirmed = true
+                )
+            }
+            val previous = reviews[bookingId]
+            val createdAt = previous?.createdAt ?: now
+            val review = ReviewItem(
+                id = previous?.id ?: UUID.randomUUID().toString(),
+                bookingId = bookingId,
+                customerName = booking.customerName,
+                rating = rating,
+                comment = comment?.trim()?.takeIf { it.isNotEmpty() },
+                tags = tags.toList(),
+                createdAtText = createdAt.toString().take(10),
+                providerId = providerId,
+                createdAt = createdAt
+            )
+            reviews[bookingId] = review
+            replaceBooking(booking.copy(status = nextStatus, review = review, outcome = outcomes[bookingId]))
+            if (previous != review || oldOutcome != outcomes[bookingId]) publishTrustChange(providerId)
+            AppResult.Success(Unit)
+        }
+    }
+
+    override suspend fun deleteReview(bookingId: String): AppResult<Unit> = withContext(calculationDispatcher) {
+        recordsMutex.withLock {
+            val booking = ownedBooking(bookingId)
+                ?: return@withLock AppResult.Error("Pesanan tidak ditemukan atau bukan milik Anda")
+            if (reviews.remove(bookingId) != null) {
+                replaceBooking(booking.copy(review = null))
+                publishTrustChange(booking.providerId)
+            }
+            AppResult.Success(Unit)
+        }
+    }
+
+    override suspend fun deleteTransactionOutcome(bookingId: String): AppResult<Unit> = withContext(calculationDispatcher) {
+        recordsMutex.withLock {
+            val booking = ownedBooking(bookingId)
+                ?: return@withLock AppResult.Error("Pesanan tidak ditemukan atau bukan milik Anda")
+            outcomes[bookingId]?.takeIf { it.customerConfirmed }?.let { confirmation ->
+                val baseline = if (booking.status == BookingStatus.SELESAI) {
+                    CompletionStatus.SELESAI_TEPAT_WAKTU
+                } else CompletionStatus.DIBATALKAN
+                val outcome = confirmation.copy(status = baseline, customerConfirmed = false)
+                outcomes[bookingId] = outcome
+                replaceBooking(booking.copy(outcome = outcome))
+                publishTrustChange(booking.providerId)
+            }
+            AppResult.Success(Unit)
+        }
+    }
+
+    override suspend fun reviewsOf(providerId: String): AppResult<List<ReviewItem>> = recordsMutex.withLock {
+        AppResult.Success(reviews.values.filter { it.providerId == providerId }.sortedByDescending { it.createdAt })
+    }
+
+    override suspend fun trustInput(providerId: String, sinceDays: Int): AppResult<TrustInput> =
+        withContext(calculationDispatcher) {
+            recordsMutex.withLock { AppResult.Success(trustInputFor(providerId, sinceDays)) }
         }
 
-        // Panggil Feedback Loop F4 -> F1
-        recalculateMetricsUseCase(providerId)
-        return AppResult.Success(Unit)
+    override suspend fun transactionHistory(
+        providerId: String, sinceDays: Int, status: CompletionStatus?
+    ): AppResult<List<TransactionOutcome>> = recordsMutex.withLock {
+        val range = window(sinceDays)
+        AppResult.Success(outcomes.values.filter {
+            it.providerId == providerId && it.resolvedAt in range && (status == null || it.status == status)
+        }.sortedByDescending { it.resolvedAt })
     }
 
-    override suspend fun reviewsOf(providerId: String): AppResult<List<ReviewItem>> {
-        return AppResult.Success(reviewsList.toList())
-    }
-
-    // ================= METRICS REPOSITORY =================
-    override suspend fun trustInput(providerId: String, sinceDays: Int): AppResult<TrustInput> {
-        val now = Clock.System.now()
-        val completed = listOf(
-            CompletedJob(now - 120.minutes, now - 115.minutes),
-            CompletedJob(now - 240.minutes, now - 238.minutes),
-            CompletedJob(now - 360.minutes, now - 355.minutes),
-            CompletedJob(now - 480.minutes, now - 470.minutes),
-            CompletedJob(now - 600.minutes, now - 590.minutes)
-        )
-        val ratings = reviewsList.map { it.rating }
-        return AppResult.Success(
-            TrustInput(
-                completed = completed,
-                mitraCancelledCount = 1,
-                ratings = if (ratings.isEmpty()) listOf(5, 5, 4, 5) else ratings
-            )
-        )
-    }
-
-    override suspend fun apply(providerId: String, result: TrustResult): AppResult<Unit> {
-        val idx = providersList.indexOfFirst { it.providerId == providerId }
-        if (idx >= 0) {
-            val p = providersList[idx]
-            providersList[idx] = p.copy(
-                ratingAvg = result.ratingAvg ?: p.ratingAvg,
-                completionRate = result.completionRate ?: p.completionRate,
-                flagAnomaly = result.flagAnomaly,
-                badge = result.badge
-            )
+    override suspend fun refreshTrust(providerId: String): AppResult<Unit> = withContext(calculationDispatcher) {
+        recordsMutex.withLock {
+            publishTrustChange(providerId)
+            AppResult.Success(Unit)
         }
-        return AppResult.Success(Unit)
     }
 
-    override suspend fun history(providerId: String): AppResult<List<MetricSnapshot>> {
-        return AppResult.Success(FakeData.sampleSnapshots)
+    override suspend fun history(providerId: String): AppResult<List<MetricSnapshot>> = recordsMutex.withLock {
+        AppResult.Success(snapshots[providerId].orEmpty())
     }
+
+    private fun ownedBooking(id: String): BookingItem? {
+        val customerId = sessionStore.currentUserValue?.id ?: return null
+        return bookingsFlow.value.find { it.id == id && it.customerId == customerId }
+    }
+
+    private fun replaceBooking(updated: BookingItem) {
+        val previous = bookingsFlow.value.first { it.id == updated.id }
+        if (previous.id !in events) {
+            events[previous.id] = listOf(BookingEvent(previous.status, previous.createdAt))
+        }
+        if (previous.status != updated.status) {
+            events[previous.id] = events.getValue(previous.id) + BookingEvent(updated.status, clock.now())
+        }
+        bookingsFlow.update { items -> items.map { if (it.id == updated.id) updated else it } }
+    }
+
+    private fun window(sinceDays: Int): ClosedRange<Instant> {
+        val now = clock.now()
+        return (now - sinceDays.coerceIn(1, BantuinConfig.TRUST_WINDOW_DAYS).days)..now
+    }
+
+    private fun trustInputFor(providerId: String, sinceDays: Int): TrustInput {
+        val range = window(sinceDays)
+        val recent = outcomes.values.filter { it.providerId == providerId && it.resolvedAt in range }
+        val ratings = reviews.values.filter { review ->
+            review.providerId == providerId && review.createdAt?.let { it in range } == true
+        }
+        return TrustInput(
+            onTimeCount = recent.count { it.status == CompletionStatus.SELESAI_TEPAT_WAKTU },
+            lateCount = recent.count { it.status == CompletionStatus.TERLAMBAT },
+            cancelledCount = recent.count { it.status == CompletionStatus.DIBATALKAN },
+            ratingCount = ratings.size,
+            ratingTotal = ratings.sumOf { it.rating.toLong() },
+            otherCount = bookingsFlow.value.count {
+                it.providerId == providerId && it.id !in outcomes && it.createdAt in range
+            }
+        )
+    }
+
+    private fun publishTrustChange(providerId: String) {
+        val result = trustScore(trustInputFor(providerId, BantuinConfig.TRUST_WINDOW_DAYS))
+        val snapshot = MetricSnapshot(
+            clock.now().toString().take(10), result.trustScore, result.ratingScore, result.onTimeRate, result.cancelRate
+        )
+        snapshots[providerId] = (snapshots[providerId].orEmpty() + snapshot).takeLast(12)
+        metricRevisions.update { it + 1 }
+    }
+
+    private fun seedTrustExamples() {
+        val now = clock.now()
+        val onTime = CompletionStatus.SELESAI_TEPAT_WAKTU
+        val late = CompletionStatus.TERLAMBAT
+        val cancelled = CompletionStatus.DIBATALKAN
+        FakeData.providers.filter { it.ratingAvg != null }.forEach { provider ->
+            val example = when (provider.providerId) {
+                "p01" -> listOf(onTime, onTime)
+                "p05" -> listOf(onTime, onTime, onTime, cancelled)
+                "p06" -> listOf(late, late, cancelled, cancelled)
+                else -> listOf(onTime, onTime, onTime, onTime, onTime)
+            }
+            example.forEachIndexed { index, status ->
+                val id = "demo-${provider.providerId}-${index + 1}"
+                val timestamp = now - (index + 1).days
+                outcomes[id] = TransactionOutcome(id, provider.providerId, status, timestamp)
+                if (status != cancelled) {
+                    val exampleReview = FakeData.sampleReviews.getOrNull(index).takeIf { provider.providerId == "p01" }
+                    val stars = if (provider.providerId == "p05") 5 else requireNotNull(provider.ratingAvg).roundToInt()
+                    reviews[id] = ReviewItem(
+                        id = "review-$id",
+                        bookingId = id,
+                        customerName = exampleReview?.customerName ?: "Pelanggan Demo",
+                        rating = stars,
+                        comment = exampleReview?.comment,
+                        tags = exampleReview?.tags.orEmpty(),
+                        createdAtText = timestamp.toString().take(10),
+                        providerId = provider.providerId,
+                        createdAt = timestamp
+                    )
+                }
+            }
+        }
+    }
+
+    private val cancelledStatuses = setOf(BookingStatus.DIBATALKAN_PELANGGAN, BookingStatus.DIBATALKAN_MITRA)
+    private val reviewableStatuses = cancelledStatuses + BookingStatus.SELESAI
 
     // ================= AUTH REPOSITORY =================
     override suspend fun signIn(email: String, pass: String): AppResult<String> {

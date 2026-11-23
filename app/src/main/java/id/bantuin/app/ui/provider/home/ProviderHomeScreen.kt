@@ -48,6 +48,9 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.lifecycle.viewmodel.compose.viewModel
 import id.bantuin.app.ui.common.BantuinViewModelFactory
+import id.bantuin.app.ui.common.LiveTrustRefresh
+import id.bantuin.app.ui.provider.dashboard.formatMetric
+import id.bantuin.app.ui.theme.RedError
 import id.bantuin.app.ui.theme.TextMuted
 import id.bantuin.app.ui.theme.TextPrimary
 import id.bantuin.app.ui.theme.TextSecondary
@@ -61,6 +64,11 @@ fun ProviderHomeScreen(
     modifier: Modifier = Modifier
 ) {
     val uiState by viewModel.uiState.collectAsState()
+    val providerId = uiState.user?.id
+    val trust = uiState.trustResult
+    LiveTrustRefresh(repository.trustChanges, providerId) {
+        providerId?.let(viewModel::refreshTrustScore)
+    }
 
     LazyColumn(
         modifier = modifier
@@ -141,9 +149,17 @@ fun ProviderHomeScreen(
                 )
                 SummaryCard(
                     title = "Trust Score",
-                    count = "92",
-                    subtext = "Sangat Baik",
-                    color = GreenSuccess,
+                    count = trust?.let { formatMetric(it.trustScore) } ?: "—",
+                    subtext = when (trust?.flagAnomaly) {
+                        true -> "Anomali"
+                        false -> "Aman"
+                        null -> "30 hari terakhir"
+                    },
+                    color = when (trust?.flagAnomaly) {
+                        true -> RedError
+                        false -> GreenSuccess
+                        null -> TextSecondary
+                    },
                     modifier = Modifier.weight(1f),
                     onClick = { onNavigateToRoute(Routes.PROVIDER_DASHBOARD) }
                 )

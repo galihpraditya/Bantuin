@@ -1,6 +1,9 @@
 package id.bantuin.app.domain.repository
 
 import id.bantuin.app.core.result.AppResult
+import id.bantuin.app.domain.model.BookingEvent
+import id.bantuin.app.domain.model.CompletionStatus
+import id.bantuin.app.domain.model.TransactionOutcome
 import id.bantuin.app.domain.model.BookingItem
 import id.bantuin.app.domain.model.BookingStatus
 import id.bantuin.app.domain.model.DayAvailability
@@ -13,11 +16,12 @@ import id.bantuin.app.domain.model.ServiceCategory
 import id.bantuin.app.domain.model.ServiceItem
 import id.bantuin.app.domain.model.TimeBlock
 import id.bantuin.app.domain.model.TrustInput
-import id.bantuin.app.domain.model.TrustResult
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.datetime.Instant
 
 interface CatalogRepository {
+    val trustChanges: Flow<Long> get() = flowOf(0L)
     suspend fun categories(): AppResult<List<ServiceCategory>>
     suspend fun candidates(categoryId: Int): AppResult<List<ProviderCandidate>>
     suspend fun servicesOf(providerId: String): AppResult<List<ServiceItem>>
@@ -48,18 +52,29 @@ interface BookingRepository {
     suspend fun updateStatus(bookingId: String, newStatus: BookingStatus): AppResult<Unit>
     suspend fun myBookingsCustomer(): AppResult<List<BookingItem>>
     suspend fun myBookingsProvider(): AppResult<List<BookingItem>>
+    suspend fun bookingDetails(bookingId: String): AppResult<BookingItem?>
+    suspend fun bookingEvents(bookingId: String): AppResult<List<BookingEvent>>
     fun observeBooking(bookingId: String): Flow<BookingItem?>
     fun observeCustomerBookings(): Flow<List<BookingItem>>
 }
 
 interface ReviewRepository {
     suspend fun submitReview(bookingId: String, providerId: String, rating: Int, comment: String?, tags: List<String>): AppResult<Unit>
+    suspend fun confirmCompletion(
+        bookingId: String, providerId: String, status: CompletionStatus,
+        rating: Int, comment: String?, tags: List<String>
+    ): AppResult<Unit>
+    suspend fun deleteReview(bookingId: String): AppResult<Unit>
+    suspend fun deleteTransactionOutcome(bookingId: String): AppResult<Unit>
     suspend fun reviewsOf(providerId: String): AppResult<List<ReviewItem>>
 }
 
 interface MetricsRepository {
     suspend fun trustInput(providerId: String, sinceDays: Int): AppResult<TrustInput>
-    suspend fun apply(providerId: String, result: TrustResult): AppResult<Unit>
+    suspend fun transactionHistory(
+        providerId: String, sinceDays: Int, status: CompletionStatus? = null
+    ): AppResult<List<TransactionOutcome>>
+    suspend fun refreshTrust(providerId: String): AppResult<Unit>
     suspend fun history(providerId: String): AppResult<List<MetricSnapshot>>
 }
 
