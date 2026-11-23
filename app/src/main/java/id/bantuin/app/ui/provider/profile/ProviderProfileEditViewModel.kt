@@ -88,11 +88,13 @@ class ProviderProfileEditViewModel(
         }
     }
 
-    fun onNameChange(name: String) = _uiState.update { it.copy(name = name, isSaved = false) }
-    fun onBioChange(bio: String) = _uiState.update { it.copy(bio = bio, isSaved = false) }
-    fun onPhoneChange(phone: String) = _uiState.update { it.copy(phone = phone, isSaved = false) }
-    fun onAddressChange(address: String) = _uiState.update { it.copy(address = address, isSaved = false) }
-    fun onLocationChange(location: GeoPoint) = _uiState.update { it.copy(location = location, isSaved = false) }
+    fun onNameChange(name: String) = _uiState.update { it.copy(name = name, isSaved = false, errorMessage = null) }
+    fun onBioChange(bio: String) = _uiState.update { it.copy(bio = bio, isSaved = false, errorMessage = null) }
+    fun onPhoneChange(phone: String) = _uiState.update { it.copy(phone = phone, isSaved = false, errorMessage = null) }
+    fun onAddressChange(address: String) = _uiState.update { it.copy(address = address, isSaved = false, errorMessage = null) }
+    fun onLocationChange(location: GeoPoint) = _uiState.update { it.copy(location = location, isSaved = false, errorMessage = null) }
+    fun clearErrorMessage() = _uiState.update { it.copy(errorMessage = null) }
+    fun resetSaved() = _uiState.update { it.copy(isSaved = false) }
 
     fun saveProfile() {
         val state = _uiState.value
@@ -104,16 +106,20 @@ class ProviderProfileEditViewModel(
             _uiState.update { it.copy(errorMessage = "Akun mitra tidak ditemukan") }
             return
         }
+        if (state.phone.isNotBlank() && !state.phone.matches(Regex("^[0-9+\\-\\s()]{8,20}$"))) {
+            _uiState.update { it.copy(errorMessage = "Format nomor telepon tidak valid") }
+            return
+        }
 
         viewModelScope.launch {
             _uiState.update { it.copy(isSaving = true, errorMessage = null) }
             val res = catalogRepository.updateProviderProfile(
                 providerId = state.providerId,
-                name = state.name,
-                bio = state.bio,
+                name = state.name.trim(),
+                bio = state.bio.trim(),
                 location = state.location,
-                address = state.address,
-                phone = state.phone
+                address = state.address.trim(),
+                phone = state.phone.trim()
             )
             when (res) {
                 is AppResult.Success -> {

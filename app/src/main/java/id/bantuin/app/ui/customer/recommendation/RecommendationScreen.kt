@@ -25,22 +25,30 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.LocationOn
+import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Slider
+import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
@@ -91,6 +99,7 @@ fun RecommendationScreen(
     modifier: Modifier = Modifier
 ) {
     val uiState by viewModel.uiState.collectAsState()
+    var showFilterSheet by remember { mutableStateOf(false) }
 
     androidx.compose.runtime.LaunchedEffect(categoryId, orderFlow.customerLocation) {
         viewModel.initialize(categoryId, orderFlow.customerLocation)
@@ -135,6 +144,15 @@ fun RecommendationScreen(
                         )
                     }
                 },
+                actions = {
+                    IconButton(onClick = { showFilterSheet = true }) {
+                        Icon(
+                            imageVector = Icons.Default.Tune,
+                            contentDescription = "Filter Slider",
+                            tint = if (uiState.maxDistanceFilter < 10.0 || uiState.minRatingFilter > 0.0 || uiState.onlyTrusted) OrangePrimary else TextPrimary
+                        )
+                    }
+                },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = NeutralBackground)
             )
         },
@@ -154,15 +172,12 @@ fun RecommendationScreen(
                     modifier = Modifier
                         .fillMaxWidth()
                         .horizontalScroll(rememberScrollState()),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
                     FilterChip(
                         selected = uiState.maxDistanceFilter == 10.0 && uiState.minRatingFilter == 0.0 && !uiState.onlyTrusted,
-                        onClick = {
-                            viewModel.setMaxDistanceFilter(10.0)
-                            viewModel.setMinRatingFilter(0.0)
-                            viewModel.setOnlyTrusted(false)
-                        },
+                        onClick = { viewModel.resetFilters() },
                         label = { Text("Semua Mitra") },
                         colors = FilterChipDefaults.filterChipColors(
                             selectedContainerColor = OrangeContainer,
@@ -183,11 +198,11 @@ fun RecommendationScreen(
                     )
 
                     FilterChip(
-                        selected = uiState.minRatingFilter == 4.8,
+                        selected = uiState.minRatingFilter == 4.5,
                         onClick = {
-                            viewModel.setMinRatingFilter(if (uiState.minRatingFilter == 4.8) 0.0 else 4.8)
+                            viewModel.setMinRatingFilter(if (uiState.minRatingFilter == 4.5) 0.0 else 4.5)
                         },
-                        label = { Text("Rating 4.8+") },
+                        label = { Text("Rating 4.5+") },
                         colors = FilterChipDefaults.filterChipColors(
                             selectedContainerColor = OrangeContainer,
                             selectedLabelColor = OrangePrimary
@@ -205,6 +220,23 @@ fun RecommendationScreen(
                             selectedLabelColor = OrangePrimary
                         )
                     )
+
+                    FilterChip(
+                        selected = showFilterSheet,
+                        onClick = { showFilterSheet = true },
+                        leadingIcon = {
+                            Icon(
+                                imageVector = Icons.Default.Tune,
+                                contentDescription = null,
+                                modifier = Modifier.size(16.dp)
+                            )
+                        },
+                        label = { Text("Filter Slider") },
+                        colors = FilterChipDefaults.filterChipColors(
+                            selectedContainerColor = OrangeContainer,
+                            selectedLabelColor = OrangePrimary
+                        )
+                    )
                 }
             }
 
@@ -213,20 +245,121 @@ fun RecommendationScreen(
                 SmartMatchmakingExplainerBanner()
             }
 
-            // 3. Daftar Kartu Rekomendasi Mitra Terurut
-            if (filteredList.isEmpty()) {
+            // 3. State Loading, Error, Empty, atau Daftar Kartu
+            if (uiState.isLoading) {
                 item {
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(vertical = 32.dp),
+                            .padding(vertical = 48.dp),
                         contentAlignment = Alignment.Center
                     ) {
-                        Text(
-                            text = "Tidak ada mitra yang memenuhi kriteria filter saat ini.",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = TextSecondary
-                        )
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            CircularProgressIndicator(color = OrangePrimary)
+                            Spacer(modifier = Modifier.height(12.dp))
+                            Text(
+                                text = "Mencari mitra terbaik...",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = TextSecondary
+                            )
+                        }
+                    }
+                }
+            } else if (uiState.errorMessage != null) {
+                item {
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(14.dp),
+                        colors = CardDefaults.cardColors(containerColor = Color(0xFFFFEBEE))
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(16.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            Text(
+                                text = uiState.errorMessage ?: "Terjadi kesalahan saat memuat mitra",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = RedError
+                            )
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Button(
+                                onClick = { viewModel.loadCandidates() },
+                                colors = ButtonDefaults.buttonColors(containerColor = OrangePrimary)
+                            ) {
+                                Text("Coba Lagi")
+                            }
+                        }
+                    }
+                }
+            } else if (matchResult.ranked.isEmpty()) {
+                item {
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(14.dp),
+                        colors = CardDefaults.cardColors(containerColor = NeutralSurface),
+                        border = CardDefaults.outlinedCardBorder().copy(brush = androidx.compose.ui.graphics.SolidColor(BorderSubtle))
+                    ) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(24.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            Text(
+                                text = "Tidak ada mitra dalam radius 10 km",
+                                style = MaterialTheme.typography.titleMedium,
+                                color = TextPrimary,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Spacer(modifier = Modifier.height(6.dp))
+                            Text(
+                                text = if (matchResult.outOfRange.isNotEmpty()) {
+                                    "Terdapat ${matchResult.outOfRange.size} mitra pada kategori ini, namun seluruhnya berada di luar batas jarak 10 km."
+                                } else {
+                                    "Belum ada mitra aktif untuk kategori ini di sekitar lokasi Anda."
+                                },
+                                style = MaterialTheme.typography.bodySmall,
+                                color = TextSecondary,
+                                textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                            )
+                        }
+                    }
+                }
+            } else if (filteredList.isEmpty()) {
+                item {
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(14.dp),
+                        colors = CardDefaults.cardColors(containerColor = NeutralSurface),
+                        border = CardDefaults.outlinedCardBorder().copy(brush = androidx.compose.ui.graphics.SolidColor(BorderSubtle))
+                    ) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(24.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            Text(
+                                text = "Tidak ada mitra yang memenuhi kriteria filter",
+                                style = MaterialTheme.typography.titleMedium,
+                                color = TextPrimary,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Spacer(modifier = Modifier.height(6.dp))
+                            Text(
+                                text = "Filter saat ini: jarak ≤ ${String.format(java.util.Locale.US, "%.1f", uiState.maxDistanceFilter)} km, rating ≥ ${String.format(java.util.Locale.US, "%.1f", uiState.minRatingFilter)}${if (uiState.onlyTrusted) ", hanya terpercaya" else ""}. Coba longgarkan filter.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = TextSecondary,
+                                textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                            )
+                            Spacer(modifier = Modifier.height(14.dp))
+                            Button(
+                                onClick = { viewModel.resetFilters() },
+                                colors = ButtonDefaults.buttonColors(containerColor = OrangePrimary)
+                            ) {
+                                Text("Reset Filter")
+                            }
+                        }
                     }
                 }
             } else {
@@ -246,6 +379,147 @@ fun RecommendationScreen(
                 item {
                     OutOfRangeNoticeCard(count = matchResult.outOfRange.size)
                 }
+            }
+        }
+    }
+
+    // Modal Bottom Sheet untuk Filter Slider
+    if (showFilterSheet) {
+        ModalBottomSheet(
+            onDismissRequest = { showFilterSheet = false },
+            containerColor = NeutralSurface,
+            sheetState = rememberModalBottomSheetState()
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 20.dp, vertical = 12.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "Filter Rekomendasi Mitra",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = TextPrimary
+                    )
+                    IconButton(onClick = { showFilterSheet = false }) {
+                        Icon(imageVector = Icons.Default.Close, contentDescription = "Tutup")
+                    }
+                }
+
+                // Slider Jarak Maksimum (1..10 km)
+                Column {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text(
+                            text = "Jarak Maksimum",
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.SemiBold,
+                            color = TextPrimary
+                        )
+                        Text(
+                            text = "${String.format(java.util.Locale.US, "%.1f", uiState.maxDistanceFilter)} km",
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = OrangePrimary
+                        )
+                    }
+                    Slider(
+                        value = uiState.maxDistanceFilter.toFloat(),
+                        onValueChange = { viewModel.setMaxDistanceFilter(it.toDouble()) },
+                        valueRange = 1f..10f,
+                        steps = 8,
+                        colors = SliderDefaults.colors(
+                            thumbColor = OrangePrimary,
+                            activeTrackColor = OrangePrimary
+                        )
+                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text("1 km", style = MaterialTheme.typography.bodySmall, color = TextMuted)
+                        Text("10 km", style = MaterialTheme.typography.bodySmall, color = TextMuted)
+                    }
+                }
+
+                // Slider Rating Minimum (0..5)
+                Column {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text(
+                            text = "Rating Minimum",
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.SemiBold,
+                            color = TextPrimary
+                        )
+                        Text(
+                            text = if (uiState.minRatingFilter == 0.0) "Semua" else "${String.format(java.util.Locale.US, "%.1f", uiState.minRatingFilter)} ★",
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = OrangePrimary
+                        )
+                    }
+                    Slider(
+                        value = uiState.minRatingFilter.toFloat(),
+                        onValueChange = { viewModel.setMinRatingFilter(it.toDouble()) },
+                        valueRange = 0f..5f,
+                        steps = 9,
+                        colors = SliderDefaults.colors(
+                            thumbColor = OrangePrimary,
+                            activeTrackColor = OrangePrimary
+                        )
+                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text("0 ★", style = MaterialTheme.typography.bodySmall, color = TextMuted)
+                        Text("5 ★", style = MaterialTheme.typography.bodySmall, color = TextMuted)
+                    }
+                }
+
+                // Checkbox Hanya Mitra Terpercaya
+                FilterChip(
+                    selected = uiState.onlyTrusted,
+                    onClick = { viewModel.setOnlyTrusted(!uiState.onlyTrusted) },
+                    label = { Text("Hanya Tampilkan Mitra Terpercaya (Badge Hijau)") },
+                    colors = FilterChipDefaults.filterChipColors(
+                        selectedContainerColor = OrangeContainer,
+                        selectedLabelColor = OrangePrimary
+                    ),
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                // Tombol Aksi
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    TextButton(
+                        onClick = { viewModel.resetFilters() },
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Text("Reset")
+                    }
+                    Button(
+                        onClick = { showFilterSheet = false },
+                        colors = ButtonDefaults.buttonColors(containerColor = OrangePrimary),
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Text("Terapkan")
+                    }
+                }
+                Spacer(modifier = Modifier.height(16.dp))
             }
         }
     }
@@ -353,6 +627,32 @@ private fun ProviderRecommendationCard(
             }
 
             Spacer(modifier = Modifier.height(12.dp))
+
+            if (candidate.flagAnomaly) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(Color(0xFFFFEBEE))
+                        .padding(horizontal = 10.dp, vertical = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Info,
+                        contentDescription = null,
+                        tint = RedError,
+                        modifier = Modifier.size(16.dp)
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = "Peringatan Anomali: Kinerja menurun (skor rekomendasi dipotong 30%)",
+                        style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
+                        color = RedError,
+                        fontWeight = FontWeight.Medium
+                    )
+                }
+                Spacer(modifier = Modifier.height(10.dp))
+            }
 
             // Info Mitra
             Row(verticalAlignment = Alignment.CenterVertically) {
