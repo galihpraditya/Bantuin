@@ -3,6 +3,7 @@ package id.bantuin.app.ui.customer.providerdetail
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import id.bantuin.app.core.result.AppResult
+import id.bantuin.app.data.fake.FakeData
 import id.bantuin.app.domain.model.ProviderCandidate
 import id.bantuin.app.domain.model.ReviewItem
 import id.bantuin.app.domain.model.ServiceItem
