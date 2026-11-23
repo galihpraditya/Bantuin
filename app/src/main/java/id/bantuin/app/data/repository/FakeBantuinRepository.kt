@@ -182,10 +182,14 @@ class FakeBantuinRepository(
     }
 
     override suspend fun createBooking(draft: OrderDraft): AppResult<String> {
+        val currentUserId = sessionStore.currentUserValue?.id ?: "user_guest"
+        if (currentUserId == draft.provider.providerId) {
+            return AppResult.Error("Mitra tidak dapat memesan layanannya sendiri.")
+        }
         val bookingId = "bti_" + UUID.randomUUID().toString().take(6)
         val newBooking = BookingItem(
             id = bookingId,
-            customerId = sessionStore.currentUserValue?.id ?: "user_guest",
+            customerId = currentUserId,
             customerName = sessionStore.currentUserValue?.fullName ?: "Pelanggan",
             providerId = draft.provider.providerId,
             providerName = draft.provider.name,
