@@ -66,4 +66,88 @@ class CostEstimatorUseCaseTest {
         assertTrue(r8.surgeApplied)
         assertEquals(SurgeReason.NIGHT, r8.surgeReason)
     }
+
+    @Test
+    fun testZeroDistance_calculatesCorrectlyWithoutDistanceCost() {
+        val result = useCase(
+            baseFare = 80000,
+            distanceKm = 0.0,
+            complexity = Complexity.RINGAN,
+            startMinOfDay = 600,
+            isUrgent = false
+        )
+        assertEquals(0, result.distanceCost)
+        assertEquals(80000, result.baseCost)
+        assertEquals(80000, result.total)
+        assertFalse(result.surgeApplied)
+        assertEquals(SurgeReason.NONE, result.surgeReason)
+    }
+
+    @Test
+    fun testRoundingUpCeilingTo500() {
+        // baseFare = 45100, dist = 0.0, RINGAN (weight 1.0) -> raw = 45100 -> roundUp500 = 45500
+        val r = useCase(
+            baseFare = 45100,
+            distanceKm = 0.0,
+            complexity = Complexity.RINGAN,
+            startMinOfDay = 600,
+            isUrgent = false
+        )
+        assertEquals(45500, r.baseCost)
+        assertEquals(45500, r.total)
+    }
+
+    @Test
+    fun testPeakHourExactBoundaries() {
+        // PEAK_RANGES in BantuinConfig: 07:00-08:59 (420..539), 16:00-18:59 (960..1139)
+        // 420 (07:00) should be PEAK_HOUR
+        val rMorningStart = useCase(50000, 1.0, Complexity.RINGAN, 420, false)
+        assertTrue(rMorningStart.surgeApplied)
+        assertEquals(SurgeReason.PEAK_HOUR, rMorningStart.surgeReason)
+
+        // 539 (08:59) should be PEAK_HOUR
+        val rMorningEnd = useCase(50000, 1.0, Complexity.RINGAN, 539, false)
+        assertTrue(rMorningEnd.surgeApplied)
+        assertEquals(SurgeReason.PEAK_HOUR, rMorningEnd.surgeReason)
+
+        // 540 (09:00) should be normal (NONE)
+        val rAfterMorning = useCase(50000, 1.0, Complexity.RINGAN, 540, false)
+        assertFalse(rAfterMorning.surgeApplied)
+        assertEquals(SurgeReason.NONE, rAfterMorning.surgeReason)
+
+        // 960 (16:00) should be PEAK_HOUR
+        val rEveningStart = useCase(50000, 1.0, Complexity.RINGAN, 960, false)
+        assertTrue(rEveningStart.surgeApplied)
+        assertEquals(SurgeReason.PEAK_HOUR, rEveningStart.surgeReason)
+
+        // 1139 (18:59) should be PEAK_HOUR
+        val rEveningEnd = useCase(50000, 1.0, Complexity.RINGAN, 1139, false)
+        assertTrue(rEveningEnd.surgeApplied)
+        assertEquals(SurgeReason.PEAK_HOUR, rEveningEnd.surgeReason)
+
+        // 1140 (19:00) should be normal (NONE)
+        val rAfterEvening = useCase(50000, 1.0, Complexity.RINGAN, 1140, false)
+        assertFalse(rAfterEvening.surgeApplied)
+        assertEquals(SurgeReason.NONE, rAfterEvening.surgeReason)
+    }
+
+    @Test
+    fun testNightBoundaryAndNightPlusUrgent() {
+        // NIGHT_START_MIN = 20:00 (1200), NIGHT_END_MIN = 06:00 (360)
+        // 1199 (19:59) is normal
+        val rBeforeNight = useCase(50000, 1.0, Complexity.RINGAN, 1199, false)
+        assertFalse(rBeforeNight.surgeApplied)
+        assertEquals(SurgeReason.NONE, rBeforeNight.surgeReason)
+
+        // 1200 (20:00) is NIGHT
+        val rNightStart = useCase(50000, 1.0, Complexity.RINGAN, 1200, false)
+        assertTrue(rNightStart.surgeApplied)
+        assertEquals(SurgeReason.NIGHT, rNightStart.surgeReason)
+
+        // 1200 (20:00) with urgent = true -> NIGHT_AND_URGENT (surge 1.20x single)
+        val rNightAndUrgent = useCase(50000, 1.0, Complexity.RINGAN, 1200, true)
+        assertTrue(rNightAndUrgent.surgeApplied)
+        assertEquals(SurgeReason.NIGHT_AND_URGENT, rNightAndUrgent.surgeReason)
+        assertEquals(rNightStart.total, rNightAndUrgent.total)
+    }
 }
