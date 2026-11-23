@@ -22,6 +22,33 @@ enum class BookingStatus(val displayName: String) {
     DIBATALKAN_MITRA("Dibatalkan Mitra");
 
     val isActive get() = this in setOf(PENDING, DIKONFIRMASI, DALAM_PENGERJAAN)
+
+    /** Status akhir: tidak ada transisi lanjutan dan tidak bisa dibatalkan lagi. */
+    val isTerminal get() = this in setOf(
+        SELESAI, DITOLAK, KEDALUWARSA, DIBATALKAN_PELANGGAN, DIBATALKAN_MITRA
+    )
+
+    val isCancelled get() = this in setOf(
+        DITOLAK, KEDALUWARSA, DIBATALKAN_PELANGGAN, DIBATALKAN_MITRA
+    )
+
+    /** Pelanggan hanya boleh membatalkan sebelum mitra mulai mengerjakan. */
+    val canCustomerCancel get() = this in setOf(PENDING, DIKONFIRMASI)
+
+    /** Mitra sudah ditugaskan dan datang/bertugas pada status ini. */
+    val isProviderAssigned get() = this in setOf(DIKONFIRMASI, DALAM_PENGERJAAN, SELESAI)
+
+    /**
+     * Transisi yang diizinkan, mengikuti RPC update_booking_status di Supabase.
+     * Dipakai juga oleh repository offline agar demo tidak bisa melompati alur
+     * (misalnya PENDING langsung SELESAI saat mitra belum datang).
+     */
+    fun canTransitionTo(next: BookingStatus): Boolean = when (this) {
+        PENDING -> next in setOf(DIKONFIRMASI, DITOLAK, DIBATALKAN_PELANGGAN)
+        DIKONFIRMASI -> next in setOf(DALAM_PENGERJAAN, DIBATALKAN_MITRA, DIBATALKAN_PELANGGAN)
+        DALAM_PENGERJAAN -> next == SELESAI
+        else -> false
+    }
 }
 
 enum class AvailabilityMode { OFF, ON, ALWAYS_ON }

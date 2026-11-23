@@ -25,6 +25,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Call
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.Message
 import androidx.compose.material.icons.filled.Security
@@ -67,6 +68,8 @@ import id.bantuin.app.data.fake.FakeData
 import id.bantuin.app.domain.model.BookingStatus
 import id.bantuin.app.domain.repository.BantuinRepository
 import id.bantuin.app.ui.common.BantuinViewModelFactory
+import id.bantuin.app.ui.common.EmptyView
+import id.bantuin.app.ui.common.LoadingView
 import id.bantuin.app.ui.common.OsmMapView
 import id.bantuin.app.ui.theme.BorderSubtle
 import id.bantuin.app.ui.theme.GreenSuccess
@@ -91,14 +94,26 @@ fun OrderDetailScreen(
     modifier: Modifier = Modifier
 ) {
     val uiState by viewModel.uiState.collectAsState()
-    val scope = rememberCoroutineScope()
 
     androidx.compose.runtime.LaunchedEffect(bookingId) {
         viewModel.observeBooking(bookingId)
     }
 
     val booking = uiState.booking
-    val currentStatus = booking?.status ?: BookingStatus.DALAM_PENGERJAAN
+    val currentStatus = booking?.status
+    val isMitraAssigned = currentStatus?.isProviderAssigned == true
+
+    if (booking == null || currentStatus == null) {
+        if (uiState.isLoadingBooking) {
+            LoadingView(message = "Memuat status pesanan...")
+        } else {
+            EmptyView(
+                title = "Pesanan Tidak Ditemukan",
+                message = "Pesanan ini tidak tersedia atau sudah dihapus. Kembali ke daftar pesanan untuk memuat ulang."
+            )
+        }
+        return
+    }
 
     // Review form states
     val rating = uiState.rating
@@ -159,7 +174,12 @@ fun OrderDetailScreen(
                                 fontWeight = FontWeight.Bold
                             )
                             Text(
-                                text = "Estimasi 12 Menit",
+                                text = when (currentStatus) {
+                                    BookingStatus.DIKONFIRMASI -> "Estimasi tiba ±12 mnt"
+                                    BookingStatus.DALAM_PENGERJAAN -> "Sedang dikerjakan"
+                                    BookingStatus.SELESAI -> "Selesai"
+                                    else -> "Menunggu mitra"
+                                },
                                 style = MaterialTheme.typography.labelSmall,
                                 color = TextSecondary
                             )
@@ -169,11 +189,14 @@ fun OrderDetailScreen(
 
                         Text(
                             text = when (currentStatus) {
-                                BookingStatus.PENDING -> "Menunggu Konfirmasi Mitra"
-                                BookingStatus.DIKONFIRMASI -> "Pesanan Dikonfirmasi Mitra"
+                                BookingStatus.PENDING -> "Menunggu Mitra Menerima Pesanan"
+                                BookingStatus.DIKONFIRMASI -> "Mitra Menuju Lokasi Anda"
                                 BookingStatus.DALAM_PENGERJAAN -> "Teknisi Sedang Mengerjakan Servis"
                                 BookingStatus.SELESAI -> "Layanan Telah Selesai Dikerjakan"
-                                else -> "Pesanan ${currentStatus.displayName}"
+                                BookingStatus.DITOLAK -> "Pesanan Ditolak Mitra"
+                                BookingStatus.KEDALUWARSA -> "Pesanan Kedaluwarsa"
+                                BookingStatus.DIBATALKAN_PELANGGAN -> "Pesanan Dibatalkan Oleh Anda"
+                                BookingStatus.DIBATALKAN_MITRA -> "Pesanan Dibatalkan Mitra"
                             },
                             style = MaterialTheme.typography.titleLarge,
                             color = TextPrimary,
@@ -183,7 +206,13 @@ fun OrderDetailScreen(
                         Spacer(modifier = Modifier.height(4.dp))
 
                         Text(
-                            text = "Teknisi siaga di lokasi Anda. Pembayaran tunai dilakukan setelah pekerjaan diperiksa.",
+                            text = when (currentStatus) {
+                                BookingStatus.PENDING -> "Mitra belum menerima pesanan. Status akan berubah setelah mitra menekan Terima."
+                                BookingStatus.DIKONFIRMASI -> "Pesanan sudah diterima mitra. Teknisi sedang menuju alamat Anda, belum mulai mengerjakan."
+                                BookingStatus.DALAM_PENGERJAAN -> "Teknisi telah tiba dan sedang mengerjakan servis. Pembayaran tunai setelah pekerjaan diperiksa."
+                                BookingStatus.SELESAI -> "Pekerjaan selesai. Silakan beri ulasan untuk membantu mitra lain."
+                                else -> "Pesanan tidak dilanjutkan. Silakan buat pesanan baru bila masih membutuhkan jasa."
+                            },
                             style = MaterialTheme.typography.bodySmall,
                             color = TextSecondary
                         )
@@ -202,7 +231,11 @@ fun OrderDetailScreen(
                 ) {
                     OsmMapView(
                         centerPoint = FakeData.MALANG_CENTER,
-                        markerTitle = "Teknisi Siaga",
+                        markerTitle = when (currentStatus) {
+                            BookingStatus.PENDING -> "Alamat Tujuan"
+                            BookingStatus.DIKONFIRMASI -> "Mitra Menuju Lokasi"
+                            else -> "Lokasi Pengerjaan"
+                        },
                         zoomLevel = 15.0
                     )
                 }
@@ -229,7 +262,11 @@ fun OrderDetailScreen(
                                 contentAlignment = Alignment.Center
                             ) {
                                 Text(
-                                    text = "B",
+                                    text = if (isMitraAssigned) {
+                                        booking.providerName.take(1).uppercase()
+                                    } else {
+                                        "?"
+                                    },
                                     style = MaterialTheme.typography.titleLarge,
                                     color = OrangePrimary
                                 )
@@ -237,12 +274,16 @@ fun OrderDetailScreen(
                             Spacer(modifier = Modifier.width(12.dp))
                             Column(modifier = Modifier.weight(1f)) {
                                 Text(
-                                    text = booking?.providerName ?: "Budi Santoso, S.T.",
+                                    text = if (isMitraAssigned) booking.providerName else "Mitra belum ditampilkan",
                                     style = MaterialTheme.typography.titleMedium,
                                     color = TextPrimary
                                 )
                                 Text(
-                                    text = "Kendaraan: N 4821 XY • Honda Vario Hitam",
+                                    text = when {
+                                        !isMitraAssigned -> "Mitra akan muncul setelah menerima pesanan"
+                                        currentStatus == BookingStatus.DIKONFIRMASI -> "Sedang menuju lokasi Anda"
+                                        else -> "Mitra tiba di lokasi pengerjaan"
+                                    },
                                     style = MaterialTheme.typography.bodySmall,
                                     color = TextSecondary
                                 )
@@ -257,6 +298,7 @@ fun OrderDetailScreen(
                         ) {
                             Button(
                                 onClick = {},
+                                enabled = isMitraAssigned,
                                 colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFF0EAE1)),
                                 shape = RoundedCornerShape(10.dp),
                                 modifier = Modifier.weight(1f)
@@ -319,72 +361,48 @@ fun OrderDetailScreen(
 
                         Spacer(modifier = Modifier.height(14.dp))
 
-                        TimelineStepItem(
-                            stepNumber = "1",
-                            title = "Pesanan Dikonfirmasi",
-                            description = "Sistem menugaskan mitra terdekat",
-                            timeText = "14:30 WIB",
-                            isCompleted = true
-                        )
-                        TimelineStepItem(
-                            stepNumber = "2",
-                            title = "Mitra Menuju Lokasi",
-                            description = "Sedang berkendara menuju alamat Anda",
-                            timeText = "14:38 WIB",
-                            isCompleted = currentStatus in listOf(BookingStatus.DALAM_PENGERJAAN, BookingStatus.SELESAI)
-                        )
-                        TimelineStepItem(
-                            stepNumber = "3",
-                            title = "Pengerjaan Servis AC",
-                            description = "Pembersihan unit, cuci filter & cek tekanan",
-                            timeText = "14:50 WIB",
-                            isCompleted = currentStatus == BookingStatus.SELESAI
-                        )
-                        TimelineStepItem(
-                            stepNumber = "4",
-                            title = "Konfirmasi Selesai & Pembayaran",
-                            description = "Pemeriksaan hasil kerja dan ulasan layanan",
-                            timeText = if (currentStatus == BookingStatus.SELESAI) "Selesai" else "Menunggu",
-                            isCompleted = currentStatus == BookingStatus.SELESAI,
-                            isLast = true
-                        )
+                        buildTrackingSteps(
+                            status = currentStatus,
+                            reviewSubmitted = isReviewSubmitted,
+                            scheduledTime = booking.scheduledTime
+                        ).forEachIndexed { index, step ->
+                            TimelineStepItem(
+                                step = step,
+                                isLast = index == 3
+                            )
+                        }
                     }
                 }
             }
 
-            // 5. Tombol Simulasi Alur Pesanan (Demo Helper)
-            if (currentStatus != BookingStatus.SELESAI) {
+            // 5. Aksi pelanggan: hanya membatalkan sebelum pengerjaan dimulai.
+            // Menandai selesai adalah hak mitra (PRD 6.1), jadi tidak ditampilkan di sini.
+            if (currentStatus.canCustomerCancel) {
                 item {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    OutlinedButton(
+                        onClick = { viewModel.updateStatus(BookingStatus.DIBATALKAN_PELANGGAN) },
+                        enabled = !uiState.isUpdatingStatus,
+                        shape = RoundedCornerShape(10.dp),
+                        modifier = Modifier.fillMaxWidth()
                     ) {
-                        Button(
-                            onClick = {
-                                scope.launch {
-                                    repository.updateStatus(bookingId, BookingStatus.SELESAI)
-                                }
-                            },
-                            colors = ButtonDefaults.buttonColors(containerColor = GreenSuccess),
-                            shape = RoundedCornerShape(10.dp),
-                            modifier = Modifier.weight(1f)
-                        ) {
-                            Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(16.dp))
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text("Tandai Selesai")
-                        }
+                        Text("Batalkan Pesanan", color = RedError)
+                    }
+                }
+            }
 
-                        OutlinedButton(
-                            onClick = {
-                                scope.launch {
-                                    repository.updateStatus(bookingId, BookingStatus.DIBATALKAN_PELANGGAN)
-                                }
-                            },
-                            shape = RoundedCornerShape(10.dp),
-                            modifier = Modifier.weight(1f)
-                        ) {
-                            Text("Batalkan Pesanan", color = RedError)
-                        }
+            if (uiState.errorMessage != null) {
+                item {
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(10.dp),
+                        colors = CardDefaults.cardColors(containerColor = Color(0xFFFFEBEE))
+                    ) {
+                        Text(
+                            text = uiState.errorMessage ?: "",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = RedError,
+                            modifier = Modifier.padding(14.dp)
+                        )
                     }
                 }
             }
@@ -532,34 +550,111 @@ fun OrderDetailScreen(
     }
 }
 
+private enum class TrackingStepState { DONE, ACTIVE, UPCOMING, STOPPED }
+
+private data class TrackingStepUi(
+    val number: String,
+    val title: String,
+    val description: String,
+    val timeText: String,
+    val state: TrackingStepState
+)
+
+/**
+ * Level progres 0..4. Status terminal yang dibatalkan berhenti di level
+ * yang sudah tercapai, sehingga tidak menampilkan "mitra menuju lokasi"
+ * saat pesanan masih PENDING / baru diterima.
+ */
+private fun trackingProgressLevel(status: BookingStatus, reviewSubmitted: Boolean): Int = when (status) {
+    BookingStatus.PENDING -> 0
+    BookingStatus.DIKONFIRMASI,
+    BookingStatus.DIBATALKAN_PELANGGAN,
+    BookingStatus.DIBATALKAN_MITRA -> 1
+    BookingStatus.DALAM_PENGERJAAN -> 2
+    BookingStatus.SELESAI -> if (reviewSubmitted) 4 else 3
+    BookingStatus.DITOLAK, BookingStatus.KEDALUWARSA -> 0
+}
+
+private fun buildTrackingSteps(
+    status: BookingStatus,
+    reviewSubmitted: Boolean,
+    scheduledTime: String
+): List<TrackingStepUi> {
+    val level = trackingProgressLevel(status, reviewSubmitted)
+    val isStopped = status.isCancelled
+    val titles = listOf(
+        "Pesanan Dibuat & Menunggu Mitra",
+        "Mitra Menerima & Menuju Lokasi",
+        "Pengerjaan Servis",
+        "Konfirmasi Selesai & Ulasan"
+    )
+    val descriptions = listOf(
+        "Sistem meneruskan pesanan ke mitra terdekat",
+        "Pesanan diterima, teknisi sedang dalam perjalanan",
+        "Teknisi tiba dan mengerjakan layanan sesuai pesanan",
+        "Periksa hasil kerja dan berikan ulasan"
+    )
+    val times = listOf(
+        scheduledTime,
+        if (level >= 2) "Diterima" else "Menunggu",
+        if (level >= 3) "Dikerjakan" else "Menunggu",
+        if (reviewSubmitted) "Selesai" else "Menunggu"
+    )
+
+    return titles.mapIndexed { index, title ->
+        val stepNumber = index + 1
+        val state = when {
+            stepNumber <= level -> TrackingStepState.DONE
+            isStopped -> TrackingStepState.STOPPED
+            stepNumber == level + 1 -> TrackingStepState.ACTIVE
+            else -> TrackingStepState.UPCOMING
+        }
+        TrackingStepUi(
+            number = "$stepNumber",
+            title = title,
+            description = descriptions[index],
+            timeText = times[index],
+            state = state
+        )
+    }
+}
+
 @Composable
 private fun TimelineStepItem(
-    stepNumber: String,
-    title: String,
-    description: String,
-    timeText: String,
-    isCompleted: Boolean,
+    step: TrackingStepUi,
     isLast: Boolean = false
 ) {
+    val (circleColor, connectorColor) = when (step.state) {
+        TrackingStepState.DONE -> GreenSuccess to GreenSuccess
+        TrackingStepState.ACTIVE -> OrangePrimary to OrangePrimary
+        TrackingStepState.STOPPED -> RedError to Color(0xFFE0E0E0)
+        TrackingStepState.UPCOMING -> Color(0xFFE0E0E0) to Color(0xFFE0E0E0)
+    }
+
     Row(modifier = Modifier.fillMaxWidth()) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
             Box(
                 modifier = Modifier
                     .size(24.dp)
                     .clip(CircleShape)
-                    .background(if (isCompleted) GreenSuccess else Color(0xFFE0E0E0)),
+                    .background(circleColor),
                 contentAlignment = Alignment.Center
             ) {
-                if (isCompleted) {
-                    Icon(
+                when (step.state) {
+                    TrackingStepState.DONE -> Icon(
                         imageVector = Icons.Default.Check,
                         contentDescription = null,
                         tint = Color.White,
                         modifier = Modifier.size(14.dp)
                     )
-                } else {
-                    Text(
-                        text = stepNumber,
+                    TrackingStepState.STOPPED -> Icon(
+                        imageVector = Icons.Default.Close,
+                        contentDescription = null,
+                        tint = Color.White,
+                        modifier = Modifier.size(14.dp)
+                    )
+                    else -> Text(
+                        text = step.number,
                         style = MaterialTheme.typography.labelSmall,
                         color = Color.DarkGray
                     )
@@ -571,7 +666,7 @@ private fun TimelineStepItem(
                     modifier = Modifier
                         .width(2.dp)
                         .height(36.dp)
-                        .background(if (isCompleted) GreenSuccess else Color(0xFFE0E0E0))
+                        .background(connectorColor)
                 )
             }
         }
@@ -584,18 +679,18 @@ private fun TimelineStepItem(
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
                 Text(
-                    text = title,
+                    text = step.title,
                     style = MaterialTheme.typography.labelLarge,
                     color = TextPrimary
                 )
                 Text(
-                    text = timeText,
+                    text = step.timeText,
                     style = MaterialTheme.typography.bodySmall,
                     color = TextMuted
                 )
             }
             Text(
-                text = description,
+                text = step.description,
                 style = MaterialTheme.typography.bodySmall,
                 color = TextSecondary
             )

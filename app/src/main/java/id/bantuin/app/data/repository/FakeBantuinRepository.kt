@@ -219,13 +219,16 @@ class FakeBantuinRepository(
     override suspend fun updateStatus(bookingId: String, newStatus: BookingStatus): AppResult<Unit> {
         val list = bookingsFlow.value.toMutableList()
         val idx = list.indexOfFirst { it.id == bookingId }
-        if (idx >= 0) {
-            val item = list[idx]
-            list[idx] = item.copy(status = newStatus)
-            bookingsFlow.value = list
-            return AppResult.Success(Unit)
+        if (idx < 0) return AppResult.Error("Pesanan tidak ditemukan")
+
+        val current = list[idx].status
+        if (!current.canTransitionTo(newStatus)) {
+            return AppResult.Error("Transisi status tidak valid: ${current.displayName} → ${newStatus.displayName}")
         }
-        return AppResult.Error("Pesanan tidak ditemukan")
+
+        list[idx] = list[idx].copy(status = newStatus)
+        bookingsFlow.value = list
+        return AppResult.Success(Unit)
     }
 
     override suspend fun myBookingsCustomer(): AppResult<List<BookingItem>> {

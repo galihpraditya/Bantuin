@@ -16,6 +16,8 @@ import kotlinx.coroutines.launch
 data class OrderDetailUiState(
     val bookingId: String = "",
     val booking: BookingItem? = null,
+    val isLoadingBooking: Boolean = true,
+    val bookingNotFound: Boolean = false,
     val rating: Int = 5,
     val reviewComment: String = "",
     val selectedTags: Set<String> = setOf("Tepat Waktu", "Sangat Rapi"),
@@ -34,12 +36,21 @@ class OrderDetailViewModel(
     val uiState: StateFlow<OrderDetailUiState> = _uiState.asStateFlow()
 
     fun observeBooking(bookingId: String) {
-        _uiState.update { it.copy(bookingId = bookingId) }
+        _uiState.update {
+            it.copy(
+                bookingId = bookingId,
+                booking = null,
+                isLoadingBooking = true,
+                bookingNotFound = false
+            )
+        }
         viewModelScope.launch {
             bookingRepository.observeBooking(bookingId).collect { item ->
                 _uiState.update {
                     it.copy(
                         booking = item,
+                        bookingNotFound = item == null,
+                        isLoadingBooking = false,
                         reviewSubmitted = item?.review != null
                     )
                 }
@@ -89,7 +100,20 @@ class OrderDetailViewModel(
     }
 
     fun updateStatus(status: BookingStatus) {
-        val bookingId = _uiState.value.bookingId
+        val state = _uiState.value
+        val bookingId = state.bookingId
+        val current = state.booking?.status
+        if (current == null) {
+            _uiState.update { it.copy(errorMessage = "Data pesanan belum tersedia") }
+            return
+        }
+        if (!current.canTransitionTo(status)) {
+            _uiState.update {
+                it.copy(errorMessage = "Status ${current.displayName} tidak bisa diubah menjadi ${status.displayName}")
+            }
+            return
+        }
+
         viewModelScope.launch {
             _uiState.update { it.copy(isUpdatingStatus = true, errorMessage = null) }
             when (val res = bookingRepository.updateStatus(bookingId, status)) {

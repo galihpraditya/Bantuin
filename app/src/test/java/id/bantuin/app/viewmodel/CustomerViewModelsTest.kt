@@ -238,6 +238,18 @@ class CustomerViewModelsTest {
     }
 
     @Test
+    fun orderDetailViewModel_missingBooking_isNotFoundInsteadOfInProgress() = runTest {
+        val vm = OrderDetailViewModel(repository, repository)
+
+        vm.observeBooking("booking_tidak_ada")
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        assertEquals(null, vm.uiState.value.booking)
+        assertTrue(vm.uiState.value.bookingNotFound)
+        assertTrue(!vm.uiState.value.isLoadingBooking)
+    }
+
+    @Test
     fun estimateViewModel_calculatesDynamicFareAndConfirmsOrder() = runTest {
         val vm = EstimateViewModel(repository)
         val provider = FakeData.providers.first()

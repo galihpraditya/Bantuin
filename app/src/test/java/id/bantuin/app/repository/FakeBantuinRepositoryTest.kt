@@ -3,6 +3,7 @@ package id.bantuin.app.repository
 import id.bantuin.app.core.result.AppResult
 import id.bantuin.app.core.session.InMemorySessionStore
 import id.bantuin.app.data.repository.FakeBantuinRepository
+import id.bantuin.app.domain.model.BookingStatus
 import id.bantuin.app.domain.model.GeoPoint
 import id.bantuin.app.domain.model.ProviderCandidate
 import kotlinx.coroutines.flow.firstOrNull
@@ -38,6 +39,35 @@ class FakeBantuinRepositoryTest {
         assertEquals("p01", user?.id)
         assertEquals("Budi Santoso, S.T.", user?.fullName)
         assertEquals(setOf("provider"), user?.roles)
+    }
+
+    @Test
+    fun updateStatus_rejectsSkippingArrival() = runBlocking {
+        // b01 sudah DALAM_PENGERJAAN; mundur ke PENDING bukan transisi valid.
+        val invalid = repo.updateStatus("b01", BookingStatus.PENDING)
+        assertTrue(invalid is AppResult.Error)
+
+        val valid = repo.updateStatus("b01", BookingStatus.SELESAI)
+        assertTrue(valid is AppResult.Success)
+
+        val booking = repo.observeBooking("b01").firstOrNull()
+        assertEquals(BookingStatus.SELESAI, booking?.status)
+    }
+
+    @Test
+    fun bookingStatus_exposesTrackingGuards() = runBlocking {
+        assertTrue(BookingStatus.PENDING.canCustomerCancel)
+        assertTrue(BookingStatus.DIKONFIRMASI.canCustomerCancel)
+        assertTrue(!BookingStatus.DALAM_PENGERJAAN.canCustomerCancel)
+
+        assertTrue(!BookingStatus.PENDING.isProviderAssigned)
+        assertTrue(BookingStatus.DIKONFIRMASI.isProviderAssigned)
+        assertTrue(BookingStatus.DALAM_PENGERJAAN.isProviderAssigned)
+
+        assertTrue(BookingStatus.PENDING.canTransitionTo(BookingStatus.DIKONFIRMASI))
+        assertTrue(!BookingStatus.PENDING.canTransitionTo(BookingStatus.SELESAI))
+        assertTrue(!BookingStatus.DIKONFIRMASI.canTransitionTo(BookingStatus.SELESAI))
+        assertTrue(BookingStatus.DALAM_PENGERJAAN.canTransitionTo(BookingStatus.SELESAI))
     }
 
     @Test
