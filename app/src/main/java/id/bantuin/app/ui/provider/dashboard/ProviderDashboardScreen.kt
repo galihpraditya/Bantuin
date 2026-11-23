@@ -21,6 +21,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
+import androidx.compose.material.icons.automirrored.filled.Logout
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Info
@@ -77,6 +78,9 @@ import id.bantuin.app.ui.theme.TextSecondary
 @Composable
 fun ProviderDashboardScreen(
     onNavigateToEvaluation: () -> Unit,
+    onSwitchToCustomer: () -> Unit,
+    onSwitchToCustomerUnauthorized: () -> Unit,
+    onSignOut: () -> Unit,
     repository: BantuinRepository,
     viewModel: ProviderDashboardViewModel = viewModel(factory = BantuinViewModelFactory(repository)),
     modifier: Modifier = Modifier
@@ -96,6 +100,91 @@ fun ProviderDashboardScreen(
         contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 24.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
+        // 0. Ringkasan akun yang sedang login (paling atas)
+        item {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(containerColor = NeutralSurface),
+                border = CardDefaults.outlinedCardBorder().copy(
+                    brush = androidx.compose.ui.graphics.SolidColor(BorderSubtle)
+                )
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Box(
+                            modifier = Modifier
+                                .size(52.dp)
+                                .clip(CircleShape)
+                                .background(OrangeContainer),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = uiState.user?.fullName?.take(1)?.uppercase() ?: "M",
+                                style = MaterialTheme.typography.titleLarge,
+                                color = OrangePrimary
+                            )
+                        }
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = uiState.user?.fullName ?: "Mitra Bantuin",
+                                style = MaterialTheme.typography.titleMedium,
+                                color = TextPrimary
+                            )
+                            Text(
+                                text = uiState.user?.email ?: "-",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = TextSecondary
+                            )
+                            Text(
+                                text = "Mode Mitra Kerja",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = OrangePrimary
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(14.dp))
+
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Button(
+                            onClick = {
+                                viewModel.switchToCustomer(
+                                    onAllowed = onSwitchToCustomer,
+                                    onUnauthorized = onSwitchToCustomerUnauthorized
+                                )
+                            },
+                            colors = ButtonDefaults.buttonColors(containerColor = OrangePrimary),
+                            shape = RoundedCornerShape(12.dp),
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(44.dp)
+                        ) {
+                            Text("Beralih ke Pelanggan", style = MaterialTheme.typography.labelSmall)
+                        }
+
+                        OutlinedButton(
+                            onClick = { viewModel.signOut(onSignOut) },
+                            shape = RoundedCornerShape(12.dp),
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(44.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Filled.Logout,
+                                contentDescription = null,
+                                tint = RedError,
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("Keluar", color = RedError, style = MaterialTheme.typography.labelSmall)
+                        }
+                    }
+                }
+            }
+        }
+
         // 1. Header Profil Mitra & Sakelar Online
         item {
             Card(
@@ -119,7 +208,7 @@ fun ProviderDashboardScreen(
                                 contentAlignment = Alignment.Center
                             ) {
                                 Text(
-                                    text = "B",
+                                    text = uiState.user?.fullName?.take(1)?.uppercase() ?: "M",
                                     style = MaterialTheme.typography.titleLarge,
                                     color = OrangePrimary
                                 )
@@ -128,7 +217,7 @@ fun ProviderDashboardScreen(
                             Column {
                                 Row(verticalAlignment = Alignment.CenterVertically) {
                                     Text(
-                                        text = "Pak Budi Santoso",
+                                        text = uiState.providerName,
                                         style = MaterialTheme.typography.titleMedium,
                                         color = TextPrimary
                                     )
@@ -141,7 +230,7 @@ fun ProviderDashboardScreen(
                                     )
                                 }
                                 Text(
-                                    text = "Mitra Teknisi AC & Pendingin",
+                                    text = uiState.providerSpecialty,
                                     style = MaterialTheme.typography.bodySmall,
                                     color = TextSecondary
                                 )

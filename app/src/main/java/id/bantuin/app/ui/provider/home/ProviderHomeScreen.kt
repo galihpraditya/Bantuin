@@ -61,6 +61,7 @@ fun ProviderHomeScreen(
     repository: BantuinRepository,
     onNavigateToRoute: (String) -> Unit,
     onSwitchToCustomer: () -> Unit,
+    onSwitchToCustomerUnauthorized: () -> Unit,
     viewModel: ProviderHomeViewModel = viewModel(factory = BantuinViewModelFactory(repository)),
     modifier: Modifier = Modifier
 ) {
@@ -96,7 +97,7 @@ fun ProviderHomeScreen(
                                 contentAlignment = Alignment.Center
                             ) {
                                 Text(
-                                    text = "B",
+                                    text = uiState.user?.fullName?.take(1)?.uppercase() ?: "M",
                                     style = MaterialTheme.typography.titleLarge,
                                     color = OrangePrimary
                                 )
@@ -104,7 +105,7 @@ fun ProviderHomeScreen(
                             Spacer(modifier = Modifier.width(12.dp))
                             Column {
                                 Text(
-                                    text = "Halo, Pak Budi!",
+                                    text = uiState.user?.fullName?.let { "Halo, $it!" } ?: "Halo, Mitra!",
                                     style = MaterialTheme.typography.titleLarge,
                                     color = TextPrimary
                                 )
@@ -118,7 +119,10 @@ fun ProviderHomeScreen(
 
                         Button(
                             onClick = {
-                                viewModel.switchToCustomer(onSwitchToCustomer)
+                                viewModel.switchToCustomer(
+                                    onAllowed = onSwitchToCustomer,
+                                    onUnauthorized = onSwitchToCustomerUnauthorized
+                                )
                             },
                             colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFF0EAE1)),
                             contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),

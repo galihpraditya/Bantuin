@@ -52,13 +52,13 @@ class BantuinViewModelFactory(
             modelClass.isAssignableFrom(ProviderOrdersViewModel::class.java) ->
                 ProviderOrdersViewModel(repository) as T
             modelClass.isAssignableFrom(ProviderCalendarViewModel::class.java) ->
-                ProviderCalendarViewModel(repository) as T
+                ProviderCalendarViewModel(repository, repository) as T
             modelClass.isAssignableFrom(ProviderServicesViewModel::class.java) ->
-                ProviderServicesViewModel(repository) as T
+                ProviderServicesViewModel(repository, repository) as T
             modelClass.isAssignableFrom(ProviderProfileEditViewModel::class.java) ->
-                ProviderProfileEditViewModel(repository) as T
+                ProviderProfileEditViewModel(repository, repository) as T
             modelClass.isAssignableFrom(ProviderDashboardViewModel::class.java) ->
-                ProviderDashboardViewModel(repository) as T
+                ProviderDashboardViewModel(repository, repository, repository) as T
             else -> throw IllegalArgumentException("Unknown ViewModel class: ${modelClass.name}")
         }
     }

@@ -13,6 +13,7 @@ import id.bantuin.app.domain.repository.UserProfile
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
@@ -35,23 +36,29 @@ class ProviderHomeViewModel(
     val uiState: StateFlow<ProviderHomeUiState> = _uiState.asStateFlow()
 
     init {
-        loadData()
-    }
-
-    fun loadData(providerId: String = "p01") {
         viewModelScope.launch {
             authRepository.currentUser().collect { user ->
                 _uiState.update { it.copy(user = user) }
             }
         }
+        loadData()
+    }
 
+    /**
+     * Data mitra diambil berdasarkan id akun yang login. Tidak ada fallback ke
+     * "p01"/Budi Santoso agar akun mitra lain tidak menampilkan profil orang lain.
+     */
+    fun loadData(providerId: String? = null) {
         viewModelScope.launch {
-            _uiState.update { it.copy(isLoading = true) }
+            val user = authRepository.currentUser().firstOrNull()
+            val resolvedId = providerId?.takeIf { it.isNotBlank() } ?: user?.id
+            _uiState.update { it.copy(user = user, isLoading = true) }
+
             val candidatesRes = catalogRepository.candidates(2) // AC category
             val ordersRes = bookingRepository.myBookingsProvider()
 
-            val provider = if (candidatesRes is AppResult.Success) {
-                candidatesRes.data.find { it.providerId == providerId } ?: candidatesRes.data.firstOrNull()
+            val provider = if (candidatesRes is AppResult.Success && resolvedId != null) {
+                candidatesRes.data.find { it.providerId == resolvedId }
             } else null
 
             val orders = if (ordersRes is AppResult.Success) ordersRes.data else emptyList()
@@ -68,10 +75,19 @@ class ProviderHomeViewModel(
         }
     }
 
-    fun switchToCustomer(onSuccess: () -> Unit) {
+    fun switchToCustomer(
+        onAllowed: () -> Unit,
+        onUnauthorized: () -> Unit
+    ) {
         viewModelScope.launch {
+            val user = authRepository.currentUser().firstOrNull()
+            if (user?.roles?.contains("customer") != true) {
+                authRepository.signOut()
+                onUnauthorized()
+                return@launch
+            }
             authRepository.setActiveRole("customer")
-            onSuccess()
+            onAllowed()
         }
     }
 }

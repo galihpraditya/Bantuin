@@ -53,6 +53,7 @@ import kotlinx.coroutines.launch
 fun CustomerProfileScreen(
     repository: BantuinRepository,
     onSwitchRole: () -> Unit,
+    onSwitchRoleUnauthorized: () -> Unit,
     onSignOut: () -> Unit,
     viewModel: CustomerProfileViewModel = viewModel(factory = BantuinViewModelFactory(repository)),
     modifier: Modifier = Modifier
@@ -120,7 +121,11 @@ fun CustomerProfileScreen(
             // Tombol Alih ke Mode Mitra
             Button(
                 onClick = {
-                    viewModel.switchRole("provider", onSwitchRole)
+                    viewModel.switchRole(
+                        newRole = "provider",
+                        onAllowed = onSwitchRole,
+                        onUnauthorized = onSwitchRoleUnauthorized
+                    )
                 },
                 colors = ButtonDefaults.buttonColors(containerColor = OrangePrimary),
                 shape = RoundedCornerShape(12.dp),

@@ -72,7 +72,6 @@ import id.bantuin.app.ui.theme.RedError
 import id.bantuin.app.ui.theme.TextMuted
 import id.bantuin.app.ui.theme.TextPrimary
 import id.bantuin.app.ui.theme.TextSecondary
-import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -87,16 +86,16 @@ fun ProviderProfileEditScreen(
     val scope = rememberCoroutineScope()
     val snackbarHostState = remember { SnackbarHostState() }
 
-    var name by remember { mutableStateOf("Budi Santoso, S.T.") }
-    var bio by remember { mutableStateOf("Teknisi spesialis tata udara & kelistrikan rumah tangga berpengalaman 8 tahun di Malang.") }
-    var address by remember { mutableStateOf("Jl. Mayjen Panjaitan No. 42, Klojen, Kota Malang") }
-    var phone by remember { mutableStateOf("081234567890") }
+    var name by remember { mutableStateOf("") }
+    var bio by remember { mutableStateOf("") }
+    var address by remember { mutableStateOf("") }
+    var phone by remember { mutableStateOf("") }
     var location by remember { mutableStateOf(GeoPoint(-7.9780, 112.6310)) }
     var isSaving by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
 
     LaunchedEffect(Unit) {
-        viewModel.loadProfile("p01")
+        viewModel.loadProfile()
     }
 
     LaunchedEffect(uiState.name) {
@@ -116,23 +115,6 @@ fun ProviderProfileEditScreen(
             Triple("Sawojajar", GeoPoint(-7.9772, 112.6562), "Jl. Danau Toba, Sawojajar, Malang"),
             Triple("Dinoyo", GeoPoint(-7.9405, 112.6074), "Jl. MT Haryono No. 193, Dinoyo, Malang")
         )
-    }
-
-    LaunchedEffect(Unit) {
-        val res = repository.candidates(2)
-        if (res is AppResult.Success) {
-            val p = res.data.find { it.providerId == "p01" }
-            if (p != null) {
-                name = p.name
-                bio = p.bio
-                address = p.address
-                location = p.location
-            }
-        }
-        val user = repository.currentUser().firstOrNull()
-        if (user != null && user.phone.isNotBlank()) {
-            phone = user.phone
-        }
     }
 
     Scaffold(
@@ -315,7 +297,7 @@ fun ProviderProfileEditScreen(
                         isSaving = true
                         scope.launch {
                             val res = repository.updateProviderProfile(
-                                providerId = "p01",
+                                providerId = uiState.providerId,
                                 name = name.trim(),
                                 bio = bio.trim(),
                                 location = location,

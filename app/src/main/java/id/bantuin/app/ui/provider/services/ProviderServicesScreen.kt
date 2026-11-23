@@ -94,7 +94,7 @@ fun ProviderServicesScreen(
     }
 
     fun reloadServices() {
-        viewModel.loadData("p01")
+        viewModel.loadData()
     }
 
     LaunchedEffect(Unit) {
@@ -283,6 +283,7 @@ fun ProviderServicesScreen(
     if (showUpsertDialog) {
         UpsertServiceDialog(
             existing = editingService,
+            providerId = uiState.providerId,
             onDismiss = { showUpsertDialog = false },
             onConfirm = { savedService ->
                 scope.launch {
@@ -331,6 +332,7 @@ fun ProviderServicesScreen(
 @Composable
 private fun UpsertServiceDialog(
     existing: ServiceItem?,
+    providerId: String,
     onDismiss: () -> Unit,
     onConfirm: (ServiceItem) -> Unit
 ) {
@@ -450,7 +452,7 @@ private fun UpsertServiceDialog(
 
                     val item = ServiceItem(
                         id = existing?.id ?: ("s_" + UUID.randomUUID().toString().take(6)),
-                        providerId = existing?.providerId ?: "p01",
+                        providerId = existing?.providerId ?: providerId,
                         categoryId = selectedCategory,
                         name = name.trim(),
                         description = description.trim().ifBlank { null },

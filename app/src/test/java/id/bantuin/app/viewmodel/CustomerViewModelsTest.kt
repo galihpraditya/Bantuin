@@ -1,14 +1,17 @@
 package id.bantuin.app.viewmodel
 
+import id.bantuin.app.core.session.InMemorySessionStore
 import id.bantuin.app.data.fake.FakeData
 import id.bantuin.app.data.repository.FakeBantuinRepository
 import id.bantuin.app.domain.model.Complexity
 import id.bantuin.app.domain.model.GeoPoint
+import id.bantuin.app.domain.repository.UserProfile
 import id.bantuin.app.ui.customer.estimate.EstimateViewModel
 import id.bantuin.app.ui.customer.home.CustomerHomeViewModel
 import id.bantuin.app.ui.customer.notifications.CustomerNotificationsViewModel
 import id.bantuin.app.ui.customer.notifications.NotificationType
 import id.bantuin.app.ui.customer.orderdetail.OrderDetailViewModel
+import id.bantuin.app.ui.customer.profile.CustomerProfileViewModel
 import id.bantuin.app.ui.customer.recommendation.RecommendationViewModel
 import id.bantuin.app.ui.customer.schedule.ScheduleViewModel
 import kotlinx.coroutines.Dispatchers
@@ -54,6 +57,93 @@ class CustomerViewModelsTest {
 
         assertEquals("Jl. Suhat", vm.uiState.value.customerAddress)
         assertEquals(newPoint, vm.uiState.value.customerLocation)
+    }
+
+    @Test
+    fun customerHomeViewModel_switchToProvider_withoutProviderRole_signsOutAndRedirects() = runTest {
+        val sessionStore = InMemorySessionStore(
+            initialRole = "customer",
+            initialUser = UserProfile(
+                id = "user_customer_only",
+                fullName = "Dimas Arya",
+                email = "pelanggan2@bantuin.test",
+                phone = "081234567891",
+                roles = setOf("customer")
+            )
+        )
+        val customerOnlyRepository = FakeBantuinRepository(sessionStore = sessionStore)
+        val vm = CustomerHomeViewModel(customerOnlyRepository, customerOnlyRepository)
+
+        var allowed = false
+        var unauthorized = false
+        vm.switchToProvider(
+            onAllowed = { allowed = true },
+            onUnauthorized = { unauthorized = true }
+        )
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        assertTrue(!allowed)
+        assertTrue(unauthorized)
+        assertEquals(null, sessionStore.currentUserValue)
+        assertEquals("customer", sessionStore.activeRoleValue)
+    }
+
+    @Test
+    fun customerProfileViewModel_switchToProvider_withoutProviderRole_signsOutAndRedirects() = runTest {
+        val sessionStore = InMemorySessionStore(
+            initialRole = "customer",
+            initialUser = UserProfile(
+                id = "user_customer_only",
+                fullName = "Dimas Arya",
+                email = "pelanggan2@bantuin.test",
+                phone = "081234567891",
+                roles = setOf("customer")
+            )
+        )
+        val customerOnlyRepository = FakeBantuinRepository(sessionStore = sessionStore)
+        val vm = CustomerProfileViewModel(customerOnlyRepository)
+
+        var allowed = false
+        var unauthorized = false
+        vm.switchRole(
+            newRole = "provider",
+            onAllowed = { allowed = true },
+            onUnauthorized = { unauthorized = true }
+        )
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        assertTrue(!allowed)
+        assertTrue(unauthorized)
+        assertEquals(null, sessionStore.currentUserValue)
+    }
+
+    @Test
+    fun customerProfileViewModel_switchToProvider_withProviderRole_switchesSuccessfully() = runTest {
+        val sessionStore = InMemorySessionStore(
+            initialRole = "customer",
+            initialUser = UserProfile(
+                id = "user_multi_role",
+                fullName = "Rani Wijaya",
+                email = "pelanggan1@bantuin.test",
+                phone = "081234567890",
+                roles = setOf("customer", "provider")
+            )
+        )
+        val repository = FakeBantuinRepository(sessionStore = sessionStore)
+        val vm = CustomerProfileViewModel(repository)
+
+        var allowed = false
+        var unauthorized = false
+        vm.switchRole(
+            newRole = "provider",
+            onAllowed = { allowed = true },
+            onUnauthorized = { unauthorized = true }
+        )
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        assertTrue(allowed)
+        assertTrue(!unauthorized)
+        assertEquals("provider", sessionStore.activeRoleValue)
     }
 
     @Test

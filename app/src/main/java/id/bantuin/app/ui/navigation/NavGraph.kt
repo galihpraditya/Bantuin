@@ -139,6 +139,11 @@ fun BantuinNavGraph(
                             popUpTo(Routes.CUSTOMER_HOME) { inclusive = true }
                         }
                     },
+                    onSwitchToProviderUnauthorized = {
+                        navController.navigate(Routes.LOGIN) {
+                            popUpTo(0) { inclusive = true }
+                        }
+                    },
                     onEmergencyClick = {
                         orderFlow.selectedCategoryId = 2 // AC & Listrik
                         orderFlow.isUrgent = true
@@ -256,6 +261,11 @@ fun BantuinNavGraph(
                             popUpTo(Routes.CUSTOMER_HOME) { inclusive = true }
                         }
                     },
+                    onSwitchRoleUnauthorized = {
+                        navController.navigate(Routes.LOGIN) {
+                            popUpTo(0) { inclusive = true }
+                        }
+                    },
                     onSignOut = {
                         navController.navigate(Routes.LOGIN) {
                             popUpTo(0) { inclusive = true }
@@ -272,6 +282,11 @@ fun BantuinNavGraph(
                     onSwitchToCustomer = {
                         navController.navigate(Routes.CUSTOMER_HOME) {
                             popUpTo(Routes.PROVIDER_HOME) { inclusive = true }
+                        }
+                    },
+                    onSwitchToCustomerUnauthorized = {
+                        navController.navigate(Routes.LOGIN) {
+                            popUpTo(0) { inclusive = true }
                         }
                     }
                 )
@@ -290,6 +305,21 @@ fun BantuinNavGraph(
                     repository = repository,
                     onNavigateToEvaluation = {
                         navController.navigate(Routes.PROVIDER_EVALUATION)
+                    },
+                    onSwitchToCustomer = {
+                        navController.navigate(Routes.CUSTOMER_HOME) {
+                            popUpTo(Routes.PROVIDER_HOME) { inclusive = true }
+                        }
+                    },
+                    onSwitchToCustomerUnauthorized = {
+                        navController.navigate(Routes.LOGIN) {
+                            popUpTo(0) { inclusive = true }
+                        }
+                    },
+                    onSignOut = {
+                        navController.navigate(Routes.LOGIN) {
+                            popUpTo(0) { inclusive = true }
+                        }
                     }
                 )
             }

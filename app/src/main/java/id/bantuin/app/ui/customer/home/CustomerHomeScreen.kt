@@ -84,6 +84,7 @@ fun CustomerHomeScreen(
     orderFlow: OrderFlowManager,
     onCategoryClick: (Int) -> Unit,
     onSwitchToProvider: () -> Unit,
+    onSwitchToProviderUnauthorized: () -> Unit,
     onEmergencyClick: () -> Unit,
     repository: BantuinRepository,
     viewModel: CustomerHomeViewModel = viewModel(factory = BantuinViewModelFactory(repository)),
@@ -106,7 +107,12 @@ fun CustomerHomeScreen(
         item {
             CustomerHeaderSection(
                 customerName = uiState.user?.fullName ?: "Pengguna",
-                onSwitchRole = onSwitchToProvider
+                onSwitchRole = {
+                    viewModel.switchToProvider(
+                        onAllowed = onSwitchToProvider,
+                        onUnauthorized = onSwitchToProviderUnauthorized
+                    )
+                }
             )
         }
 

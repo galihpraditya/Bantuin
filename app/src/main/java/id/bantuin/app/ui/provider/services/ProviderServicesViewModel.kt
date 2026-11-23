@@ -6,15 +6,17 @@ import id.bantuin.app.core.result.AppResult
 import id.bantuin.app.data.fake.FakeData
 import id.bantuin.app.domain.model.ServiceCategory
 import id.bantuin.app.domain.model.ServiceItem
+import id.bantuin.app.domain.repository.AuthRepository
 import id.bantuin.app.domain.repository.CatalogRepository
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
 data class ProviderServicesUiState(
-    val providerId: String = "p01",
+    val providerId: String = "",
     val services: List<ServiceItem> = emptyList(),
     val categories: List<ServiceCategory> = emptyList(),
     val isUpsertDialogOpen: Boolean = false,
@@ -25,7 +27,8 @@ data class ProviderServicesUiState(
 )
 
 class ProviderServicesViewModel(
-    private val catalogRepository: CatalogRepository
+    private val catalogRepository: CatalogRepository,
+    private val authRepository: AuthRepository
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(ProviderServicesUiState())
@@ -35,10 +38,16 @@ class ProviderServicesViewModel(
         loadData()
     }
 
-    fun loadData(providerId: String = "p01") {
+    fun loadData(providerId: String? = null) {
         viewModelScope.launch {
-            _uiState.update { it.copy(providerId = providerId, isLoading = true, errorMessage = null) }
-            val servicesRes = catalogRepository.servicesOf(providerId)
+            val user = authRepository.currentUser().firstOrNull()
+            val resolvedId = providerId?.takeIf { it.isNotBlank() } ?: user?.id
+            if (resolvedId.isNullOrBlank()) {
+                _uiState.update { it.copy(isLoading = false, errorMessage = "Akun mitra tidak ditemukan") }
+                return@launch
+            }
+            _uiState.update { it.copy(providerId = resolvedId, isLoading = true, errorMessage = null) }
+            val servicesRes = catalogRepository.servicesOf(resolvedId)
             val categoriesRes = catalogRepository.categories()
 
             val services = if (servicesRes is AppResult.Success) servicesRes.data else emptyList()

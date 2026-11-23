@@ -288,7 +288,7 @@ object FakeData {
                     fullName = "Rani Wijaya",
                     email = "pelanggan1@bantuin.test",
                     phone = "081234567890",
-                    roles = setOf("customer", "provider")
+                    roles = setOf("customer")
                 )
             )
         )
@@ -302,7 +302,7 @@ object FakeData {
                     fullName = "Rani Wijaya",
                     email = "rani@bantuin.test",
                     phone = "081234567890",
-                    roles = setOf("customer", "provider")
+                    roles = setOf("customer")
                 )
             )
         )
@@ -315,7 +315,7 @@ object FakeData {
                     fullName = "Dimas Arya",
                     email = "pelanggan2@bantuin.test",
                     phone = "081234567891",
-                    roles = setOf("customer", "provider")
+                    roles = setOf("customer")
                 )
             )
         )
