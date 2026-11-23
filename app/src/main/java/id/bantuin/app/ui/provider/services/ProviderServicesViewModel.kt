@@ -93,7 +93,33 @@ class ProviderServicesViewModel(
         }
     }
 
+    fun clearError() {
+        _uiState.update { it.copy(errorMessage = null) }
+    }
+
+    fun toggleServiceActive(service: ServiceItem) {
+        val updated = service.copy(isActive = !service.isActive)
+        saveService(updated)
+    }
+
     fun saveService(service: ServiceItem) {
+        if (service.name.isBlank()) {
+            _uiState.update { it.copy(isSaving = false, errorMessage = "Nama layanan wajib diisi") }
+            return
+        }
+        if (service.baseFare < 0) {
+            _uiState.update { it.copy(isSaving = false, errorMessage = "Tarif dasar tidak boleh bernilai negatif") }
+            return
+        }
+        if (service.baseFare % 500 != 0) {
+            _uiState.update { it.copy(isSaving = false, errorMessage = "Tarif dasar harus kelipatan 500") }
+            return
+        }
+        if (service.durationMin < 15 || service.durationMin > 720) {
+            _uiState.update { it.copy(isSaving = false, errorMessage = "Durasi layanan harus antara 15 hingga 720 menit") }
+            return
+        }
+
         viewModelScope.launch {
             _uiState.update { it.copy(isSaving = true, errorMessage = null) }
             when (val res = catalogRepository.upsertService(service)) {
@@ -102,7 +128,8 @@ class ProviderServicesViewModel(
                         it.copy(
                             isSaving = false,
                             isUpsertDialogOpen = false,
-                            editingService = null
+                            editingService = null,
+                            errorMessage = null
                         )
                     }
                     loadData(_uiState.value.providerId)

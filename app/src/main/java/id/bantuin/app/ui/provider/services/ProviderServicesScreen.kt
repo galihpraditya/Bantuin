@@ -81,24 +81,10 @@ fun ProviderServicesScreen(
     modifier: Modifier = Modifier
 ) {
     val uiState by viewModel.uiState.collectAsState()
-    val scope = rememberCoroutineScope()
-    var services by remember { mutableStateOf<List<ServiceItem>>(emptyList()) }
-    var showUpsertDialog by remember { mutableStateOf(false) }
-    var editingService by remember { mutableStateOf<ServiceItem?>(null) }
     var serviceToDelete by remember { mutableStateOf<ServiceItem?>(null) }
 
-    LaunchedEffect(uiState.services) {
-        if (uiState.services.isNotEmpty()) {
-            services = uiState.services
-        }
-    }
-
-    fun reloadServices() {
-        viewModel.loadData()
-    }
-
     LaunchedEffect(Unit) {
-        reloadServices()
+        viewModel.loadData()
     }
 
     Column(
@@ -113,6 +99,36 @@ fun ProviderServicesScreen(
             contentPadding = PaddingValues(16.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
+            // Banner Error bila ada
+            if (uiState.errorMessage != null && !uiState.isUpsertDialogOpen) {
+                item {
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer),
+                        border = CardDefaults.outlinedCardBorder().copy(brush = androidx.compose.ui.graphics.SolidColor(MaterialTheme.colorScheme.error))
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(14.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Text(
+                                text = uiState.errorMessage ?: "",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onErrorContainer,
+                                modifier = Modifier.weight(1f)
+                            )
+                            TextButton(onClick = { viewModel.clearError() }) {
+                                Text("Tutup")
+                            }
+                        }
+                    }
+                }
+            }
+
             item {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -133,8 +149,7 @@ fun ProviderServicesScreen(
                     }
                     Button(
                         onClick = {
-                            editingService = null
-                            showUpsertDialog = true
+                            viewModel.openAddDialog()
                         },
                         colors = ButtonDefaults.buttonColors(containerColor = OrangePrimary),
                         shape = RoundedCornerShape(10.dp),
@@ -151,7 +166,28 @@ fun ProviderServicesScreen(
                 }
             }
 
-            if (services.isEmpty()) {
+            if (uiState.isLoading && uiState.services.isEmpty()) {
+                item {
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(14.dp),
+                        colors = CardDefaults.cardColors(containerColor = NeutralSurface)
+                    ) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(24.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            Text(
+                                text = "Memuat Katalog Layanan...",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = TextSecondary
+                            )
+                        }
+                    }
+                }
+            } else if (uiState.services.isEmpty()) {
                 item {
                     Card(
                         modifier = Modifier.fillMaxWidth(),
@@ -179,7 +215,7 @@ fun ProviderServicesScreen(
                     }
                 }
             } else {
-                items(services, key = { it.id }) { service ->
+                items(uiState.services, key = { it.id }) { service ->
                     Card(
                         modifier = Modifier.fillMaxWidth(),
                         shape = RoundedCornerShape(14.dp),
@@ -201,13 +237,8 @@ fun ProviderServicesScreen(
                                 Row(verticalAlignment = Alignment.CenterVertically) {
                                     Switch(
                                         checked = service.isActive,
-                                        onCheckedChange = { active ->
-                                            val updated = service.copy(isActive = active)
-                                            services = services.map { if (it.id == service.id) updated else it }
-                                            scope.launch {
-                                                repository.upsertService(updated)
-                                                reloadServices()
-                                            }
+                                        onCheckedChange = { _ ->
+                                            viewModel.toggleServiceActive(service)
                                         },
                                         colors = SwitchDefaults.colors(
                                             checkedThumbColor = Color.White,
@@ -217,8 +248,7 @@ fun ProviderServicesScreen(
                                     Spacer(modifier = Modifier.width(4.dp))
                                     IconButton(
                                         onClick = {
-                                            editingService = service
-                                            showUpsertDialog = true
+                                            viewModel.openEditDialog(service)
                                         },
                                         modifier = Modifier.size(48.dp)
                                     ) {
@@ -280,17 +310,14 @@ fun ProviderServicesScreen(
     }
 
     // Modal Upsert Service Dialog
-    if (showUpsertDialog) {
+    if (uiState.isUpsertDialogOpen) {
         UpsertServiceDialog(
-            existing = editingService,
+            existing = uiState.editingService,
             providerId = uiState.providerId,
-            onDismiss = { showUpsertDialog = false },
+            categories = uiState.categories,
+            onDismiss = { viewModel.dismissDialog() },
             onConfirm = { savedService ->
-                scope.launch {
-                    repository.upsertService(savedService)
-                    reloadServices()
-                    showUpsertDialog = false
-                }
+                viewModel.saveService(savedService)
             }
         )
     }
@@ -305,11 +332,8 @@ fun ProviderServicesScreen(
             confirmButton = {
                 Button(
                     onClick = {
-                        scope.launch {
-                            repository.deleteService(target.id)
-                            reloadServices()
-                            serviceToDelete = null
-                        }
+                        viewModel.deleteService(target.id)
+                        serviceToDelete = null
                     },
                     colors = ButtonDefaults.buttonColors(containerColor = RedError),
                     modifier = Modifier.heightIn(min = 48.dp)
@@ -333,6 +357,7 @@ fun ProviderServicesScreen(
 private fun UpsertServiceDialog(
     existing: ServiceItem?,
     providerId: String,
+    categories: List<id.bantuin.app.domain.model.ServiceCategory> = emptyList(),
     onDismiss: () -> Unit,
     onConfirm: (ServiceItem) -> Unit
 ) {
@@ -342,6 +367,7 @@ private fun UpsertServiceDialog(
     var baseFareText by remember { mutableStateOf(existing?.baseFare?.toString() ?: "75000") }
     var durationText by remember { mutableStateOf(existing?.durationMin?.toString() ?: "90") }
     var errorMessage by remember { mutableStateOf<String?>(null) }
+    val resolvedCategories = if (categories.isNotEmpty()) categories else FakeData.categories
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -379,7 +405,7 @@ private fun UpsertServiceDialog(
                         .horizontalScroll(rememberScrollState()),
                     horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
-                    FakeData.categories.forEach { cat ->
+                    resolvedCategories.forEach { cat ->
                         FilterChip(
                             selected = selectedCategory == cat.id,
                             onClick = { selectedCategory = cat.id },
