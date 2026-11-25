@@ -1,6 +1,8 @@
 package id.bantuin.app.viewmodel
 
 import id.bantuin.app.core.session.InMemorySessionStore
+import id.bantuin.app.core.theme.InMemoryThemeStore
+import id.bantuin.app.core.theme.ThemeMode
 import id.bantuin.app.data.repository.FakeBantuinRepository
 import id.bantuin.app.domain.model.AvailabilityMode
 import id.bantuin.app.domain.model.BookingStatus
@@ -9,10 +11,12 @@ import id.bantuin.app.domain.model.ServiceItem
 import id.bantuin.app.domain.repository.UserProfile
 import id.bantuin.app.ui.provider.calendar.ProviderCalendarViewModel
 import id.bantuin.app.ui.provider.dashboard.ProviderDashboardViewModel
+import id.bantuin.app.ui.provider.evaluation.ProviderEvaluationViewModel
 import id.bantuin.app.ui.provider.home.ProviderHomeViewModel
 import id.bantuin.app.ui.provider.orders.ProviderOrdersViewModel
 import id.bantuin.app.ui.provider.profile.ProviderProfileEditViewModel
 import id.bantuin.app.ui.provider.services.ProviderServicesViewModel
+import java.util.UUID
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.first
@@ -176,5 +180,105 @@ class ProviderViewModelsTest {
         val simTrust = vm.uiState.value.simResult?.trustScore ?: 100.0
         assertTrue(simTrust < 60.0)
         assertTrue(vm.uiState.value.simResult?.flagAnomaly == true)
+    }
+
+    @Test
+    fun providerHomeViewModel_computesLiveTrustScoreAndSpecialty() = runTest {
+        val mitraRepo = mitraRepository("p01", "Budi Santoso, S.T.")
+        val vm = ProviderHomeViewModel(mitraRepo, mitraRepo, mitraRepo)
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        assertNotNull(vm.uiState.value.trustResult)
+        assertTrue(vm.uiState.value.specialtyLabel.isNotBlank())
+    }
+
+    @Test
+    fun providerOrdersViewModel_runsExpirePendingAndObservesFlow() = runTest {
+        val vm = ProviderOrdersViewModel(repository)
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        assertTrue(vm.uiState.value.hasSyncedPendingExpiry)
+    }
+
+    @Test
+    fun providerCalendarViewModel_loadsUpcomingBookings() = runTest {
+        val mitraRepo = mitraRepository("p01", "Budi Santoso, S.T.")
+        val vm = ProviderCalendarViewModel(mitraRepo, mitraRepo)
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        assertTrue(vm.uiState.value.upcomingBookingsLoaded)
+    }
+
+    @Test
+    fun providerServicesViewModel_createsUuidServiceAndAllowsZeroFare() = runTest {
+        val mitraRepo = mitraRepository("p01", "Budi Santoso, S.T.")
+        val vm = ProviderServicesViewModel(mitraRepo, mitraRepo)
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        vm.saveServiceFromForm(
+            existing = null,
+            name = "Survei Lokasi Awal",
+            description = "Kunjungan pengecekan awal",
+            categoryId = 2,
+            baseFareText = "0",
+            durationText = "30"
+        )
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        val created = vm.uiState.value.services.firstOrNull { it.name == "Survei Lokasi Awal" }
+        assertNotNull(created)
+        assertEquals(0, created?.baseFare)
+        // Harus UUID valid untuk kolom PostgreSQL uuid
+        UUID.fromString(created!!.id)
+    }
+
+    @Test
+    fun providerProfileEditViewModel_validatesInvalidPhone() = runTest {
+        val mitraRepo = mitraRepository("p01", "Budi Santoso, S.T.")
+        val vm = ProviderProfileEditViewModel(mitraRepo, mitraRepo)
+        vm.loadProfile("p01")
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        vm.onPhoneChange("abc123")
+        vm.saveProfile()
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        assertEquals(
+            "Nomor telepon Indonesia tidak valid (contoh: 081234567890)",
+            vm.uiState.value.errorMessage
+        )
+    }
+
+    @Test
+    fun providerDashboardViewModel_updatesThemeModeAndRespondsToPendingOrder() = runTest {
+        val mitraRepo = mitraRepository("p01", "Budi Santoso, S.T.")
+        val themeStore = InMemoryThemeStore()
+        val vm = ProviderDashboardViewModel(
+            metricsRepository = mitraRepo,
+            authRepository = mitraRepo,
+            catalogRepository = mitraRepo,
+            bookingRepository = mitraRepo,
+            themeStore = themeStore
+        )
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        assertEquals(ThemeMode.SYSTEM, vm.uiState.value.themeMode)
+        vm.setThemeMode(ThemeMode.DARK)
+        testDispatcher.scheduler.advanceUntilIdle()
+        assertEquals(ThemeMode.DARK, vm.uiState.value.themeMode)
+    }
+
+    @Test
+    fun providerEvaluationViewModel_loadsAndRecalculatesTrustMetrics() = runTest {
+        val mitraRepo = mitraRepository("p01", "Budi Santoso, S.T.")
+        val vm = ProviderEvaluationViewModel(mitraRepo, mitraRepo)
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        assertNotNull(vm.uiState.value.trustResult)
+        vm.recalculate()
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        assertTrue(vm.uiState.value.recalculatedRecently)
+        assertTrue(vm.uiState.value.lastSyncLabel.isNotBlank())
     }
 }

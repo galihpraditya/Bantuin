@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -20,8 +21,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.AccessTime
 import androidx.compose.material.icons.filled.Bolt
-import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.Star
@@ -41,35 +40,33 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import id.bantuin.app.ui.theme.BorderSubtle
-import id.bantuin.app.ui.theme.GreenSuccess
-import id.bantuin.app.ui.theme.GreenSuccessContainer
-import id.bantuin.app.ui.theme.NeutralBackground
-import id.bantuin.app.ui.theme.NeutralSurface
-import id.bantuin.app.ui.theme.OrangeContainer
-import id.bantuin.app.ui.theme.OrangePrimary
-import id.bantuin.app.ui.theme.TextMuted
-import id.bantuin.app.ui.theme.TextPrimary
-import id.bantuin.app.ui.theme.TextSecondary
+import androidx.lifecycle.viewmodel.compose.viewModel
+import id.bantuin.app.core.config.BantuinConfig
+import id.bantuin.app.domain.repository.BantuinRepository
+import id.bantuin.app.ui.common.BantuinViewModelFactory
+import id.bantuin.app.ui.common.ErrorView
+import id.bantuin.app.ui.common.LoadingView
+import id.bantuin.app.ui.theme.BantuinTheme
+import java.util.Locale
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ProviderEvaluationScreen(
+    repository: BantuinRepository,
     onNavigateBack: () -> Unit,
+    viewModel: ProviderEvaluationViewModel = viewModel(factory = BantuinViewModelFactory(repository)),
     modifier: Modifier = Modifier
 ) {
-    var isRecalculated by remember { mutableStateOf(false) }
+    val uiState by viewModel.uiState.collectAsState()
+    val colors = BantuinTheme.colors
 
     Scaffold(
         topBar = {
@@ -78,7 +75,7 @@ fun ProviderEvaluationScreen(
                     Text(
                         text = "Evaluasi & Bobot Ranking Mitra",
                         style = MaterialTheme.typography.titleLarge,
-                        color = TextPrimary
+                        color = colors.textPrimary
                     )
                 },
                 navigationIcon = {
@@ -86,345 +83,413 @@ fun ProviderEvaluationScreen(
                         Icon(
                             imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                             contentDescription = "Kembali",
-                            tint = TextPrimary
+                            tint = colors.textPrimary
                         )
                     }
                 },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = NeutralBackground)
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = colors.background)
             )
         },
-        containerColor = NeutralBackground,
+        containerColor = colors.background,
         modifier = modifier
     ) { innerPadding ->
-        LazyColumn(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(innerPadding),
-            contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 24.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
-        ) {
-            // 1. Deskripsi Transparansi
-            item {
-                Text(
-                    text = "Transparansi algoritma pencocokan order berdasarkan performa aktual mitra.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = TextSecondary
+        val result = uiState.trustResult
+
+        when {
+            uiState.isLoading && result == null -> {
+                LoadingView(
+                    message = "Menghitung evaluasi algoritma...",
+                    modifier = Modifier.padding(innerPadding)
                 )
             }
+            uiState.errorMessage != null && result == null -> {
+                ErrorView(
+                    message = uiState.errorMessage ?: "Gagal memuat evaluasi.",
+                    onRetry = { viewModel.loadEvaluation() },
+                    modifier = Modifier.padding(innerPadding)
+                )
+            }
+            else -> {
+                val isAnomaly = result?.flagAnomaly == true
+                val ratingDisplay = result?.ratingAvg?.let {
+                    String.format(Locale.US, "Rating aktual %.2f / 5.0", it)
+                } ?: "Belum ada ulasan (skor default 70%)"
+                val completionDisplay = result?.completionRate?.let {
+                    String.format(Locale.US, "Tingkat penyelesaian %.0f%% • Batal %.1f%%", it * 100.0, result.cancelRate)
+                } ?: "Belum ada transaksi selesai (< 5 transaksi)"
 
-            // 2. Status Evaluasi Terkini & Tier Prioritas
-            item {
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(16.dp),
-                    colors = CardDefaults.cardColors(containerColor = NeutralSurface),
-                    border = CardDefaults.outlinedCardBorder().copy(brush = androidx.compose.ui.graphics.SolidColor(BorderSubtle))
+                LazyColumn(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(innerPadding),
+                    contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 24.dp),
+                    verticalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
-                    Column(modifier = Modifier.padding(16.dp)) {
-                        Row(
+                    item {
+                        Text(
+                            text = "Transparansi algoritma pencocokan order berdasarkan performa aktual 30 hari terakhir.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = colors.textSecondary
+                        )
+                    }
+
+                    // 1. Status Evaluasi Terkini & Pengali Ranking
+                    item {
+                        Card(
                             modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
+                            shape = RoundedCornerShape(16.dp),
+                            colors = CardDefaults.cardColors(containerColor = colors.surface),
+                            border = CardDefaults.outlinedCardBorder().copy(
+                                brush = androidx.compose.ui.graphics.SolidColor(colors.borderSubtle)
+                            )
                         ) {
-                            Text(
-                                text = "STATUS EVALUASI TERKINI",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = TextMuted,
-                                fontWeight = FontWeight.Bold
-                            )
-                            Box(
-                                modifier = Modifier
-                                    .clip(RoundedCornerShape(6.dp))
-                                    .background(GreenSuccessContainer)
-                                    .padding(horizontal = 8.dp, vertical = 2.dp)
-                            ) {
-                                Text(
-                                    text = "↗ Aktif",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = GreenSuccess,
-                                    fontWeight = FontWeight.Bold
-                                )
-                            }
-                        }
+                            Column(modifier = Modifier.padding(16.dp)) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        text = "STATUS EVALUASI TERKINI",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = colors.textMuted,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                    Box(
+                                        modifier = Modifier
+                                            .clip(RoundedCornerShape(6.dp))
+                                            .background(if (isAnomaly) colors.errorContainer else colors.successContainer)
+                                            .padding(horizontal = 8.dp, vertical = 2.dp)
+                                    ) {
+                                        Text(
+                                            text = if (isAnomaly) "Anomali Aktif" else "Aktif",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = if (isAnomaly) colors.error else colors.success,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                    }
+                                }
 
-                        Spacer(modifier = Modifier.height(10.dp))
+                                Spacer(modifier = Modifier.height(10.dp))
 
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(
-                                imageVector = Icons.Default.Star,
-                                contentDescription = null,
-                                tint = Color(0xFFF59E0B),
-                                modifier = Modifier.size(24.dp)
-                            )
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text(
-                                text = "Tier 1 (Gold Priority)",
-                                style = MaterialTheme.typography.headlineSmall,
-                                color = TextPrimary,
-                                fontWeight = FontWeight.Bold
-                            )
-                        }
-
-                        Spacer(modifier = Modifier.height(12.dp))
-
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clip(RoundedCornerShape(10.dp))
-                                .background(Color(0xFFFFF3E0))
-                                .padding(12.dp)
-                        ) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
                                 Row(verticalAlignment = Alignment.CenterVertically) {
                                     Icon(
-                                        imageVector = Icons.Default.Bolt,
+                                        imageVector = Icons.Default.Star,
                                         contentDescription = null,
-                                        tint = OrangePrimary,
-                                        modifier = Modifier.size(18.dp)
+                                        tint = colors.starTint,
+                                        modifier = Modifier.size(24.dp)
                                     )
-                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Spacer(modifier = Modifier.width(8.dp))
                                     Text(
-                                        text = "Pengali Matching Order:",
-                                        style = MaterialTheme.typography.bodyMedium,
-                                        color = TextPrimary
+                                        text = uiState.tierTitle,
+                                        style = MaterialTheme.typography.headlineSmall,
+                                        color = colors.textPrimary,
+                                        fontWeight = FontWeight.Bold
                                     )
                                 }
-                                Text(
-                                    text = "1.0x Prioritas Normal",
-                                    style = MaterialTheme.typography.titleMedium,
-                                    color = OrangePrimary,
-                                    fontWeight = FontWeight.Bold
+
+                                Spacer(modifier = Modifier.height(12.dp))
+
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clip(RoundedCornerShape(10.dp))
+                                        .background(if (isAnomaly) colors.errorContainer else colors.primaryContainer)
+                                        .padding(12.dp)
+                                ) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            Icon(
+                                                imageVector = Icons.Default.Bolt,
+                                                contentDescription = null,
+                                                tint = if (isAnomaly) colors.error else colors.onPrimaryContainer,
+                                                modifier = Modifier.size(18.dp)
+                                            )
+                                            Spacer(modifier = Modifier.width(6.dp))
+                                            Text(
+                                                text = "Pengali Matching:",
+                                                style = MaterialTheme.typography.bodyMedium,
+                                                color = colors.textPrimary
+                                            )
+                                        }
+                                        Text(
+                                            text = uiState.multiplierText,
+                                            style = MaterialTheme.typography.titleSmall,
+                                            color = if (isAnomaly) colors.error else colors.onPrimaryContainer,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // 2. Diagram Alur Umpan Balik Otomatis (F4 -> F1)
+                    item {
+                        Card(
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(16.dp),
+                            colors = CardDefaults.cardColors(containerColor = colors.surface),
+                            border = CardDefaults.outlinedCardBorder().copy(
+                                brush = androidx.compose.ui.graphics.SolidColor(colors.borderSubtle)
+                            )
+                        ) {
+                            Column(modifier = Modifier.padding(16.dp)) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        text = "Alur Umpan Balik Otomatis",
+                                        style = MaterialTheme.typography.titleSmall,
+                                        color = colors.textPrimary
+                                    )
+                                    Text(
+                                        text = "Otomatis F4 ke F1",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = colors.success
+                                    )
+                                }
+
+                                Spacer(modifier = Modifier.height(14.dp))
+
+                                FeedbackStepItem(
+                                    stepNumber = "1",
+                                    title = "Pesanan & Ulasan Selesai",
+                                    subtitle = "Data selesai, ketepatan SLA, dan rating masuk",
+                                    isDone = true
+                                )
+                                FeedbackStepItem(
+                                    stepNumber = "2",
+                                    title = "Evaluasi Trust Score (F4)",
+                                    subtitle = "Menghitung skor ${result?.trustScore?.toInt() ?: 70}/100 dalam jendela ${BantuinConfig.TRUST_WINDOW_DAYS} hari",
+                                    isDone = true
+                                )
+                                FeedbackStepItem(
+                                    stepNumber = "3",
+                                    title = "Pembaruan Bobot Rekomendasi (F1)",
+                                    subtitle = "Menyesuaikan prioritas tampil di hasil pencarian",
+                                    isDone = true,
+                                    isLast = true
                                 )
                             }
                         }
                     }
-                }
-            }
 
-            // 3. Diagram Alur Umpan Balik Otomatis (Feedback Loop F4 -> F1)
-            item {
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(16.dp),
-                    colors = CardDefaults.cardColors(containerColor = NeutralSurface),
-                    border = CardDefaults.outlinedCardBorder().copy(brush = androidx.compose.ui.graphics.SolidColor(BorderSubtle))
-                ) {
-                    Column(modifier = Modifier.padding(16.dp)) {
+                    // 3. Distribusi Bobot Algoritma (50% Jarak, 35% Rating, 15% Penyelesaian)
+                    item {
+                        Card(
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(16.dp),
+                            colors = CardDefaults.cardColors(containerColor = colors.surface),
+                            border = CardDefaults.outlinedCardBorder().copy(
+                                brush = androidx.compose.ui.graphics.SolidColor(colors.borderSubtle)
+                            )
+                        ) {
+                            Column(modifier = Modifier.padding(16.dp)) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        text = "Distribusi Bobot Algoritma",
+                                        style = MaterialTheme.typography.titleSmall,
+                                        color = colors.textPrimary
+                                    )
+                                    Text(
+                                        text = "Total: 100%",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = colors.primary,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                }
+
+                                Spacer(modifier = Modifier.height(14.dp))
+
+                                AlgorithmWeightBar(
+                                    label = "Kedekatan Jarak (Haversine GPS)",
+                                    percentage = (BantuinConfig.W_DISTANCE * 100).toInt(),
+                                    sublabel = "Batas jangkauan maksimal ${BantuinConfig.MAX_RADIUS_KM.toInt()} km"
+                                )
+
+                                Spacer(modifier = Modifier.height(12.dp))
+
+                                AlgorithmWeightBar(
+                                    label = "Rating & Kepuasan Pelanggan",
+                                    percentage = (BantuinConfig.W_RATING * 100).toInt(),
+                                    sublabel = ratingDisplay
+                                )
+
+                                Spacer(modifier = Modifier.height(12.dp))
+
+                                AlgorithmWeightBar(
+                                    label = "Tingkat Penyelesaian Tugas",
+                                    percentage = (BantuinConfig.W_COMPLETION * 100).toInt(),
+                                    sublabel = completionDisplay
+                                )
+                            }
+                        }
+                    }
+
+                    // 4. Log Sinkronisasi & Status Akun
+                    item {
+                        Card(
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(16.dp),
+                            colors = CardDefaults.cardColors(containerColor = colors.surface),
+                            border = CardDefaults.outlinedCardBorder().copy(
+                                brush = androidx.compose.ui.graphics.SolidColor(colors.borderSubtle)
+                            )
+                        ) {
+                            Column(modifier = Modifier.padding(16.dp)) {
+                                Text(
+                                    text = "Log Sinkronisasi Sistem",
+                                    style = MaterialTheme.typography.titleSmall,
+                                    color = colors.textPrimary
+                                )
+
+                                Spacer(modifier = Modifier.height(12.dp))
+
+                                Row(verticalAlignment = Alignment.Top) {
+                                    Icon(
+                                        imageVector = Icons.Default.AccessTime,
+                                        contentDescription = null,
+                                        tint = colors.textMuted,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(10.dp))
+                                    Column {
+                                        Text(
+                                            text = uiState.lastSyncLabel.ifBlank { "Siap dihitung ulang" },
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = colors.textPrimary
+                                        )
+                                        Text(
+                                            text = "Metrik dihitung ulang otomatis setiap pesanan selesai atau dibatalkan.",
+                                            style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
+                                            color = colors.textMuted
+                                        )
+                                    }
+                                }
+
+                                Spacer(modifier = Modifier.height(10.dp))
+
+                                Row(verticalAlignment = Alignment.Top) {
+                                    Icon(
+                                        imageVector = Icons.Default.Security,
+                                        contentDescription = null,
+                                        tint = if (isAnomaly) colors.error else colors.success,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(10.dp))
+                                    Column {
+                                        Text(
+                                            text = if (isAnomaly) {
+                                                "Status Akun: Dalam Evaluasi Anomali"
+                                            } else {
+                                                "Status Akun: Bebas Pelanggaran"
+                                            },
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = colors.textPrimary
+                                        )
+                                        Text(
+                                            text = if (isAnomaly) {
+                                                result?.reasons?.joinToString(", ") { it.description }.orEmpty()
+                                            } else {
+                                                "Tidak ada penalti aktif terdeteksi (${result?.txCount ?: 0} transaksi terekam)."
+                                            },
+                                            style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
+                                            color = colors.textMuted
+                                        )
+                                    }
+                                }
+
+                                Spacer(modifier = Modifier.height(10.dp))
+
+                                Row(verticalAlignment = Alignment.Top) {
+                                    Icon(
+                                        imageVector = Icons.Default.Visibility,
+                                        contentDescription = null,
+                                        tint = colors.primary,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(10.dp))
+                                    Column {
+                                        Text(
+                                            text = "Dampak Visibilitas Terkini:",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = colors.textPrimary
+                                        )
+                                        Text(
+                                            text = uiState.visibilityText,
+                                            style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
+                                            color = colors.primary
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    if (!uiState.errorMessage.isNullOrBlank()) {
+                        item {
+                            Text(
+                                text = uiState.errorMessage ?: "",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = colors.error
+                            )
+                        }
+                    }
+
+                    // 5. Tombol Hitung Ulang & Kembali
+                    item {
                         Row(
                             modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
+                            horizontalArrangement = Arrangement.spacedBy(10.dp)
                         ) {
-                            Text(
-                                text = "Alur Umpan Balik Otomatis",
-                                style = MaterialTheme.typography.titleSmall,
-                                color = TextPrimary
-                            )
-                            Text(
-                                text = "Real-time sync",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = GreenSuccess
-                            )
-                        }
-
-                        Spacer(modifier = Modifier.height(14.dp))
-
-                        FeedbackStepItem(
-                            stepNumber = "1",
-                            title = "Fungsi 1 & Screen 5",
-                            subtitle = "Data Transaksi Selesai & Ulasan Masuk",
-                            isDone = true
-                        )
-
-                        FeedbackStepItem(
-                            stepNumber = "2",
-                            title = "Screen 6 (Dashboard Mitra)",
-                            subtitle = "Analisis Trust Score Terkalibrasi (F4)",
-                            isDone = true
-                        )
-
-                        FeedbackStepItem(
-                            stepNumber = "3",
-                            title = "Screen 2 (Search Engine)",
-                            subtitle = "Update Bobot Match Score Algoritma (F1)",
-                            isDone = true,
-                            isLast = true
-                        )
-                    }
-                }
-            }
-
-            // 4. Distribusi Bobot Algoritma (50% Jarak, 35% Rating, 15% Penyelesaian)
-            item {
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(16.dp),
-                    colors = CardDefaults.cardColors(containerColor = NeutralSurface),
-                    border = CardDefaults.outlinedCardBorder().copy(brush = androidx.compose.ui.graphics.SolidColor(BorderSubtle))
-                ) {
-                    Column(modifier = Modifier.padding(16.dp)) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text(
-                                text = "Distribusi Bobot Algoritma",
-                                style = MaterialTheme.typography.titleSmall,
-                                color = TextPrimary
-                            )
-                            Text(
-                                text = "Total: 100%",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = OrangePrimary,
-                                fontWeight = FontWeight.Bold
-                            )
-                        }
-
-                        Spacer(modifier = Modifier.height(14.dp))
-
-                        AlgorithmWeightBar(
-                            label = "Kedekatan Jarak (Radius GPS)",
-                            percentage = 50,
-                            sublabel = "Geospasial Presisi (Maks 10 km)"
-                        )
-
-                        Spacer(modifier = Modifier.height(12.dp))
-
-                        AlgorithmWeightBar(
-                            label = "Rating & Kepuasan Pelanggan",
-                            percentage = 35,
-                            sublabel = "Rating stabil 4.92 / 5.0"
-                        )
-
-                        Spacer(modifier = Modifier.height(12.dp))
-
-                        AlgorithmWeightBar(
-                            label = "Tingkat Penyelesaian (Completion)",
-                            percentage = 15,
-                            sublabel = "Rasio pembatalan mitra 1.8%"
-                        )
-                    }
-                }
-            }
-
-            // 5. Log Sinkronisasi Sistem
-            item {
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(16.dp),
-                    colors = CardDefaults.cardColors(containerColor = NeutralSurface),
-                    border = CardDefaults.outlinedCardBorder().copy(brush = androidx.compose.ui.graphics.SolidColor(BorderSubtle))
-                ) {
-                    Column(modifier = Modifier.padding(16.dp)) {
-                        Text(
-                            text = "Log Sinkronisasi Sistem",
-                            style = MaterialTheme.typography.titleSmall,
-                            color = TextPrimary
-                        )
-
-                        Spacer(modifier = Modifier.height(12.dp))
-
-                        Row(verticalAlignment = Alignment.Top) {
-                            Icon(
-                                imageVector = Icons.Default.AccessTime,
-                                contentDescription = null,
-                                tint = TextMuted,
-                                modifier = Modifier.size(18.dp)
-                            )
-                            Spacer(modifier = Modifier.width(10.dp))
-                            Column {
+                            OutlinedButton(
+                                onClick = { viewModel.recalculate() },
+                                enabled = !uiState.isRecalculating,
+                                border = ButtonDefaults.outlinedButtonBorder(enabled = true).copy(
+                                    brush = androidx.compose.ui.graphics.SolidColor(colors.outline)
+                                ),
+                                shape = RoundedCornerShape(10.dp),
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .heightIn(min = 48.dp)
+                            ) {
+                                Icon(Icons.Default.Refresh, contentDescription = null, tint = colors.textPrimary, modifier = Modifier.size(16.dp))
+                                Spacer(modifier = Modifier.width(6.dp))
                                 Text(
-                                    text = "Terakhir diperbarui: Hari ini, 00:00 WIB",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = TextPrimary
-                                )
-                                Text(
-                                    text = "Siklus otomatis database diperbarui berkala setiap transaksi baru selesai.",
-                                    style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
-                                    color = TextMuted
+                                    text = when {
+                                        uiState.isRecalculating -> "Menghitung..."
+                                        uiState.recalculatedRecently -> "Tersinkron"
+                                        else -> "Hitung Ulang"
+                                    },
+                                    color = colors.textPrimary
                                 )
                             }
-                        }
 
-                        Spacer(modifier = Modifier.height(10.dp))
-
-                        Row(verticalAlignment = Alignment.Top) {
-                            Icon(
-                                imageVector = Icons.Default.Security,
-                                contentDescription = null,
-                                tint = GreenSuccess,
-                                modifier = Modifier.size(18.dp)
-                            )
-                            Spacer(modifier = Modifier.width(10.dp))
-                            Column {
-                                Text(
-                                    text = "Status Akun: Bebas Pelanggaran",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = TextPrimary
-                                )
-                                Text(
-                                    text = "Tidak ada anomali atau penalti aktif terdeteksi sistem.",
-                                    style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
-                                    color = TextMuted
-                                )
+                            Button(
+                                onClick = onNavigateBack,
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = colors.primary,
+                                    contentColor = colors.onPrimary
+                                ),
+                                shape = RoundedCornerShape(10.dp),
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .heightIn(min = 48.dp)
+                            ) {
+                                Text("Ke Dashboard")
                             }
                         }
-
-                        Spacer(modifier = Modifier.height(10.dp))
-
-                        Row(verticalAlignment = Alignment.Top) {
-                            Icon(
-                                imageVector = Icons.Default.Visibility,
-                                contentDescription = null,
-                                tint = OrangePrimary,
-                                modifier = Modifier.size(18.dp)
-                            )
-                            Spacer(modifier = Modifier.width(10.dp))
-                            Column {
-                                Text(
-                                    text = "Dampak Visibilitas Terkini:",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = TextPrimary
-                                )
-                                Text(
-                                    text = "Profil Anda diprioritaskan muncul di 3 besar teratas pencarian pelanggan dalam radius 5 km.",
-                                    style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
-                                    color = OrangePrimary
-                                )
-                            }
-                        }
-                    }
-                }
-            }
-
-            // 6. Tombol Aksi
-            item {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    OutlinedButton(
-                        onClick = { isRecalculated = true },
-                        shape = RoundedCornerShape(10.dp),
-                        modifier = Modifier.weight(1f)
-                    ) {
-                        Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(16.dp))
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text(if (isRecalculated) "Tersinkron" else "Hitung Ulang")
-                    }
-
-                    Button(
-                        onClick = onNavigateBack,
-                        colors = ButtonDefaults.buttonColors(containerColor = OrangePrimary),
-                        shape = RoundedCornerShape(10.dp),
-                        modifier = Modifier.weight(1f)
-                    ) {
-                        Text("Ke Dashboard")
                     }
                 }
             }
@@ -440,6 +505,7 @@ private fun FeedbackStepItem(
     isDone: Boolean,
     isLast: Boolean = false
 ) {
+    val colors = BantuinTheme.colors
     Row(
         modifier = Modifier.fillMaxWidth(),
         verticalAlignment = Alignment.CenterVertically
@@ -448,13 +514,13 @@ private fun FeedbackStepItem(
             modifier = Modifier
                 .size(28.dp)
                 .clip(CircleShape)
-                .background(if (isDone) OrangePrimary else Color(0xFFE0E0E0)),
+                .background(if (isDone) colors.primary else colors.borderSubtle),
             contentAlignment = Alignment.Center
         ) {
             Text(
                 text = stepNumber,
                 style = MaterialTheme.typography.labelSmall,
-                color = Color.White,
+                color = colors.onPrimary,
                 fontWeight = FontWeight.Bold
             )
         }
@@ -465,20 +531,20 @@ private fun FeedbackStepItem(
             modifier = Modifier
                 .weight(1f)
                 .clip(RoundedCornerShape(8.dp))
-                .background(Color(0xFFF7F6F4))
+                .background(colors.surfaceSubtle)
                 .padding(horizontal = 10.dp, vertical = 6.dp)
         ) {
             Column {
                 Text(
                     text = title,
                     style = MaterialTheme.typography.labelSmall,
-                    color = TextPrimary,
+                    color = colors.textPrimary,
                     fontWeight = FontWeight.Bold
                 )
                 Text(
                     text = subtitle,
                     style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
-                    color = TextSecondary
+                    color = colors.textSecondary
                 )
             }
         }
@@ -489,7 +555,7 @@ private fun FeedbackStepItem(
                 .padding(start = 13.dp)
                 .width(2.dp)
                 .height(14.dp)
-                .background(Color(0xFFE0E0E0))
+                .background(colors.borderSubtle)
         )
     }
 }
@@ -500,6 +566,7 @@ private fun AlgorithmWeightBar(
     percentage: Int,
     sublabel: String
 ) {
+    val colors = BantuinTheme.colors
     Column {
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -508,12 +575,12 @@ private fun AlgorithmWeightBar(
             Text(
                 text = label,
                 style = MaterialTheme.typography.bodySmall,
-                color = TextPrimary
+                color = colors.textPrimary
             )
             Text(
                 text = "$percentage%",
                 style = MaterialTheme.typography.labelMedium,
-                color = OrangePrimary,
+                color = colors.primary,
                 fontWeight = FontWeight.Bold
             )
         }
@@ -522,8 +589,8 @@ private fun AlgorithmWeightBar(
 
         LinearProgressIndicator(
             progress = { percentage / 100f },
-            color = OrangePrimary,
-            trackColor = Color(0xFFF0EAE1),
+            color = colors.primary,
+            trackColor = colors.surfaceSubtle,
             modifier = Modifier
                 .fillMaxWidth()
                 .height(6.dp)
@@ -535,7 +602,7 @@ private fun AlgorithmWeightBar(
         Text(
             text = sublabel,
             style = MaterialTheme.typography.bodySmall.copy(fontSize = 10.sp),
-            color = TextMuted
+            color = colors.textMuted
         )
     }
 }

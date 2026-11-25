@@ -21,6 +21,7 @@ data class ProviderProfileEditUiState(
     val address: String = "",
     val location: GeoPoint = GeoPoint(-7.9650, 112.6320),
     val isLoading: Boolean = false,
+    val isDetectingGps: Boolean = false,
     val isSaving: Boolean = false,
     val isSaved: Boolean = false,
     val errorMessage: String? = null
@@ -34,10 +35,6 @@ class ProviderProfileEditViewModel(
     private val _uiState = MutableStateFlow(ProviderProfileEditUiState())
     val uiState: StateFlow<ProviderProfileEditUiState> = _uiState.asStateFlow()
 
-    /**
-     * Profil mitra diambil dari akun yang login. Tidak lagi memakai "p01"/Budi
-     * Santoso sebagai fallback.
-     */
     fun loadProfile(providerId: String? = null) {
         viewModelScope.launch {
             val user = authRepository.currentUser().firstOrNull()
@@ -88,16 +85,27 @@ class ProviderProfileEditViewModel(
         }
     }
 
-    fun onNameChange(name: String) = _uiState.update { it.copy(name = name, isSaved = false) }
-    fun onBioChange(bio: String) = _uiState.update { it.copy(bio = bio, isSaved = false) }
-    fun onPhoneChange(phone: String) = _uiState.update { it.copy(phone = phone, isSaved = false) }
-    fun onAddressChange(address: String) = _uiState.update { it.copy(address = address, isSaved = false) }
-    fun onLocationChange(location: GeoPoint) = _uiState.update { it.copy(location = location, isSaved = false) }
+    fun onNameChange(name: String) = _uiState.update { it.copy(name = name, isSaved = false, errorMessage = null) }
+    fun onBioChange(bio: String) = _uiState.update { it.copy(bio = bio, isSaved = false, errorMessage = null) }
+    fun onPhoneChange(phone: String) = _uiState.update { it.copy(phone = phone, isSaved = false, errorMessage = null) }
+    fun onAddressChange(address: String) = _uiState.update { it.copy(address = address, isSaved = false, errorMessage = null) }
+    fun onLocationChange(location: GeoPoint) = _uiState.update { it.copy(location = location, isSaved = false, errorMessage = null) }
+    fun setDetectingGps(detecting: Boolean) = _uiState.update { it.copy(isDetectingGps = detecting, errorMessage = null) }
+    fun setGpsError(message: String?) = _uiState.update { it.copy(isDetectingGps = false, errorMessage = message) }
 
     fun saveProfile() {
         val state = _uiState.value
-        if (state.name.isBlank()) {
+        val trimmedName = state.name.trim()
+        val normalizedPhone = state.phone.trim().replace(" ", "").replace("-", "")
+
+        if (trimmedName.isBlank()) {
             _uiState.update { it.copy(errorMessage = "Nama lengkap tidak boleh kosong") }
+            return
+        }
+        if (normalizedPhone.isNotBlank() && !INDONESIA_PHONE_REGEX.matches(normalizedPhone)) {
+            _uiState.update {
+                it.copy(errorMessage = "Nomor telepon Indonesia tidak valid (contoh: 081234567890)")
+            }
             return
         }
         if (state.providerId.isBlank()) {
@@ -109,11 +117,11 @@ class ProviderProfileEditViewModel(
             _uiState.update { it.copy(isSaving = true, errorMessage = null) }
             val res = catalogRepository.updateProviderProfile(
                 providerId = state.providerId,
-                name = state.name,
-                bio = state.bio,
+                name = trimmedName,
+                bio = state.bio.trim(),
                 location = state.location,
-                address = state.address,
-                phone = state.phone
+                address = state.address.trim(),
+                phone = normalizedPhone
             )
             when (res) {
                 is AppResult.Success -> {
@@ -125,5 +133,9 @@ class ProviderProfileEditViewModel(
                 is AppResult.Loading -> {}
             }
         }
+    }
+
+    companion object {
+        private val INDONESIA_PHONE_REGEX = Regex("^(\\+62|62|0)8[1-9][0-9]{7,11}$")
     }
 }

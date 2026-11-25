@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -18,11 +19,10 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ReceiptLong
 import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.Handyman
 import androidx.compose.material.icons.filled.Person
-import androidx.compose.material.icons.filled.ReceiptLong
-import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -31,30 +31,24 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import id.bantuin.app.domain.repository.BantuinRepository
-import id.bantuin.app.ui.navigation.Routes
-import id.bantuin.app.ui.theme.BorderSubtle
-import id.bantuin.app.ui.theme.GreenSuccess
-import id.bantuin.app.ui.theme.NeutralBackground
-import id.bantuin.app.ui.theme.NeutralSurface
-import id.bantuin.app.ui.theme.OrangeContainer
-import id.bantuin.app.ui.theme.OrangePrimary
-import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
 import androidx.lifecycle.viewmodel.compose.viewModel
+import id.bantuin.app.core.config.BantuinConfig
+import id.bantuin.app.domain.repository.BantuinRepository
 import id.bantuin.app.ui.common.BantuinViewModelFactory
-import id.bantuin.app.ui.theme.TextMuted
-import id.bantuin.app.ui.theme.TextPrimary
-import id.bantuin.app.ui.theme.TextSecondary
-import kotlinx.coroutines.launch
+import id.bantuin.app.ui.common.ErrorView
+import id.bantuin.app.ui.common.LoadingView
+import id.bantuin.app.ui.navigation.Routes
+import id.bantuin.app.ui.theme.BantuinTheme
 
 @Composable
 fun ProviderHomeScreen(
@@ -66,11 +60,39 @@ fun ProviderHomeScreen(
     modifier: Modifier = Modifier
 ) {
     val uiState by viewModel.uiState.collectAsState()
+    val colors = BantuinTheme.colors
+
+    if (uiState.isLoading && uiState.provider == null) {
+        LoadingView(
+            message = "Memuat beranda mitra...",
+            modifier = modifier.background(colors.background)
+        )
+        return
+    }
+
+    if (uiState.errorMessage != null && uiState.provider == null && uiState.user == null) {
+        ErrorView(
+            message = uiState.errorMessage ?: "Gagal memuat data mitra.",
+            onRetry = { viewModel.loadData() },
+            modifier = modifier.background(colors.background)
+        )
+        return
+    }
+
+    val trust = uiState.trustResult
+    val scoreText = trust?.trustScore?.toInt()?.toString() ?: "70"
+    val trustStatusLabel = when {
+        trust == null -> "Aktif"
+        trust.flagAnomaly -> "Evaluasi"
+        trust.txCount < BantuinConfig.MIN_TX_FOR_EVALUATION -> "Mitra Baru"
+        trust.trustScore >= 85.0 -> "Sangat Baik"
+        else -> "Baik"
+    }
 
     LazyColumn(
         modifier = modifier
             .fillMaxSize()
-            .background(NeutralBackground),
+            .background(colors.background),
         contentPadding = PaddingValues(16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
@@ -79,63 +101,71 @@ fun ProviderHomeScreen(
             Card(
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(16.dp),
-                colors = CardDefaults.cardColors(containerColor = NeutralSurface),
-                border = CardDefaults.outlinedCardBorder().copy(brush = androidx.compose.ui.graphics.SolidColor(BorderSubtle))
+                colors = CardDefaults.cardColors(containerColor = colors.surface),
+                border = CardDefaults.outlinedCardBorder().copy(
+                    brush = androidx.compose.ui.graphics.SolidColor(colors.borderSubtle)
+                )
             ) {
-                Column(modifier = Modifier.padding(16.dp)) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
                     Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.weight(1f)
                     ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Box(
-                                modifier = Modifier
-                                    .size(48.dp)
-                                    .clip(CircleShape)
-                                    .background(OrangeContainer),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Text(
-                                    text = uiState.user?.fullName?.take(1)?.uppercase() ?: "M",
-                                    style = MaterialTheme.typography.titleLarge,
-                                    color = OrangePrimary
-                                )
-                            }
-                            Spacer(modifier = Modifier.width(12.dp))
-                            Column {
-                                Text(
-                                    text = uiState.user?.fullName?.let { "Halo, $it!" } ?: "Halo, Mitra!",
-                                    style = MaterialTheme.typography.titleLarge,
-                                    color = TextPrimary
-                                )
-                                Text(
-                                    text = "Mode Mitra Kerja • Teknisi AC",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = OrangePrimary
-                                )
-                            }
-                        }
-
-                        Button(
-                            onClick = {
-                                viewModel.switchToCustomer(
-                                    onAllowed = onSwitchToCustomer,
-                                    onUnauthorized = onSwitchToCustomerUnauthorized
-                                )
-                            },
-                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFF0EAE1)),
-                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
-                            modifier = Modifier.height(32.dp)
+                        Box(
+                            modifier = Modifier
+                                .size(48.dp)
+                                .clip(CircleShape)
+                                .background(colors.primaryContainer),
+                            contentAlignment = Alignment.Center
                         ) {
-                            Text("Pelanggan", style = MaterialTheme.typography.labelSmall, color = TextPrimary)
+                            Text(
+                                text = uiState.user?.fullName?.trim()?.firstOrNull()?.uppercase() ?: "M",
+                                style = MaterialTheme.typography.titleLarge,
+                                color = colors.onPrimaryContainer
+                            )
                         }
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Column {
+                            Text(
+                                text = uiState.user?.fullName?.let { "Halo, $it!" } ?: "Halo, Mitra!",
+                                style = MaterialTheme.typography.titleLarge,
+                                color = colors.textPrimary
+                            )
+                            Text(
+                                text = "Mode Mitra Kerja • ${uiState.specialtyLabel}",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = colors.primary
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.width(8.dp))
+                    OutlinedButton(
+                        onClick = {
+                            viewModel.switchToCustomer(
+                                onAllowed = onSwitchToCustomer,
+                                onUnauthorized = onSwitchToCustomerUnauthorized
+                            )
+                        },
+                        border = ButtonDefaults.outlinedButtonBorder(enabled = true).copy(
+                            brush = androidx.compose.ui.graphics.SolidColor(colors.outline)
+                        ),
+                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+                        modifier = Modifier.heightIn(min = 48.dp)
+                    ) {
+                        Text("Pelanggan", style = MaterialTheme.typography.labelSmall, color = colors.textPrimary)
                     }
                 }
             }
         }
 
-        // 2. Tiga Kartu Ringkasan Operasional Hari Ini
+        // 2. Tiga Kartu Ringkasan Operasional
         item {
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -143,25 +173,25 @@ fun ProviderHomeScreen(
             ) {
                 SummaryCard(
                     title = "Menunggu",
-                    count = "1",
+                    count = uiState.pendingCount.toString(),
                     subtext = "Perlu Respon",
-                    color = OrangePrimary,
+                    color = if (uiState.pendingCount > 0) colors.primary else colors.textPrimary,
                     modifier = Modifier.weight(1f),
                     onClick = { onNavigateToRoute(Routes.PROVIDER_ORDERS) }
                 )
                 SummaryCard(
-                    title = "Jadwal Hari Ini",
-                    count = "2",
-                    subtext = "Servis AC",
-                    color = Color(0xFF1976D2),
+                    title = "Hari Ini",
+                    count = uiState.todayOrdersCount.toString(),
+                    subtext = "Jadwal Aktif",
+                    color = colors.info,
                     modifier = Modifier.weight(1f),
                     onClick = { onNavigateToRoute(Routes.PROVIDER_CALENDAR) }
                 )
                 SummaryCard(
                     title = "Trust Score",
-                    count = "92",
-                    subtext = "Sangat Baik",
-                    color = GreenSuccess,
+                    count = scoreText,
+                    subtext = trustStatusLabel,
+                    color = if (trust?.flagAnomaly == true) colors.error else colors.success,
                     modifier = Modifier.weight(1f),
                     onClick = { onNavigateToRoute(Routes.PROVIDER_DASHBOARD) }
                 )
@@ -173,7 +203,7 @@ fun ProviderHomeScreen(
             Text(
                 text = "Kelola Layanan & Jadwal",
                 style = MaterialTheme.typography.titleMedium,
-                color = TextPrimary
+                color = colors.textPrimary
             )
         }
 
@@ -190,7 +220,7 @@ fun ProviderHomeScreen(
             ActionTile(
                 title = "Antrean Pesanan Masuk",
                 subtitle = "Terima atau tolak pesanan baru dengan batas 15 menit",
-                icon = Icons.Default.ReceiptLong,
+                icon = Icons.AutoMirrored.Filled.ReceiptLong,
                 onClick = { onNavigateToRoute(Routes.PROVIDER_ORDERS) }
             )
         }
@@ -224,19 +254,22 @@ private fun SummaryCard(
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val colors = BantuinTheme.colors
     Card(
         modifier = modifier
             .clip(RoundedCornerShape(14.dp))
             .clickable { onClick() },
         shape = RoundedCornerShape(14.dp),
-        colors = CardDefaults.cardColors(containerColor = NeutralSurface),
-        border = CardDefaults.outlinedCardBorder().copy(brush = androidx.compose.ui.graphics.SolidColor(BorderSubtle))
+        colors = CardDefaults.cardColors(containerColor = colors.surface),
+        border = CardDefaults.outlinedCardBorder().copy(
+            brush = androidx.compose.ui.graphics.SolidColor(colors.borderSubtle)
+        )
     ) {
         Column(modifier = Modifier.padding(12.dp)) {
             Text(
                 text = title,
                 style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
-                color = TextMuted
+                color = colors.textMuted
             )
             Spacer(modifier = Modifier.height(4.dp))
             Text(
@@ -248,7 +281,7 @@ private fun SummaryCard(
             Text(
                 text = subtext,
                 style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
-                color = TextSecondary
+                color = colors.textSecondary
             )
         }
     }
@@ -258,17 +291,20 @@ private fun SummaryCard(
 private fun ActionTile(
     title: String,
     subtitle: String,
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    icon: ImageVector,
     onClick: () -> Unit
 ) {
+    val colors = BantuinTheme.colors
     Card(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(14.dp))
             .clickable { onClick() },
         shape = RoundedCornerShape(14.dp),
-        colors = CardDefaults.cardColors(containerColor = NeutralSurface),
-        border = CardDefaults.outlinedCardBorder().copy(brush = androidx.compose.ui.graphics.SolidColor(BorderSubtle))
+        colors = CardDefaults.cardColors(containerColor = colors.surface),
+        border = CardDefaults.outlinedCardBorder().copy(
+            brush = androidx.compose.ui.graphics.SolidColor(colors.borderSubtle)
+        )
     ) {
         Row(
             modifier = Modifier.padding(14.dp),
@@ -278,13 +314,13 @@ private fun ActionTile(
                 modifier = Modifier
                     .size(40.dp)
                     .clip(RoundedCornerShape(10.dp))
-                    .background(OrangeContainer.copy(alpha = 0.5f)),
+                    .background(colors.primaryContainer),
                 contentAlignment = Alignment.Center
             ) {
                 Icon(
                     imageVector = icon,
                     contentDescription = null,
-                    tint = OrangePrimary,
+                    tint = colors.onPrimaryContainer,
                     modifier = Modifier.size(20.dp)
                 )
             }
@@ -293,12 +329,12 @@ private fun ActionTile(
                 Text(
                     text = title,
                     style = MaterialTheme.typography.titleSmall,
-                    color = TextPrimary
+                    color = colors.textPrimary
                 )
                 Text(
                     text = subtitle,
                     style = MaterialTheme.typography.bodySmall,
-                    color = TextSecondary
+                    color = colors.textSecondary
                 )
             }
         }

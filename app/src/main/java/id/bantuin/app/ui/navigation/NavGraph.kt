@@ -319,6 +319,7 @@ fun BantuinNavGraph(
             composable(Routes.PROVIDER_DASHBOARD) {
                 ProviderDashboardScreen(
                     repository = repository,
+                    themeStore = themeStore,
                     onNavigateToEvaluation = {
                         navController.navigate(Routes.PROVIDER_EVALUATION)
                     },
@@ -342,12 +343,16 @@ fun BantuinNavGraph(
 
             composable(Routes.PROVIDER_EVALUATION) {
                 ProviderEvaluationScreen(
+                    repository = repository,
                     onNavigateBack = { navController.popBackStack() }
                 )
             }
 
             composable(Routes.PROVIDER_SERVICES) {
-                ProviderServicesScreen(repository = repository)
+                ProviderServicesScreen(
+                    repository = repository,
+                    onNavigateBack = { navController.popBackStack() }
+                )
             }
 
             composable(Routes.PROVIDER_PROFILE_EDIT) {
