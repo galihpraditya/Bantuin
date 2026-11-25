@@ -9,6 +9,7 @@ import id.bantuin.app.domain.model.Complexity
 import id.bantuin.app.domain.model.CostEstimate
 import id.bantuin.app.domain.model.LockInfo
 import id.bantuin.app.domain.model.OrderDraft
+import id.bantuin.app.domain.model.PaymentMethod
 import id.bantuin.app.domain.model.ProviderCandidate
 import id.bantuin.app.domain.model.ServiceItem
 
@@ -27,6 +28,7 @@ class OrderFlowManager {
     var selectedComplexity by mutableStateOf(Complexity.SEDANG)
     var isUrgent by mutableStateOf(false)
     var orderNotes by mutableStateOf("")
+    var selectedPaymentMethod by mutableStateOf(PaymentMethod.CASH)
     var currentEstimate by mutableStateOf<CostEstimate?>(null)
     var currentLock by mutableStateOf<LockInfo?>(null)
 
@@ -47,7 +49,8 @@ class OrderFlowManager {
             customerAddress = customerAddress,
             distanceKm = currentEstimate?.distanceKm ?: 1.8,
             costEstimate = currentEstimate,
-            lockInfo = currentLock
+            lockInfo = currentLock,
+            paymentMethod = selectedPaymentMethod
         )
     }
 
@@ -57,6 +60,7 @@ class OrderFlowManager {
         selectedComplexity = Complexity.SEDANG
         isUrgent = false
         orderNotes = ""
+        selectedPaymentMethod = PaymentMethod.CASH
         currentEstimate = null
         currentLock = null
     }

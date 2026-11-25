@@ -25,9 +25,11 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.Chat
 import androidx.compose.material.icons.filled.Call
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.QrCode2
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.outlined.StarOutline
 import androidx.compose.material3.AlertDialog
@@ -66,7 +68,10 @@ import id.bantuin.app.domain.model.BookingEvent
 import id.bantuin.app.domain.model.BookingItem
 import id.bantuin.app.domain.model.BookingStatus
 import id.bantuin.app.domain.model.GeoPoint
+import id.bantuin.app.domain.model.PaymentMethod
+import id.bantuin.app.domain.model.PaymentStatus
 import id.bantuin.app.domain.repository.BantuinRepository
+import id.bantuin.app.ui.common.BadgeContainer
 import id.bantuin.app.ui.common.BantuinViewModelFactory
 import id.bantuin.app.ui.common.CountdownTimerView
 import id.bantuin.app.ui.common.EmptyView
@@ -81,6 +86,8 @@ fun OrderDetailScreen(
     bookingId: String,
     repository: BantuinRepository,
     onNavigateBack: () -> Unit,
+    onOpenChat: (String) -> Unit = {},
+    onOpenQrisPayment: (String) -> Unit = {},
     viewModel: OrderDetailViewModel = viewModel(factory = BantuinViewModelFactory(repository)),
     modifier: Modifier = Modifier
 ) {
@@ -255,38 +262,113 @@ fun OrderDetailScreen(
                                     }
                                 }
 
+                                Spacer(modifier = Modifier.height(10.dp))
+
+                                val paymentChipLabel = when {
+                                    booking.paymentMethod == PaymentMethod.QRIS && booking.paymentStatus == PaymentStatus.PAID ->
+                                        "QRIS • Lunas"
+                                    booking.paymentMethod == PaymentMethod.QRIS && booking.paymentStatus == PaymentStatus.WAITING_PAYMENT ->
+                                        "QRIS • Menunggu Bayar"
+                                    booking.paymentMethod == PaymentMethod.QRIS ->
+                                        "QRIS • ${booking.paymentStatus.label}"
+                                    else -> "Tunai • Bayar di Lokasi"
+                                }
+                                val paymentChipFg = if (booking.paymentStatus == PaymentStatus.PAID) colors.success else if (booking.paymentMethod == PaymentMethod.QRIS) colors.warning else colors.textSecondary
+                                val paymentChipBg = if (booking.paymentStatus == PaymentStatus.PAID) colors.successContainer else if (booking.paymentMethod == PaymentMethod.QRIS) colors.warningContainer else colors.surfaceSubtle
+
+                                BadgeContainer(
+                                    text = paymentChipLabel,
+                                    color = paymentChipFg,
+                                    backgroundColor = paymentChipBg
+                                )
+
+                                if (booking.paymentMethod == PaymentMethod.QRIS &&
+                                    booking.paymentStatus == PaymentStatus.WAITING_PAYMENT &&
+                                    booking.status.isActive
+                                ) {
+                                    Spacer(modifier = Modifier.height(12.dp))
+                                    Button(
+                                        onClick = { onOpenQrisPayment(booking.id) },
+                                        colors = ButtonDefaults.buttonColors(
+                                            containerColor = colors.primary,
+                                            contentColor = colors.onPrimary
+                                        ),
+                                        shape = RoundedCornerShape(10.dp),
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .heightIn(min = 48.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.QrCode2,
+                                            contentDescription = null,
+                                            modifier = Modifier.size(18.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(8.dp))
+                                        Text(
+                                            text = "Bayar QRIS",
+                                            style = MaterialTheme.typography.labelLarge,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                    }
+                                }
+
                                 Spacer(modifier = Modifier.height(12.dp))
 
-                                OutlinedButton(
-                                    onClick = {
-                                        val phone = booking.providerPhone
-                                        if (!phone.isNullOrBlank()) {
-                                            val intent = Intent(Intent.ACTION_DIAL, Uri.parse("tel:$phone"))
-                                            context.startActivity(intent)
-                                        } else {
-                                            Toast.makeText(
-                                                context,
-                                                "Nomor telepon mitra belum tersedia.",
-                                                Toast.LENGTH_SHORT
-                                            ).show()
-                                        }
-                                    },
-                                    border = ButtonDefaults.outlinedButtonBorder(enabled = true).copy(
-                                        brush = androidx.compose.ui.graphics.SolidColor(colors.outline)
-                                    ),
-                                    shape = RoundedCornerShape(10.dp),
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .heightIn(min = 48.dp)
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(10.dp)
                                 ) {
-                                    Icon(
-                                        imageVector = Icons.Default.Call,
-                                        contentDescription = null,
-                                        tint = colors.primary,
-                                        modifier = Modifier.size(16.dp)
-                                    )
-                                    Spacer(modifier = Modifier.width(6.dp))
-                                    Text("Hubungi Mitra via Telepon", color = colors.textPrimary)
+                                    Button(
+                                        onClick = { onOpenChat(booking.id) },
+                                        colors = ButtonDefaults.buttonColors(
+                                            containerColor = colors.primaryContainer,
+                                            contentColor = colors.onPrimaryContainer
+                                        ),
+                                        shape = RoundedCornerShape(10.dp),
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .heightIn(min = 48.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.AutoMirrored.Filled.Chat,
+                                            contentDescription = null,
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Text("Chat Mitra", fontWeight = FontWeight.SemiBold)
+                                    }
+
+                                    OutlinedButton(
+                                        onClick = {
+                                            val phone = booking.providerPhone
+                                            if (!phone.isNullOrBlank()) {
+                                                val intent = Intent(Intent.ACTION_DIAL, Uri.parse("tel:$phone"))
+                                                context.startActivity(intent)
+                                            } else {
+                                                Toast.makeText(
+                                                    context,
+                                                    "Nomor telepon mitra belum tersedia.",
+                                                    Toast.LENGTH_SHORT
+                                                ).show()
+                                            }
+                                        },
+                                        border = ButtonDefaults.outlinedButtonBorder(enabled = true).copy(
+                                            brush = androidx.compose.ui.graphics.SolidColor(colors.outline)
+                                        ),
+                                        shape = RoundedCornerShape(10.dp),
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .heightIn(min = 48.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.Call,
+                                            contentDescription = null,
+                                            tint = colors.primary,
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Text("Telepon", color = colors.textPrimary)
+                                    }
                                 }
                             }
                         }
@@ -453,7 +535,11 @@ private fun OrderStatusHeaderCard(
                     BookingStatus.PENDING -> "Mitra memiliki batas waktu respon 15 menit sejak pesanan dibuat."
                     BookingStatus.DIKONFIRMASI -> "Mitra telah menjadwalkan kedatangan sesuai waktu terpilih."
                     BookingStatus.DALAM_PENGERJAAN -> "Pengerjaan sedang berlangsung di lokasi Anda."
-                    BookingStatus.SELESAI -> "Pembayaran tunai di tempat selesai. Anda dapat memberi ulasan di bawah."
+                    BookingStatus.SELESAI -> if (booking.paymentMethod == PaymentMethod.QRIS) {
+                        "Pembayaran QRIS terverifikasi. Anda dapat memberi ulasan di bawah."
+                    } else {
+                        "Pembayaran tunai di tempat selesai. Anda dapat memberi ulasan di bawah."
+                    }
                     else -> "Pesanan tidak lagi aktif."
                 },
                 style = MaterialTheme.typography.bodySmall,
@@ -573,7 +659,11 @@ private fun BookingTimelineCard(
                 )
                 TimelineStepItem(
                     stepNumber = "4",
-                    title = "Selesai & Pembayaran Tunai",
+                    title = if (booking.paymentMethod == PaymentMethod.QRIS) {
+                        "Selesai & Pembayaran QRIS"
+                    } else {
+                        "Selesai & Pembayaran Tunai"
+                    },
                     description = "Pemeriksaan hasil kerja dan pemberian ulasan",
                     timeText = findTimeFor(BookingStatus.SELESAI) ?: if (finishedDone) "Selesai" else "Menunggu",
                     isCompleted = finishedDone,

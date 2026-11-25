@@ -11,13 +11,21 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.QrCode2
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.PrimaryTabRow
 import androidx.compose.material3.Tab
@@ -36,7 +44,10 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import id.bantuin.app.core.util.CurrencyUtils
 import id.bantuin.app.domain.model.BookingItem
 import id.bantuin.app.domain.model.BookingStatus
+import id.bantuin.app.domain.model.PaymentMethod
+import id.bantuin.app.domain.model.PaymentStatus
 import id.bantuin.app.domain.repository.BantuinRepository
+import id.bantuin.app.ui.common.BadgeContainer
 import id.bantuin.app.ui.common.BantuinTopAppBar
 import id.bantuin.app.ui.common.BantuinViewModelFactory
 import id.bantuin.app.ui.common.CountdownTimerView
@@ -50,6 +61,7 @@ import id.bantuin.app.ui.theme.BantuinTheme
 fun CustomerOrdersScreen(
     repository: BantuinRepository,
     onOrderClick: (String) -> Unit,
+    onOpenQrisPayment: (String) -> Unit = {},
     viewModel: CustomerOrdersViewModel = viewModel(factory = BantuinViewModelFactory(repository)),
     modifier: Modifier = Modifier
 ) {
@@ -131,7 +143,8 @@ fun CustomerOrdersScreen(
                         BookingCardItem(
                             booking = booking,
                             onExpired = { viewModel.loadOrders() },
-                            onClick = { onOrderClick(booking.id) }
+                            onClick = { onOrderClick(booking.id) },
+                            onOpenQrisPayment = { onOpenQrisPayment(booking.id) }
                         )
                     }
                 }
@@ -144,7 +157,8 @@ fun CustomerOrdersScreen(
 private fun BookingCardItem(
     booking: BookingItem,
     onExpired: () -> Unit,
-    onClick: () -> Unit
+    onClick: () -> Unit,
+    onOpenQrisPayment: () -> Unit
 ) {
     val colors = BantuinTheme.colors
     Card(
@@ -207,6 +221,38 @@ private fun BookingCardItem(
                 color = colors.textSecondary
             )
 
+            Spacer(modifier = Modifier.height(6.dp))
+
+            val paymentChipLabel = when {
+                booking.paymentMethod == PaymentMethod.QRIS && booking.paymentStatus == PaymentStatus.PAID ->
+                    "QRIS • Lunas"
+                booking.paymentMethod == PaymentMethod.QRIS && booking.paymentStatus == PaymentStatus.WAITING_PAYMENT ->
+                    "QRIS • Menunggu Bayar"
+                booking.paymentMethod == PaymentMethod.QRIS ->
+                    "QRIS • ${booking.paymentStatus.label}"
+                else -> "Tunai • Bayar di Lokasi"
+            }
+            val paymentChipFg = if (booking.paymentStatus == PaymentStatus.PAID) {
+                colors.success
+            } else if (booking.paymentMethod == PaymentMethod.QRIS) {
+                colors.warning
+            } else {
+                colors.textSecondary
+            }
+            val paymentChipBg = if (booking.paymentStatus == PaymentStatus.PAID) {
+                colors.successContainer
+            } else if (booking.paymentMethod == PaymentMethod.QRIS) {
+                colors.warningContainer
+            } else {
+                colors.surfaceSubtle
+            }
+
+            BadgeContainer(
+                text = paymentChipLabel,
+                color = paymentChipFg,
+                backgroundColor = paymentChipBg
+            )
+
             if (booking.status == BookingStatus.PENDING && booking.expiresAt != null) {
                 Spacer(modifier = Modifier.height(8.dp))
                 CountdownTimerView(
@@ -233,6 +279,32 @@ private fun BookingCardItem(
                     color = colors.primary,
                     fontWeight = FontWeight.Bold
                 )
+            }
+
+            if (booking.paymentMethod == PaymentMethod.QRIS &&
+                booking.paymentStatus == PaymentStatus.WAITING_PAYMENT &&
+                booking.status.isActive
+            ) {
+                Spacer(modifier = Modifier.height(10.dp))
+                Button(
+                    onClick = onOpenQrisPayment,
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = colors.primary,
+                        contentColor = colors.onPrimary
+                    ),
+                    shape = RoundedCornerShape(10.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(min = 48.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.QrCode2,
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Bayar QRIS", fontWeight = FontWeight.Bold)
+                }
             }
         }
     }

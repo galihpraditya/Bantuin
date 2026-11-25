@@ -27,6 +27,7 @@ import androidx.compose.material.icons.filled.CalendarToday
 import androidx.compose.material.icons.filled.EditNote
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Payments
+import androidx.compose.material.icons.filled.QrCode2
 import androidx.compose.material.icons.filled.Receipt
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -63,6 +64,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import id.bantuin.app.core.util.CurrencyUtils
 import id.bantuin.app.core.util.TimeUtils
 import id.bantuin.app.domain.model.Complexity
+import id.bantuin.app.domain.model.PaymentMethod
 import id.bantuin.app.domain.repository.BantuinRepository
 import id.bantuin.app.domain.usecase.matchmaking.HaversineCalculator
 import id.bantuin.app.domain.usecase.pricing.CostEstimatorUseCase
@@ -78,7 +80,7 @@ fun EstimateScreen(
     orderFlow: OrderFlowManager,
     repository: BantuinRepository,
     onNavigateBack: () -> Unit,
-    onOrderConfirmed: (String) -> Unit,
+    onOrderConfirmed: (String, PaymentMethod) -> Unit,
     viewModel: EstimateViewModel = viewModel(factory = BantuinViewModelFactory(repository)),
     modifier: Modifier = Modifier
 ) {
@@ -154,7 +156,8 @@ fun EstimateScreen(
             distanceKm = distanceKm,
             initialComplexity = orderFlow.selectedComplexity,
             initialUrgent = orderFlow.isUrgent,
-            initialNotes = orderFlow.orderNotes
+            initialNotes = orderFlow.orderNotes,
+            initialPaymentMethod = orderFlow.selectedPaymentMethod
         )
     }
 
@@ -225,9 +228,10 @@ fun EstimateScreen(
                             if (uiState.isLockExpired) {
                                 handleBack()
                             } else {
+                                val chosenMethod = uiState.paymentMethod
                                 viewModel.confirmOrder { bookingId ->
                                     orderFlow.reset()
-                                    onOrderConfirmed(bookingId)
+                                    onOrderConfirmed(bookingId, chosenMethod)
                                 }
                             }
                         },
@@ -753,46 +757,94 @@ fun EstimateScreen(
                 }
             }
 
-            // 7. Metode Pembayaran Tunai di Tempat
+            // 7. Pilih Metode Pembayaran (QRIS atau Tunai)
             item {
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(14.dp),
-                    colors = CardDefaults.cardColors(containerColor = colors.surface),
-                    border = CardDefaults.outlinedCardBorder().copy(
-                        brush = androidx.compose.ui.graphics.SolidColor(colors.borderSubtle)
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(
+                        text = "Pilih Metode Pembayaran",
+                        style = MaterialTheme.typography.titleMedium,
+                        color = colors.textPrimary
                     )
-                ) {
-                    Row(
-                        modifier = Modifier.padding(14.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Box(
+
+                    val paymentOptions = listOf(
+                        Triple(
+                            PaymentMethod.QRIS,
+                            "QRIS",
+                            "Non-tunai instan, dana ditahan aman sistem hingga pekerjaan selesai"
+                        ),
+                        Triple(
+                            PaymentMethod.CASH,
+                            "Tunai di Tempat (Cash)",
+                            "Bayar langsung ke teknisi setelah pekerjaan diperiksa"
+                        )
+                    )
+
+                    paymentOptions.forEach { (method, title, subtitle) ->
+                        val isSelected = uiState.paymentMethod == method
+                        val icon = if (method == PaymentMethod.QRIS) Icons.Default.QrCode2 else Icons.Default.Payments
+                        Card(
                             modifier = Modifier
-                                .size(36.dp)
-                                .clip(CircleShape)
-                                .background(colors.successContainer),
-                            contentAlignment = Alignment.Center
+                                .fillMaxWidth()
+                                .heightIn(min = 48.dp)
+                                .clip(RoundedCornerShape(14.dp))
+                                .clickable {
+                                    orderFlow.selectedPaymentMethod = method
+                                    viewModel.setPaymentMethod(method)
+                                },
+                            shape = RoundedCornerShape(14.dp),
+                            colors = CardDefaults.cardColors(
+                                containerColor = if (isSelected) colors.primaryContainer.copy(alpha = 0.35f) else colors.surface
+                            ),
+                            border = CardDefaults.outlinedCardBorder().copy(
+                                brush = androidx.compose.ui.graphics.SolidColor(
+                                    if (isSelected) colors.primary else colors.borderSubtle
+                                )
+                            )
                         ) {
-                            Icon(
-                                imageVector = Icons.Default.Payments,
-                                contentDescription = null,
-                                tint = colors.success,
-                                modifier = Modifier.size(20.dp)
-                            )
-                        }
-                        Spacer(modifier = Modifier.width(12.dp))
-                        Column {
-                            Text(
-                                text = "Pembayaran Tunai di Tempat",
-                                style = MaterialTheme.typography.labelLarge,
-                                color = colors.textPrimary
-                            )
-                            Text(
-                                text = "Bayar langsung ke teknisi setelah pekerjaan selesai diperiksa.",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = colors.textSecondary
-                            )
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(14.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                RadioButton(
+                                    selected = isSelected,
+                                    onClick = {
+                                        orderFlow.selectedPaymentMethod = method
+                                        viewModel.setPaymentMethod(method)
+                                    },
+                                    colors = RadioButtonDefaults.colors(selectedColor = colors.primary)
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Box(
+                                    modifier = Modifier
+                                        .size(36.dp)
+                                        .clip(CircleShape)
+                                        .background(if (isSelected) colors.primaryContainer else colors.surfaceSubtle),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(
+                                        imageVector = icon,
+                                        contentDescription = null,
+                                        tint = if (isSelected) colors.onPrimaryContainer else colors.textSecondary,
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                }
+                                Spacer(modifier = Modifier.width(12.dp))
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = title,
+                                        style = MaterialTheme.typography.labelLarge,
+                                        color = colors.textPrimary,
+                                        fontWeight = FontWeight.SemiBold
+                                    )
+                                    Text(
+                                        text = subtitle,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = colors.textSecondary
+                                    )
+                                }
+                            }
                         }
                     }
                 }

@@ -8,6 +8,8 @@ import id.bantuin.app.core.theme.InMemoryThemeStore
 import id.bantuin.app.core.theme.ThemePreferenceStore
 import id.bantuin.app.domain.repository.BantuinRepository
 import id.bantuin.app.ui.auth.AuthViewModel
+import id.bantuin.app.ui.chat.ChatListViewModel
+import id.bantuin.app.ui.chat.ChatRoomViewModel
 import id.bantuin.app.ui.customer.estimate.EstimateViewModel
 import id.bantuin.app.ui.customer.home.CustomerHomeViewModel
 import id.bantuin.app.ui.customer.notifications.CustomerNotificationsViewModel
@@ -17,6 +19,7 @@ import id.bantuin.app.ui.customer.profile.CustomerProfileViewModel
 import id.bantuin.app.ui.customer.providerdetail.ProviderDetailViewModel
 import id.bantuin.app.ui.customer.recommendation.RecommendationViewModel
 import id.bantuin.app.ui.customer.schedule.ScheduleViewModel
+import id.bantuin.app.ui.payment.QrisPaymentViewModel
 import id.bantuin.app.ui.provider.calendar.ProviderCalendarViewModel
 import id.bantuin.app.ui.provider.dashboard.ProviderDashboardViewModel
 import id.bantuin.app.ui.provider.evaluation.ProviderEvaluationViewModel
@@ -52,6 +55,12 @@ class BantuinViewModelFactory(
                 OrderDetailViewModel(repository, repository) as T
             modelClass.isAssignableFrom(CustomerOrdersViewModel::class.java) ->
                 CustomerOrdersViewModel(repository) as T
+            modelClass.isAssignableFrom(QrisPaymentViewModel::class.java) ->
+                QrisPaymentViewModel(repository) as T
+            modelClass.isAssignableFrom(ChatListViewModel::class.java) ->
+                ChatListViewModel(repository, repository) as T
+            modelClass.isAssignableFrom(ChatRoomViewModel::class.java) ->
+                ChatRoomViewModel(repository, repository, repository) as T
             modelClass.isAssignableFrom(CustomerNotificationsViewModel::class.java) ->
                 CustomerNotificationsViewModel(repository) as T
             modelClass.isAssignableFrom(CustomerProfileViewModel::class.java) ->

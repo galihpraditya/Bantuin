@@ -8,6 +8,7 @@ import id.bantuin.app.domain.model.CostEstimate
 import id.bantuin.app.domain.model.GeoPoint
 import id.bantuin.app.domain.model.LockInfo
 import id.bantuin.app.domain.model.OrderDraft
+import id.bantuin.app.domain.model.PaymentMethod
 import id.bantuin.app.domain.model.ProviderCandidate
 import id.bantuin.app.domain.model.ServiceItem
 import id.bantuin.app.domain.repository.BookingRepository
@@ -32,6 +33,7 @@ data class EstimateUiState(
     val complexity: Complexity = Complexity.SEDANG,
     val isUrgent: Boolean = false,
     val notes: String = "",
+    val paymentMethod: PaymentMethod = PaymentMethod.CASH,
     val costEstimate: CostEstimate? = null,
     val isLockExpired: Boolean = false,
     val isSubmitting: Boolean = false,
@@ -62,7 +64,8 @@ class EstimateViewModel(
         distanceKm: Double,
         initialComplexity: Complexity = Complexity.SEDANG,
         initialUrgent: Boolean = false,
-        initialNotes: String = ""
+        initialNotes: String = "",
+        initialPaymentMethod: PaymentMethod = PaymentMethod.CASH
     ) {
         val current = _uiState.value
         if (current.provider?.providerId == provider.providerId &&
@@ -98,6 +101,7 @@ class EstimateViewModel(
                 complexity = initialComplexity,
                 isUrgent = initialUrgent,
                 notes = initialNotes,
+                paymentMethod = initialPaymentMethod,
                 costEstimate = initialEstimate,
                 isLockExpired = false,
                 errorMessage = null
@@ -145,6 +149,10 @@ class EstimateViewModel(
 
     fun setNotes(notes: String) {
         _uiState.update { it.copy(notes = notes.take(500)) }
+    }
+
+    fun setPaymentMethod(method: PaymentMethod) {
+        _uiState.update { it.copy(paymentMethod = method, errorMessage = null) }
     }
 
     fun onLockExpired() {
@@ -199,7 +207,8 @@ class EstimateViewModel(
             customerAddress = state.customerAddress,
             distanceKm = state.distanceKm,
             costEstimate = estimate,
-            lockInfo = state.lockInfo
+            lockInfo = state.lockInfo,
+            paymentMethod = state.paymentMethod
         )
 
         viewModelScope.launch {

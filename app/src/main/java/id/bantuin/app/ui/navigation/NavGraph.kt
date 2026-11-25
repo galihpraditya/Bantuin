@@ -20,10 +20,13 @@ import id.bantuin.app.core.settings.SettingsPreferenceStore
 import id.bantuin.app.core.theme.InMemoryThemeStore
 import id.bantuin.app.core.theme.ThemePreferenceStore
 import id.bantuin.app.domain.model.BookingStatus
+import id.bantuin.app.domain.model.PaymentMethod
 import id.bantuin.app.domain.repository.BantuinRepository
 import id.bantuin.app.domain.repository.UserProfile
 import id.bantuin.app.ui.auth.LoginScreen
 import id.bantuin.app.ui.auth.RegisterScreen
+import id.bantuin.app.ui.chat.ChatListScreen
+import id.bantuin.app.ui.chat.ChatRoomScreen
 import id.bantuin.app.ui.common.BantuinBottomBar
 import id.bantuin.app.ui.common.BantuinTopAppBar
 import id.bantuin.app.ui.common.EmptyView
@@ -39,6 +42,7 @@ import id.bantuin.app.ui.customer.profile.CustomerProfileScreen
 import id.bantuin.app.ui.customer.providerdetail.ProviderDetailScreen
 import id.bantuin.app.ui.customer.recommendation.RecommendationScreen
 import id.bantuin.app.ui.customer.schedule.ScheduleScreen
+import id.bantuin.app.ui.payment.QrisPaymentScreen
 import id.bantuin.app.ui.provider.calendar.ProviderCalendarScreen
 import id.bantuin.app.ui.provider.dashboard.ProviderDashboardScreen
 import id.bantuin.app.ui.provider.evaluation.ProviderEvaluationScreen
@@ -222,8 +226,13 @@ fun BantuinNavGraph(
                     orderFlow = orderFlow,
                     repository = repository,
                     onNavigateBack = { navController.popBackStack() },
-                    onOrderConfirmed = { bookingId ->
-                        navController.navigate(Routes.orderTracking(bookingId)) {
+                    onOrderConfirmed = { bookingId, paymentMethod ->
+                        val targetRoute = if (paymentMethod == PaymentMethod.QRIS) {
+                            Routes.qrisPayment(bookingId)
+                        } else {
+                            Routes.orderTracking(bookingId)
+                        }
+                        navController.navigate(targetRoute) {
                             popUpTo(Routes.CUSTOMER_HOME)
                         }
                     }
@@ -242,6 +251,12 @@ fun BantuinNavGraph(
                         navController.navigate(Routes.CUSTOMER_HOME) {
                             popUpTo(Routes.CUSTOMER_HOME) { inclusive = true }
                         }
+                    },
+                    onOpenChat = { chatBookingId ->
+                        navController.navigate(Routes.chatRoom(chatBookingId))
+                    },
+                    onOpenQrisPayment = { payBookingId ->
+                        navController.navigate(Routes.qrisPayment(payBookingId))
                     }
                 )
             }
@@ -251,6 +266,9 @@ fun BantuinNavGraph(
                     repository = repository,
                     onOrderClick = { bookingId ->
                         navController.navigate(Routes.orderTracking(bookingId))
+                    },
+                    onOpenQrisPayment = { bookingId ->
+                        navController.navigate(Routes.qrisPayment(bookingId))
                     }
                 )
             }
@@ -265,52 +283,41 @@ fun BantuinNavGraph(
             }
 
             composable(Routes.CHAT_LIST) {
-                EmptyView(
-                    title = "Pesan Pesanan",
-                    message = "Daftar percakapan pesanan akan segera tersedia."
+                ChatListScreen(
+                    repository = repository,
+                    onThreadClick = { bookingId ->
+                        navController.navigate(Routes.chatRoom(bookingId))
+                    }
                 )
             }
 
             composable(
                 route = Routes.CHAT_ROOM,
                 arguments = listOf(navArgument("bookingId") { type = NavType.StringType })
-            ) {
-                Scaffold(
-                    topBar = {
-                        BantuinTopAppBar(
-                            title = "Chat Pesanan",
-                            canNavigateBack = true,
-                            onNavigateBack = { navController.popBackStack() }
-                        )
-                    }
-                ) { pad ->
-                    EmptyView(
-                        title = "Ruang Chat",
-                        message = "Percakapan langsung dengan mitra.",
-                        modifier = Modifier.padding(pad)
-                    )
-                }
+            ) { backStackEntry ->
+                val bookingId = backStackEntry.arguments?.getString("bookingId").orEmpty()
+                ChatRoomScreen(
+                    bookingId = bookingId,
+                    repository = repository,
+                    onNavigateBack = { navController.popBackStack() }
+                )
             }
 
             composable(
                 route = Routes.QRIS_PAYMENT,
                 arguments = listOf(navArgument("bookingId") { type = NavType.StringType })
-            ) {
-                Scaffold(
-                    topBar = {
-                        BantuinTopAppBar(
-                            title = "Pembayaran QRIS",
-                            canNavigateBack = true,
-                            onNavigateBack = { navController.popBackStack() }
-                        )
+            ) { backStackEntry ->
+                val bookingId = backStackEntry.arguments?.getString("bookingId").orEmpty()
+                QrisPaymentScreen(
+                    bookingId = bookingId,
+                    repository = repository,
+                    onNavigateBack = { navController.popBackStack() },
+                    onViewOrderDetail = { targetId ->
+                        navController.navigate(Routes.orderTracking(targetId)) {
+                            popUpTo(Routes.CUSTOMER_HOME)
+                        }
                     }
-                ) { pad ->
-                    EmptyView(
-                        title = "Pembayaran QRIS",
-                        message = "Memuat kode QRIS pesanan.",
-                        modifier = Modifier.padding(pad)
-                    )
-                }
+                )
             }
 
             composable(Routes.CUSTOMER_PROFILE) {
