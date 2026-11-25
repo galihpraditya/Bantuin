@@ -1,11 +1,10 @@
 package id.bantuin.app.ui.common
 
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Chat
 import androidx.compose.material.icons.automirrored.filled.ReceiptLong
-import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.Dashboard
 import androidx.compose.material.icons.filled.Home
-import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material3.Badge
 import androidx.compose.material3.BadgedBox
@@ -29,29 +28,36 @@ data class NavTabItem(
     val hasBadge: Boolean = false
 )
 
+fun customerNavTabs(unreadChatCount: Int = 0): List<NavTabItem> = listOf(
+    NavTabItem(Routes.CUSTOMER_HOME, "Beranda", Icons.Default.Home),
+    NavTabItem(Routes.CUSTOMER_ORDERS, "Pesanan", Icons.AutoMirrored.Filled.ReceiptLong),
+    NavTabItem(Routes.CHAT_LIST, "Chat", Icons.AutoMirrored.Filled.Chat, hasBadge = unreadChatCount > 0),
+    NavTabItem(Routes.CUSTOMER_PROFILE, "Profil", Icons.Default.Person)
+)
+
+fun providerNavTabs(): List<NavTabItem> = listOf(
+    NavTabItem(Routes.PROVIDER_HOME, "Beranda", Icons.Default.Home),
+    NavTabItem(Routes.PROVIDER_ORDERS, "Pesanan", Icons.AutoMirrored.Filled.ReceiptLong),
+    NavTabItem(Routes.PROVIDER_DASHBOARD, "Dashboard", Icons.Default.Dashboard),
+    NavTabItem(Routes.PROVIDER_PROFILE, "Profil", Icons.Default.Person)
+)
+
+fun bottomBarRoutes(): Set<String> =
+    (customerNavTabs() + providerNavTabs()).map { it.route }.toSet()
+
 @Composable
 fun BantuinBottomBar(
     currentRoute: String?,
     activeRole: String, // "customer" or "provider"
     onNavigateToRoute: (String) -> Unit,
-    hasUnreadNotifications: Boolean = false,
+    unreadChatCount: Int = 0,
     modifier: Modifier = Modifier
 ) {
     val colors = BantuinTheme.colors
     val items = if (activeRole == "provider") {
-        listOf(
-            NavTabItem(Routes.PROVIDER_HOME, "Beranda", Icons.Default.Home),
-            NavTabItem(Routes.PROVIDER_ORDERS, "Pesanan", Icons.AutoMirrored.Filled.ReceiptLong),
-            NavTabItem(Routes.PROVIDER_CALENDAR, "Jadwal", Icons.Default.CalendarMonth),
-            NavTabItem(Routes.PROVIDER_DASHBOARD, "Dashboard", Icons.Default.Dashboard)
-        )
+        providerNavTabs()
     } else {
-        listOf(
-            NavTabItem(Routes.CUSTOMER_HOME, "Beranda", Icons.Default.Home),
-            NavTabItem(Routes.CUSTOMER_ORDERS, "Pesanan", Icons.AutoMirrored.Filled.ReceiptLong),
-            NavTabItem(Routes.CUSTOMER_NOTIFICATIONS, "Notifikasi", Icons.Default.Notifications, hasBadge = hasUnreadNotifications),
-            NavTabItem(Routes.CUSTOMER_PROFILE, "Profil", Icons.Default.Person)
-        )
+        customerNavTabs(unreadChatCount = unreadChatCount)
     }
 
     NavigationBar(

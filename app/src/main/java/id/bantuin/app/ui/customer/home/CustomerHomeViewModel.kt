@@ -4,12 +4,15 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import id.bantuin.app.core.config.BantuinConfig
 import id.bantuin.app.core.result.AppResult
+import id.bantuin.app.domain.model.BookingItem
 import id.bantuin.app.domain.model.GeoPoint
 import id.bantuin.app.domain.model.ProviderCandidate
 import id.bantuin.app.domain.model.RankedProvider
 import id.bantuin.app.domain.model.ServiceCategory
 import id.bantuin.app.domain.repository.AuthRepository
+import id.bantuin.app.domain.repository.BookingRepository
 import id.bantuin.app.domain.repository.CatalogRepository
+import id.bantuin.app.domain.repository.ChatRepository
 import id.bantuin.app.domain.repository.UserProfile
 import id.bantuin.app.domain.usecase.matchmaking.MatchmakingUseCase
 import kotlinx.coroutines.async
@@ -18,7 +21,6 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
@@ -36,6 +38,8 @@ data class CustomerHomeUiState(
     val nearbyProviders: List<RankedProvider> = emptyList(),
     val providerCategoryMap: Map<String, Int> = emptyMap(),
     val readyProviderCount: Int = 0,
+    val activeOrderSummary: BookingItem? = null,
+    val unreadChatCount: Int = 0,
     val showLocationDialog: Boolean = false,
     val isLoading: Boolean = false,
     val errorMessage: String? = null
@@ -44,6 +48,8 @@ data class CustomerHomeUiState(
 class CustomerHomeViewModel(
     private val catalogRepository: CatalogRepository,
     private val authRepository: AuthRepository,
+    private val bookingRepository: BookingRepository,
+    private val chatRepository: ChatRepository,
     private val matchmakingUseCase: MatchmakingUseCase = MatchmakingUseCase()
 ) : ViewModel() {
 
@@ -52,16 +58,57 @@ class CustomerHomeViewModel(
 
     private var cachedProviders: List<ProviderCandidate> = emptyList()
     private var cachedCategoryMap: Map<String, Int> = emptyMap()
+    private var hasManualLocationOverride: Boolean = false
 
     init {
         observeUser()
+        observeActiveOrders()
+        observeChatThreads()
         loadCategories()
     }
 
     private fun observeUser() {
         viewModelScope.launch {
             authRepository.currentUser().collect { userProfile ->
-                _uiState.update { it.copy(user = userProfile) }
+                val defaultAddr = userProfile?.defaultAddress?.takeIf { it.isNotBlank() }
+                val defaultLoc = userProfile?.defaultLocation
+                if (!hasManualLocationOverride && (defaultAddr != null || defaultLoc != null)) {
+                    val resolvedAddr = defaultAddr ?: _uiState.value.customerAddress
+                    val resolvedLoc = defaultLoc ?: _uiState.value.customerLocation
+                    val matchResult = matchmakingUseCase(resolvedLoc, cachedProviders)
+                    val filteredProviders = filterNearbyProviders(matchResult.ranked, _uiState.value.searchQuery)
+                    _uiState.update {
+                        it.copy(
+                            user = userProfile,
+                            customerAddress = resolvedAddr,
+                            customerLocation = resolvedLoc,
+                            locationSourceLabel = "Lokasi profil tersimpan",
+                            nearbyProviders = filteredProviders,
+                            readyProviderCount = matchResult.ranked.size
+                        )
+                    }
+                } else {
+                    _uiState.update { it.copy(user = userProfile) }
+                }
+            }
+        }
+    }
+
+    private fun observeActiveOrders() {
+        viewModelScope.launch {
+            bookingRepository.observeCustomerBookings().collect { bookings ->
+                val active = bookings
+                    .filter { it.status.isActive }
+                    .maxByOrNull { it.createdAt }
+                _uiState.update { it.copy(activeOrderSummary = active) }
+            }
+        }
+    }
+
+    private fun observeChatThreads() {
+        viewModelScope.launch {
+            chatRepository.observeChatThreads("customer").collect { threads ->
+                _uiState.update { it.copy(unreadChatCount = threads.sumOf { t -> t.unreadCount }) }
             }
         }
     }
@@ -136,6 +183,7 @@ class CustomerHomeViewModel(
     }
 
     fun updateLocation(address: String, location: GeoPoint, fromGps: Boolean = false) {
+        hasManualLocationOverride = true
         val state = _uiState.value
         val matchResult = matchmakingUseCase(location, cachedProviders)
         val filteredProviders = filterNearbyProviders(matchResult.ranked, state.searchQuery)
@@ -169,26 +217,6 @@ class CustomerHomeViewModel(
 
     fun setShowLocationDialog(show: Boolean) {
         _uiState.update { it.copy(showLocationDialog = show, gpsErrorMessage = null) }
-    }
-
-    /**
-     * Tombol "mode mitra" di beranda memakai aturan yang sama dengan halaman profil:
-     * akun tanpa role provider tidak boleh masuk ke portal mitra dan diarahkan login.
-     */
-    fun switchToProvider(
-        onAllowed: () -> Unit,
-        onUnauthorized: () -> Unit
-    ) {
-        viewModelScope.launch {
-            val user = authRepository.currentUser().firstOrNull()
-            if (user?.roles?.contains("provider") != true) {
-                authRepository.signOut()
-                onUnauthorized()
-                return@launch
-            }
-            authRepository.setActiveRole("provider")
-            onAllowed()
-        }
     }
 
     private fun filterCategories(categories: List<ServiceCategory>, query: String): List<ServiceCategory> {

@@ -25,6 +25,9 @@ import id.bantuin.app.domain.repository.UserProfile
 import id.bantuin.app.ui.auth.LoginScreen
 import id.bantuin.app.ui.auth.RegisterScreen
 import id.bantuin.app.ui.common.BantuinBottomBar
+import id.bantuin.app.ui.common.BantuinTopAppBar
+import id.bantuin.app.ui.common.EmptyView
+import id.bantuin.app.ui.common.bottomBarRoutes
 import id.bantuin.app.ui.customer.OrderFlowManager
 import id.bantuin.app.ui.customer.OrderFlowViewModel
 import id.bantuin.app.ui.customer.estimate.EstimateScreen
@@ -67,6 +70,8 @@ fun BantuinNavGraph(
         else -> Routes.CUSTOMER_HOME
     }
     val customerBookings by repository.observeCustomerBookings().collectAsState(initial = emptyList())
+    val chatThreads by repository.observeChatThreads(activeRole).collectAsState(initial = emptyList())
+    val unreadChatCount = chatThreads.sumOf { it.unreadCount }
     val hasActiveCustomerOrders = customerBookings.any {
         it.status in listOf(
             BookingStatus.PENDING,
@@ -75,11 +80,8 @@ fun BantuinNavGraph(
         )
     }
 
-    val bottomBarRoutes = setOf(
-        Routes.CUSTOMER_HOME, Routes.CUSTOMER_ORDERS, Routes.CUSTOMER_NOTIFICATIONS, Routes.CUSTOMER_SCHEDULE, Routes.CUSTOMER_PROFILE,
-        Routes.PROVIDER_HOME, Routes.PROVIDER_ORDERS, Routes.PROVIDER_CALENDAR, Routes.PROVIDER_DASHBOARD
-    )
-    val showBottomBar = currentRoute in bottomBarRoutes
+    val navBottomBarRoutes = bottomBarRoutes()
+    val showBottomBar = currentRoute in navBottomBarRoutes
 
     Scaffold(
         bottomBar = {
@@ -87,7 +89,7 @@ fun BantuinNavGraph(
                 BantuinBottomBar(
                     currentRoute = currentRoute,
                     activeRole = activeRole,
-                    hasUnreadNotifications = hasActiveCustomerOrders,
+                    unreadChatCount = unreadChatCount,
                     onNavigateToRoute = { route ->
                         navController.navigate(route) {
                             popUpTo(if (activeRole == "provider") Routes.PROVIDER_HOME else Routes.CUSTOMER_HOME) {
@@ -149,21 +151,18 @@ fun BantuinNavGraph(
                     onProviderClick = { providerId ->
                         navController.navigate(Routes.providerDetail(providerId))
                     },
+                    onChatClick = {
+                        navController.navigate(Routes.CHAT_LIST) {
+                            launchSingleTop = true
+                        }
+                    },
                     onNotificationsClick = {
                         navController.navigate(Routes.CUSTOMER_NOTIFICATIONS) {
                             launchSingleTop = true
                         }
                     },
-                    onSwitchToProvider = {
-                        navController.navigate(Routes.PROVIDER_HOME) {
-                            popUpTo(Routes.CUSTOMER_HOME) { inclusive = true }
-                        }
-                    },
-                    onSwitchToProviderUnauthorized = {
-                        orderFlow.resetAll()
-                        navController.navigate(Routes.LOGIN) {
-                            popUpTo(0) { inclusive = true }
-                        }
+                    onActiveOrderClick = { bookingId ->
+                        navController.navigate(Routes.orderTracking(bookingId))
                     },
                     onEmergencyClick = {
                         orderFlow.selectedCategoryId = 2 // AC & Listrik
@@ -265,13 +264,53 @@ fun BantuinNavGraph(
                 )
             }
 
-            composable(Routes.CUSTOMER_SCHEDULE) {
-                CustomerNotificationsScreen(
-                    repository = repository,
-                    onOrderClick = { bookingId ->
-                        navController.navigate(Routes.orderTracking(bookingId))
-                    }
+            composable(Routes.CHAT_LIST) {
+                EmptyView(
+                    title = "Pesan Pesanan",
+                    message = "Daftar percakapan pesanan akan segera tersedia."
                 )
+            }
+
+            composable(
+                route = Routes.CHAT_ROOM,
+                arguments = listOf(navArgument("bookingId") { type = NavType.StringType })
+            ) {
+                Scaffold(
+                    topBar = {
+                        BantuinTopAppBar(
+                            title = "Chat Pesanan",
+                            canNavigateBack = true,
+                            onNavigateBack = { navController.popBackStack() }
+                        )
+                    }
+                ) { pad ->
+                    EmptyView(
+                        title = "Ruang Chat",
+                        message = "Percakapan langsung dengan mitra.",
+                        modifier = Modifier.padding(pad)
+                    )
+                }
+            }
+
+            composable(
+                route = Routes.QRIS_PAYMENT,
+                arguments = listOf(navArgument("bookingId") { type = NavType.StringType })
+            ) {
+                Scaffold(
+                    topBar = {
+                        BantuinTopAppBar(
+                            title = "Pembayaran QRIS",
+                            canNavigateBack = true,
+                            onNavigateBack = { navController.popBackStack() }
+                        )
+                    }
+                ) { pad ->
+                    EmptyView(
+                        title = "Pembayaran QRIS",
+                        message = "Memuat kode QRIS pesanan.",
+                        modifier = Modifier.padding(pad)
+                    )
+                }
             }
 
             composable(Routes.CUSTOMER_PROFILE) {
@@ -402,6 +441,45 @@ fun BantuinNavGraph(
                     repository = repository,
                     onNavigateBack = { navController.popBackStack() }
                 )
+            }
+
+            composable(
+                route = Routes.COMPLETE_ORDER,
+                arguments = listOf(navArgument("bookingId") { type = NavType.StringType })
+            ) {
+                Scaffold(
+                    topBar = {
+                        BantuinTopAppBar(
+                            title = "Selesaikan Pesanan",
+                            canNavigateBack = true,
+                            onNavigateBack = { navController.popBackStack() }
+                        )
+                    }
+                ) { pad ->
+                    EmptyView(
+                        title = "Konfirmasi Selesai",
+                        message = "Memuat detail penyelesaian pesanan.",
+                        modifier = Modifier.padding(pad)
+                    )
+                }
+            }
+
+            composable(Routes.PROVIDER_WITHDRAW) {
+                Scaffold(
+                    topBar = {
+                        BantuinTopAppBar(
+                            title = "Tarik Saldo Mitra",
+                            canNavigateBack = true,
+                            onNavigateBack = { navController.popBackStack() }
+                        )
+                    }
+                ) { pad ->
+                    EmptyView(
+                        title = "Pencairan Saldo",
+                        message = "Memuat formulir penarikan saldo.",
+                        modifier = Modifier.padding(pad)
+                    )
+                }
             }
         }
     }

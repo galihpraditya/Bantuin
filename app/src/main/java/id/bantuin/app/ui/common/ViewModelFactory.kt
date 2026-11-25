@@ -39,7 +39,7 @@ class BantuinViewModelFactory(
             modelClass.isAssignableFrom(AuthViewModel::class.java) ->
                 AuthViewModel(repository) as T
             modelClass.isAssignableFrom(CustomerHomeViewModel::class.java) ->
-                CustomerHomeViewModel(repository, repository) as T
+                CustomerHomeViewModel(repository, repository, repository, repository) as T
             modelClass.isAssignableFrom(RecommendationViewModel::class.java) ->
                 RecommendationViewModel(repository) as T
             modelClass.isAssignableFrom(ProviderDetailViewModel::class.java) ->

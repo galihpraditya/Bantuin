@@ -51,7 +51,7 @@ class CustomerViewModelsTest {
 
     @Test
     fun customerHomeViewModel_loadsCategoriesAndUpdatesLocation() = runTest {
-        val vm = CustomerHomeViewModel(repository, repository)
+        val vm = CustomerHomeViewModel(repository, repository, repository, repository)
         testDispatcher.scheduler.advanceUntilIdle()
 
         assertTrue(vm.uiState.value.categories.isNotEmpty())
@@ -65,32 +65,28 @@ class CustomerViewModelsTest {
     }
 
     @Test
-    fun customerHomeViewModel_switchToProvider_withoutProviderRole_signsOutAndRedirects() = runTest {
+    fun customerHomeViewModel_hydratesDefaultLocationAndActiveOrderSummary() = runTest {
+        val defaultLoc = GeoPoint(-7.9512, 112.6145)
         val sessionStore = InMemorySessionStore(
             initialRole = "customer",
             initialUser = UserProfile(
-                id = "user_customer_only",
-                fullName = "Dimas Arya",
-                email = "pelanggan2@bantuin.test",
-                phone = "081234567891",
-                roles = setOf("customer")
+                id = "user_demo_rani",
+                fullName = "Rani Wijaya",
+                email = "pelanggan1@bantuin.test",
+                phone = "081234567890",
+                roles = setOf("customer"),
+                defaultAddress = "Jl. Veteran No. 10, Malang",
+                defaultLocation = defaultLoc
             )
         )
-        val customerOnlyRepository = FakeBantuinRepository(sessionStore = sessionStore)
-        val vm = CustomerHomeViewModel(customerOnlyRepository, customerOnlyRepository)
-
-        var allowed = false
-        var unauthorized = false
-        vm.switchToProvider(
-            onAllowed = { allowed = true },
-            onUnauthorized = { unauthorized = true }
-        )
+        val repo = FakeBantuinRepository(sessionStore = sessionStore)
+        val vm = CustomerHomeViewModel(repo, repo, repo, repo)
         testDispatcher.scheduler.advanceUntilIdle()
 
-        assertTrue(!allowed)
-        assertTrue(unauthorized)
-        assertEquals(null, sessionStore.currentUserValue)
-        assertEquals("customer", sessionStore.activeRoleValue)
+        assertEquals("Jl. Veteran No. 10, Malang", vm.uiState.value.customerAddress)
+        assertEquals(defaultLoc, vm.uiState.value.customerLocation)
+        assertNotNull(vm.uiState.value.activeOrderSummary)
+        assertTrue(vm.uiState.value.unreadChatCount >= 0)
     }
 
     @Test
@@ -234,7 +230,7 @@ class CustomerViewModelsTest {
 
     @Test
     fun customerHomeViewModel_updatesSearchQueryAndNearbyProviders() = runTest {
-        val vm = CustomerHomeViewModel(repository, repository)
+        val vm = CustomerHomeViewModel(repository, repository, repository, repository)
         testDispatcher.scheduler.advanceUntilIdle()
 
         assertTrue(vm.uiState.value.nearbyProviders.isNotEmpty())
