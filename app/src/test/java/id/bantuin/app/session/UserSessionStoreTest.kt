@@ -1,6 +1,7 @@
 package id.bantuin.app.session
 
 import id.bantuin.app.core.session.InMemorySessionStore
+import id.bantuin.app.domain.model.GeoPoint
 import id.bantuin.app.domain.repository.UserProfile
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
@@ -47,13 +48,17 @@ class UserSessionStoreTest {
             fullName = "Budi Santoso",
             email = "budi@bantuin.test",
             phone = "08123456789",
-            roles = setOf("provider")
+            roles = setOf("provider"),
+            defaultAddress = "Jl. Bandung No. 1, Malang",
+            defaultLocation = GeoPoint(-7.96, 112.62)
         )
         sessionStore.saveSession(newUser)
 
         val retrieved = sessionStore.currentUser.first()
         assertEquals("user_budi", retrieved?.id)
         assertEquals("Budi Santoso", retrieved?.fullName)
+        assertEquals("Jl. Bandung No. 1, Malang", retrieved?.defaultAddress)
+        assertEquals(GeoPoint(-7.96, 112.62), retrieved?.defaultLocation)
         assertEquals(newUser, sessionStore.currentUserValue)
     }
 

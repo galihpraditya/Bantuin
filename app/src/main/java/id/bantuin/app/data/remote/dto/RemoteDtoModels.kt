@@ -10,6 +10,9 @@ data class ProfileDto(
     @SerialName("phone") val phone: String? = null,
     @SerialName("roles") val roles: List<String> = listOf("customer"),
     @SerialName("avatar_url") val avatarUrl: String? = null,
+    @SerialName("default_address") val defaultAddress: String? = null,
+    @SerialName("default_lat") val defaultLat: Double? = null,
+    @SerialName("default_lng") val defaultLng: Double? = null,
     @SerialName("created_at") val createdAt: String? = null
 )
 
@@ -37,6 +40,7 @@ data class ProviderProfileDto(
     @SerialName("tx_count_30d") val txCount30d: Int = 0,
     @SerialName("flag_anomaly") val flagAnomaly: Boolean = false,
     @SerialName("badge") val badge: String = "NEW",
+    @SerialName("is_accepting_orders") val isAcceptingOrders: Boolean = true,
     @SerialName("metrics_updated_at") val metricsUpdatedAt: String? = null
 )
 
@@ -101,6 +105,9 @@ data class BookingDto(
     @SerialName("expires_at") val expiresAt: String,
     @SerialName("started_at") val startedAt: String? = null,
     @SerialName("finished_at") val finishedAt: String? = null,
+    @SerialName("payment_method") val paymentMethod: String = "CASH",
+    @SerialName("payment_status") val paymentStatus: String = "UNPAID",
+    @SerialName("completion_note") val completionNote: String? = null,
     @SerialName("created_at") val createdAt: String? = null
 )
 
@@ -175,7 +182,8 @@ data class CreateBookingRpcParams(
     @SerialName("p_total_cost") val totalCost: Int,
     @SerialName("p_cust_lat") val customerLat: Double,
     @SerialName("p_cust_lng") val customerLng: Double,
-    @SerialName("p_notes") val notes: String? = null
+    @SerialName("p_notes") val notes: String? = null,
+    @SerialName("p_payment_method") val paymentMethod: String = "CASH"
 )
 
 @Serializable

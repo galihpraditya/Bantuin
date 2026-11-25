@@ -4,12 +4,17 @@ import id.bantuin.app.core.result.AppResult
 import id.bantuin.app.domain.model.BookingEvent
 import id.bantuin.app.domain.model.BookingItem
 import id.bantuin.app.domain.model.BookingStatus
+import id.bantuin.app.domain.model.ChatMessage
+import id.bantuin.app.domain.model.ChatThreadSummary
 import id.bantuin.app.domain.model.DayAvailability
 import id.bantuin.app.domain.model.GeoPoint
 import id.bantuin.app.domain.model.LockInfo
 import id.bantuin.app.domain.model.MetricSnapshot
 import id.bantuin.app.domain.model.OrderDraft
+import id.bantuin.app.domain.model.PayoutChannelType
+import id.bantuin.app.domain.model.PayoutRequest
 import id.bantuin.app.domain.model.ProviderCandidate
+import id.bantuin.app.domain.model.ProviderRevenueAnalytics
 import id.bantuin.app.domain.model.ReviewItem
 import id.bantuin.app.domain.model.ServiceCategory
 import id.bantuin.app.domain.model.ServiceItem
@@ -35,6 +40,8 @@ interface CatalogRepository {
         address: String,
         phone: String
     ): AppResult<Unit>
+    fun observeAcceptingOrders(providerId: String): Flow<Boolean>
+    suspend fun setAcceptingOrders(providerId: String, accepting: Boolean): AppResult<Unit>
 }
 
 interface BookingRepository {
@@ -43,6 +50,12 @@ interface BookingRepository {
     suspend fun releaseLock(lockId: String): AppResult<Unit>
     suspend fun createBooking(draft: OrderDraft): AppResult<String>
     suspend fun updateStatus(bookingId: String, newStatus: BookingStatus): AppResult<Unit>
+    suspend fun confirmQrisPayment(bookingId: String): AppResult<Unit>
+    suspend fun completeBooking(
+        bookingId: String,
+        completionNote: String? = null,
+        cashCollectedConfirmed: Boolean = false
+    ): AppResult<Unit>
     suspend fun myBookingsCustomer(): AppResult<List<BookingItem>>
     suspend fun myBookingsProvider(): AppResult<List<BookingItem>>
     fun observeBooking(bookingId: String): Flow<BookingItem?>
@@ -75,6 +88,31 @@ interface AuthRepository {
         location: GeoPoint = GeoPoint(-7.9797, 112.6304),
         bio: String = ""
     ): AppResult<Unit>
+    suspend fun updateCustomerProfile(
+        fullName: String,
+        phone: String,
+        defaultAddress: String,
+        defaultLocation: GeoPoint
+    ): AppResult<UserProfile>
+}
+
+interface ChatRepository {
+    fun observeChatThreads(role: String): Flow<List<ChatThreadSummary>>
+    fun observeMessages(bookingId: String): Flow<List<ChatMessage>>
+    suspend fun sendMessage(bookingId: String, text: String): AppResult<Unit>
+}
+
+interface WalletRepository {
+    fun observeProviderRevenue(providerId: String): Flow<ProviderRevenueAnalytics>
+    fun observePayoutHistory(providerId: String): Flow<List<PayoutRequest>>
+    suspend fun requestPayout(
+        providerId: String,
+        amount: Int,
+        channelType: PayoutChannelType,
+        channelName: String,
+        accountNumber: String,
+        accountHolder: String
+    ): AppResult<PayoutRequest>
 }
 
 interface BantuinRepository :
@@ -82,7 +120,9 @@ interface BantuinRepository :
     BookingRepository,
     ReviewRepository,
     MetricsRepository,
-    AuthRepository
+    AuthRepository,
+    ChatRepository,
+    WalletRepository
 
 data class UserProfile(
     val id: String,
@@ -90,5 +130,7 @@ data class UserProfile(
     val email: String,
     val phone: String,
     val roles: Set<String>,
-    val avatarUrl: String? = null
+    val avatarUrl: String? = null,
+    val defaultAddress: String? = null,
+    val defaultLocation: GeoPoint? = null
 )

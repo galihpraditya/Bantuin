@@ -3,6 +3,8 @@ package id.bantuin.app
 import android.app.Application
 import id.bantuin.app.core.session.SharedPreferencesSessionStore
 import id.bantuin.app.core.session.UserSessionStore
+import id.bantuin.app.core.settings.SettingsPreferenceStore
+import id.bantuin.app.core.settings.SharedPreferencesSettingsStore
 import id.bantuin.app.core.theme.SharedPreferencesThemeStore
 import id.bantuin.app.core.theme.ThemePreferenceStore
 import id.bantuin.app.data.remote.SupabaseClientProvider
@@ -18,6 +20,10 @@ class BantuinApp : Application() {
 
     lateinit var themeStore: ThemePreferenceStore
         private set
+
+    val settingsStore: SettingsPreferenceStore by lazy {
+        SharedPreferencesSettingsStore(this)
+    }
 
     lateinit var repository: BantuinRepository
         private set

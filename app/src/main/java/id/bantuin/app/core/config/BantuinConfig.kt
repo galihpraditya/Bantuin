@@ -44,4 +44,9 @@ object BantuinConfig {
     const val CANCEL_RATE_MAX_PCT = 20.0
     const val LATE_TOLERANCE_MIN = 15
     val MALANG_CENTER = id.bantuin.app.domain.model.GeoPoint(-7.9797, 112.6304)
+
+    // Pembayaran, Chat, & Pencairan Dana Mitra
+    const val MIN_PAYOUT_AMOUNT = 20_000
+    const val PAYOUT_ADMIN_FEE = 2_500
+    const val MAX_CHAT_MESSAGE_LENGTH = 1_000
 }

@@ -10,14 +10,22 @@ import id.bantuin.app.domain.model.AvailabilityMode
 import id.bantuin.app.domain.model.BookingEvent
 import id.bantuin.app.domain.model.BookingItem
 import id.bantuin.app.domain.model.BookingStatus
+import id.bantuin.app.domain.model.ChatMessage
+import id.bantuin.app.domain.model.ChatThreadSummary
 import id.bantuin.app.domain.model.CompletedJob
 import id.bantuin.app.domain.model.DayAvailability
 import id.bantuin.app.domain.model.GeoPoint
 import id.bantuin.app.domain.model.LockInfo
 import id.bantuin.app.domain.model.MetricSnapshot
 import id.bantuin.app.domain.model.OrderDraft
+import id.bantuin.app.domain.model.PaymentMethod
+import id.bantuin.app.domain.model.PaymentStatus
+import id.bantuin.app.domain.model.PayoutChannelType
+import id.bantuin.app.domain.model.PayoutRequest
+import id.bantuin.app.domain.model.PayoutStatus
 import id.bantuin.app.domain.model.ProviderBadge
 import id.bantuin.app.domain.model.ProviderCandidate
+import id.bantuin.app.domain.model.ProviderRevenueAnalytics
 import id.bantuin.app.domain.model.ReviewItem
 import id.bantuin.app.domain.model.ServiceCategory
 import id.bantuin.app.domain.model.ServiceItem
@@ -27,6 +35,7 @@ import id.bantuin.app.domain.model.TrustResult
 import id.bantuin.app.domain.repository.BantuinRepository
 import id.bantuin.app.domain.repository.UserProfile
 import id.bantuin.app.domain.usecase.trust.RecalculateProviderMetricsUseCase
+import id.bantuin.app.domain.usecase.wallet.CalculateProviderRevenueUseCase
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.combine
@@ -36,6 +45,7 @@ import kotlinx.datetime.Instant
 import java.util.UUID
 import kotlin.time.Duration.Companion.days
 import kotlin.time.Duration.Companion.minutes
+import kotlin.time.Duration.Companion.seconds
 
 class FakeBantuinRepository(
     private val sessionStore: UserSessionStore = InMemorySessionStore()
@@ -44,6 +54,7 @@ class FakeBantuinRepository(
     private val recalculateMetricsUseCase by lazy {
         RecalculateProviderMetricsUseCase(this)
     }
+    private val calculateRevenueUseCase = CalculateProviderRevenueUseCase()
 
     private data class StoredReview(val providerId: String, val item: ReviewItem)
     private data class StoredSlotMeta(val dateIso: String, val startMin: Int, val endMin: Int, val startAt: Instant)
@@ -56,9 +67,14 @@ class FakeBantuinRepository(
             put(p.providerId, FakeData.getAvailability(p.providerId).toMutableList())
         }
     }
+    private val acceptingOrdersFlow = MutableStateFlow<Map<String, Boolean>>(
+        FakeData.providers.associate { it.providerId to true }
+    )
     private val bookingsFlow = MutableStateFlow<List<BookingItem>>(emptyList())
     private val bookingMetaMap = mutableMapOf<String, StoredSlotMeta>()
     private val bookingEventsMap = mutableMapOf<String, MutableList<BookingEvent>>()
+    private val chatMessagesFlow = MutableStateFlow<Map<String, List<ChatMessage>>>(emptyMap())
+    private val payoutsFlow = MutableStateFlow<Map<String, List<PayoutRequest>>>(emptyMap())
     private val reviewsList = FakeData.sampleReviews.map { StoredReview("p01", it) }.toMutableList()
     private val activeLocks = mutableMapOf<String, Pair<String, LockInfo>>() // lockId -> (lockedByUserId, LockInfo)
     private val providerSnapshotsMap = mutableMapOf<String, MutableList<MetricSnapshot>>()
@@ -86,14 +102,88 @@ class FakeBantuinRepository(
             customerLng = FakeData.MALANG_CENTER.lng,
             providerLocation = FakeData.providers.first().location,
             providerPhone = "081200000001",
-            customerPhone = "081234567890"
+            customerPhone = "081234567890",
+            paymentMethod = PaymentMethod.QRIS,
+            paymentStatus = PaymentStatus.PAID
         )
-        bookingsFlow.value = listOf(initialBooking)
+        val completedQrisDemo = BookingItem(
+            id = "b00_qris",
+            customerId = "user_demo_dimas",
+            customerName = "Dimas Arya",
+            providerId = "p01",
+            providerName = "Budi Santoso, S.T.",
+            serviceName = "Cuci & Tambah Freon R32/R410",
+            scheduledDate = TimeUtils.formatInstantToDate(now - 2.days),
+            scheduledDateIso = TimeUtils.toWibDateIso(now - 2.days),
+            scheduledTime = "10:00 - 12:00 WIB",
+            totalCost = 120_000,
+            status = BookingStatus.SELESAI,
+            address = "Jl. Gajayana No. 18, Malang",
+            createdAt = now - 2.days,
+            startedAt = now - 2.days + 5.minutes,
+            finishedAt = now - 2.days + 100.minutes,
+            customerLat = FakeData.MALANG_CENTER.lat,
+            customerLng = FakeData.MALANG_CENTER.lng,
+            providerLocation = FakeData.providers.first().location,
+            providerPhone = "081200000001",
+            customerPhone = "081234567891",
+            paymentMethod = PaymentMethod.QRIS,
+            paymentStatus = PaymentStatus.PAID,
+            completionNote = "Tekanan freon normal dan filter sudah dibersihkan."
+        )
+        val completedCashDemo = BookingItem(
+            id = "b00_cash",
+            customerId = "user_demo_dimas",
+            customerName = "Dimas Arya",
+            providerId = "p01",
+            providerName = "Budi Santoso, S.T.",
+            serviceName = "Cuci AC Standar (0.5 - 1 PK)",
+            scheduledDate = TimeUtils.formatInstantToDate(now - 1.days),
+            scheduledDateIso = TimeUtils.toWibDateIso(now - 1.days),
+            scheduledTime = "13:00 - 14:30 WIB",
+            totalCost = 65_000,
+            status = BookingStatus.SELESAI,
+            address = "Jl. Soekarno Hatta No. 11, Malang",
+            createdAt = now - 1.days,
+            startedAt = now - 1.days + 4.minutes,
+            finishedAt = now - 1.days + 80.minutes,
+            customerLat = FakeData.MALANG_CENTER.lat,
+            customerLng = FakeData.MALANG_CENTER.lng,
+            providerLocation = FakeData.providers.first().location,
+            providerPhone = "081200000001",
+            customerPhone = "081234567891",
+            paymentMethod = PaymentMethod.CASH,
+            paymentStatus = PaymentStatus.PAID,
+            completionNote = "Pembayaran tunai diterima di lokasi."
+        )
+        bookingsFlow.value = listOf(initialBooking, completedCashDemo, completedQrisDemo)
         bookingMetaMap["b01"] = StoredSlotMeta(TimeUtils.todayIso(), 870, 990, initialStart)
         bookingEventsMap["b01"] = mutableListOf(
             BookingEvent(1L, "b01", BookingStatus.PENDING, "user_demo_rani", initialStart),
             BookingEvent(2L, "b01", BookingStatus.DIKONFIRMASI, "p01", initialStart + 2.minutes),
             BookingEvent(3L, "b01", BookingStatus.DALAM_PENGERJAAN, "p01", initialStart + 5.minutes)
+        )
+        chatMessagesFlow.value = mapOf(
+            "b01" to listOf(
+                ChatMessage(
+                    id = "msg_seed_1",
+                    bookingId = "b01",
+                    senderId = "user_demo_rani",
+                    senderName = "Rani Wijaya",
+                    senderRole = "customer",
+                    text = "Pak Budi, AC di kamar lantai 2 masih menetes terus ya.",
+                    createdAt = initialStart + 3.minutes
+                ),
+                ChatMessage(
+                    id = "msg_seed_2",
+                    bookingId = "b01",
+                    senderId = "p01",
+                    senderName = "Budi Santoso, S.T.",
+                    senderRole = "provider",
+                    text = "Siap Kak Rani, saya sudah membawa selang kuras dan alat cek freon.",
+                    createdAt = initialStart + 4.minutes
+                )
+            )
         )
         providerSnapshotsMap["p01"] = FakeData.sampleSnapshots.toMutableList()
     }
@@ -107,10 +197,11 @@ class FakeBantuinRepository(
         val selfId = sessionStore.currentUserValue?.id
         val activeProviders = providersList.filter { p ->
             val notSelf = selfId == null || p.providerId != selfId
+            val isAccepting = acceptingOrdersFlow.value[p.providerId] ?: true
             val hasService = servicesList.any { it.providerId == p.providerId && it.categoryId == categoryId && it.isActive }
             val days = availabilityMap[p.providerId] ?: emptyList()
             val hasActiveDays = days.any { it.mode != AvailabilityMode.OFF }
-            notSelf && hasService && hasActiveDays
+            notSelf && isAccepting && hasService && hasActiveDays
         }
         return AppResult.Success(activeProviders)
     }
@@ -189,6 +280,15 @@ class FakeBantuinRepository(
         if (user != null && user.id == providerId) {
             sessionStore.saveSession(user.copy(fullName = name, phone = phone))
         }
+        return AppResult.Success(Unit)
+    }
+
+    override fun observeAcceptingOrders(providerId: String): Flow<Boolean> {
+        return acceptingOrdersFlow.map { it[providerId] ?: true }
+    }
+
+    override suspend fun setAcceptingOrders(providerId: String, accepting: Boolean): AppResult<Unit> {
+        acceptingOrdersFlow.value = acceptingOrdersFlow.value + (providerId to accepting)
         return AppResult.Success(Unit)
     }
 
@@ -298,7 +398,13 @@ class FakeBantuinRepository(
             customerLat = draft.customerLocation.lat,
             customerLng = draft.customerLocation.lng,
             providerLocation = draft.provider.location,
-            customerPhone = user?.phone
+            customerPhone = user?.phone,
+            paymentMethod = draft.paymentMethod,
+            paymentStatus = if (draft.paymentMethod == PaymentMethod.QRIS) {
+                PaymentStatus.WAITING_PAYMENT
+            } else {
+                PaymentStatus.UNPAID
+            }
         )
 
         val startAtInstant = try {
@@ -352,6 +458,79 @@ class FakeBantuinRepository(
         if (newStatus in setOf(BookingStatus.SELESAI, BookingStatus.DIBATALKAN_MITRA)) {
             recalculateMetricsUseCase(item.providerId)
         }
+        return AppResult.Success(Unit)
+    }
+
+    override suspend fun confirmQrisPayment(bookingId: String): AppResult<Unit> {
+        val list = bookingsFlow.value.toMutableList()
+        val idx = list.indexOfFirst { it.id == bookingId }
+        if (idx < 0) return AppResult.Error("Pesanan tidak ditemukan")
+
+        val item = list[idx]
+        if (item.paymentMethod != PaymentMethod.QRIS) {
+            return AppResult.Error("Pesanan ini menggunakan metode tunai.")
+        }
+        if (item.status in setOf(
+                BookingStatus.DITOLAK,
+                BookingStatus.KEDALUWARSA,
+                BookingStatus.DIBATALKAN_PELANGGAN,
+                BookingStatus.DIBATALKAN_MITRA
+            )
+        ) {
+            return AppResult.Error("Pesanan sudah tidak aktif.")
+        }
+
+        list[idx] = item.copy(paymentStatus = PaymentStatus.PAID)
+        bookingsFlow.value = list
+        return AppResult.Success(Unit)
+    }
+
+    override suspend fun completeBooking(
+        bookingId: String,
+        completionNote: String?,
+        cashCollectedConfirmed: Boolean
+    ): AppResult<Unit> {
+        val list = bookingsFlow.value.toMutableList()
+        val idx = list.indexOfFirst { it.id == bookingId }
+        if (idx < 0) return AppResult.Error("Pesanan tidak ditemukan")
+
+        val item = list[idx]
+        if (item.status != BookingStatus.DALAM_PENGERJAAN) {
+            return AppResult.Error("Pesanan hanya dapat diselesaikan saat berstatus Dalam Pengerjaan.")
+        }
+
+        val now = Clock.System.now()
+        val cleanedNote = completionNote?.trim()?.takeIf { it.isNotBlank() }
+
+        val updatedItem = when (item.paymentMethod) {
+            PaymentMethod.CASH -> {
+                if (!cashCollectedConfirmed) {
+                    return AppResult.Error("Konfirmasikan bahwa uang tunai sudah diterima dari pelanggan.")
+                }
+                item.copy(
+                    status = BookingStatus.SELESAI,
+                    paymentStatus = PaymentStatus.PAID,
+                    completionNote = cleanedNote,
+                    finishedAt = now
+                )
+            }
+            PaymentMethod.QRIS -> {
+                if (item.paymentStatus != PaymentStatus.PAID) {
+                    return AppResult.Error("Pembayaran QRIS pelanggan belum lunas.")
+                }
+                item.copy(
+                    status = BookingStatus.SELESAI,
+                    completionNote = cleanedNote,
+                    finishedAt = now
+                )
+            }
+        }
+
+        list[idx] = updatedItem
+        bookingsFlow.value = list
+        bookingEventsMap.getOrPut(bookingId) { mutableListOf() }
+            .add(BookingEvent(nextEventId++, bookingId, BookingStatus.SELESAI, sessionStore.currentUserValue?.id, now))
+        recalculateMetricsUseCase(item.providerId)
         return AppResult.Success(Unit)
     }
 
@@ -657,4 +836,182 @@ class FakeBantuinRepository(
     }
 
     override fun currentUser(): Flow<UserProfile?> = sessionStore.currentUser
+
+    override suspend fun updateCustomerProfile(
+        fullName: String,
+        phone: String,
+        defaultAddress: String,
+        defaultLocation: GeoPoint
+    ): AppResult<UserProfile> {
+        val user = sessionStore.currentUserValue
+            ?: return AppResult.Error("Sesi login tidak ditemukan.")
+        val updated = user.copy(
+            fullName = fullName.trim(),
+            phone = phone.trim(),
+            defaultAddress = defaultAddress.trim(),
+            defaultLocation = defaultLocation
+        )
+        sessionStore.saveSession(updated)
+        return AppResult.Success(updated)
+    }
+
+    // ================= CHAT REPOSITORY =================
+    override fun observeChatThreads(role: String): Flow<List<ChatThreadSummary>> {
+        return combine(bookingsFlow, chatMessagesFlow, sessionStore.currentUser) { bookings, msgMap, user ->
+            val userId = user?.id ?: return@combine emptyList()
+            val filtered = bookings.filter { b ->
+                if (role == "provider") b.providerId == userId else b.customerId == userId
+            }
+            filtered.mapNotNull { b ->
+                val msgs = msgMap[b.id].orEmpty()
+                if (msgs.isEmpty() && !b.status.isActive) return@mapNotNull null
+                val last = msgs.lastOrNull()
+                val counterpartyId = if (role == "provider") b.customerId else b.providerId
+                val counterpartyName = if (role == "provider") b.customerName else b.providerName
+                val unreadCount = if (last != null && last.senderId != userId) 1 else 0
+                ChatThreadSummary(
+                    bookingId = b.id,
+                    counterpartyId = counterpartyId,
+                    counterpartyName = counterpartyName,
+                    serviceName = b.serviceName,
+                    bookingStatus = b.status,
+                    lastMessageText = last?.text ?: "Ketuk untuk mulai obrolan terkait pesanan",
+                    lastMessageAt = last?.createdAt ?: b.createdAt,
+                    unreadCount = unreadCount
+                )
+            }.sortedByDescending { it.lastMessageAt }
+        }
+    }
+
+    override fun observeMessages(bookingId: String): Flow<List<ChatMessage>> {
+        return chatMessagesFlow.map { map ->
+            map[bookingId].orEmpty().sortedBy { it.createdAt }
+        }
+    }
+
+    override suspend fun sendMessage(bookingId: String, text: String): AppResult<Unit> {
+        val trimmed = text.trim()
+        if (trimmed.isBlank()) {
+            return AppResult.Error("Pesan tidak boleh kosong.")
+        }
+        if (trimmed.length > BantuinConfig.MAX_CHAT_MESSAGE_LENGTH) {
+            return AppResult.Error("Pesan maksimal ${BantuinConfig.MAX_CHAT_MESSAGE_LENGTH} karakter.")
+        }
+        val user = sessionStore.currentUserValue
+            ?: return AppResult.Error("Sesi login tidak ditemukan.")
+        val booking = bookingsFlow.value.find { it.id == bookingId }
+            ?: return AppResult.Error("Pesanan tidak ditemukan.")
+        if (booking.customerId != user.id && booking.providerId != user.id) {
+            return AppResult.Error("Anda tidak memiliki akses ke percakapan ini.")
+        }
+
+        val senderRole = if (sessionStore.activeRoleValue == "provider" && booking.providerId == user.id) {
+            "provider"
+        } else if (booking.customerId == user.id) {
+            "customer"
+        } else {
+            "provider"
+        }
+
+        val now = Clock.System.now()
+        val msg = ChatMessage(
+            id = "msg_" + UUID.randomUUID().toString().take(8),
+            bookingId = bookingId,
+            senderId = user.id,
+            senderName = user.fullName,
+            senderRole = senderRole,
+            text = trimmed,
+            createdAt = now
+        )
+
+        val currentMap = chatMessagesFlow.value.toMutableMap()
+        val updatedList = currentMap[bookingId].orEmpty().toMutableList()
+        updatedList.add(msg)
+
+        // Balasan otomatis demo agar percakapan terasa responsif di mode offline
+        if (senderRole == "customer" && booking.providerId != user.id) {
+            updatedList.add(
+                ChatMessage(
+                    id = "msg_auto_" + UUID.randomUUID().toString().take(8),
+                    bookingId = bookingId,
+                    senderId = booking.providerId,
+                    senderName = booking.providerName,
+                    senderRole = "provider",
+                    text = "Baik, catatan Anda sudah saya terima. Saya segera konfirmasi di aplikasi ya.",
+                    createdAt = now + 1.seconds
+                )
+            )
+        }
+
+        currentMap[bookingId] = updatedList
+        chatMessagesFlow.value = currentMap
+        return AppResult.Success(Unit)
+    }
+
+    // ================= WALLET REPOSITORY =================
+    override fun observeProviderRevenue(providerId: String): Flow<ProviderRevenueAnalytics> {
+        return combine(bookingsFlow, payoutsFlow) { bookings, payoutsMap ->
+            val providerBookings = bookings.filter { it.providerId == providerId }
+            val providerPayouts = payoutsMap[providerId].orEmpty()
+            calculateRevenueUseCase(providerBookings, providerPayouts)
+        }
+    }
+
+    override fun observePayoutHistory(providerId: String): Flow<List<PayoutRequest>> {
+        return payoutsFlow.map { map ->
+            map[providerId].orEmpty().sortedByDescending { it.createdAt }
+        }
+    }
+
+    override suspend fun requestPayout(
+        providerId: String,
+        amount: Int,
+        channelType: PayoutChannelType,
+        channelName: String,
+        accountNumber: String,
+        accountHolder: String
+    ): AppResult<PayoutRequest> {
+        if (amount < BantuinConfig.MIN_PAYOUT_AMOUNT) {
+            return AppResult.Error("Minimal penarikan dana adalah Rp20.000.")
+        }
+        val cleanChannel = channelName.trim()
+        val cleanAccNumber = accountNumber.trim()
+        val cleanAccHolder = accountHolder.trim()
+        if (cleanChannel.isBlank() || cleanAccNumber.isBlank() || cleanAccHolder.isBlank()) {
+            return AppResult.Error("Lengkapi data rekening atau e-wallet tujuan.")
+        }
+
+        val currentAnalytics = calculateRevenueUseCase(
+            bookings = bookingsFlow.value.filter { it.providerId == providerId },
+            payouts = payoutsFlow.value[providerId].orEmpty()
+        )
+        if (amount > currentAnalytics.availableBalance) {
+            return AppResult.Error("Saldo siap cair tidak mencukupi.")
+        }
+
+        val adminFee = BantuinConfig.PAYOUT_ADMIN_FEE
+        val netAmount = amount - adminFee
+        if (netAmount <= 0) {
+            return AppResult.Error("Nominal penarikan harus lebih besar dari biaya admin.")
+        }
+
+        val request = PayoutRequest(
+            id = "po_" + UUID.randomUUID().toString().take(8),
+            providerId = providerId,
+            amount = amount,
+            adminFee = adminFee,
+            netAmount = netAmount,
+            channelType = channelType,
+            channelName = cleanChannel,
+            accountNumber = cleanAccNumber,
+            accountHolder = cleanAccHolder,
+            status = PayoutStatus.COMPLETED,
+            createdAt = Clock.System.now()
+        )
+        val currentMap = payoutsFlow.value.toMutableMap()
+        val updated = listOf(request) + currentMap[providerId].orEmpty()
+        currentMap[providerId] = updated
+        payoutsFlow.value = currentMap
+        return AppResult.Success(request)
+    }
 }

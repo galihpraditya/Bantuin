@@ -2,6 +2,7 @@ package id.bantuin.app.core.session
 
 import android.content.Context
 import android.content.SharedPreferences
+import id.bantuin.app.domain.model.GeoPoint
 import id.bantuin.app.domain.repository.UserProfile
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -51,7 +52,16 @@ class SharedPreferencesSessionStore(
             val phone = prefs.getString(KEY_USER_PHONE, "") ?: ""
             val rolesSet = prefs.getStringSet(KEY_USER_ROLES, setOf("customer")) ?: setOf("customer")
             val avatar = prefs.getString(KEY_USER_AVATAR, null)
-            UserProfile(id, name, email, phone, rolesSet, avatar)
+            val defaultAddress = prefs.getString(KEY_DEFAULT_ADDRESS, null)
+            val defaultLocation = if (prefs.contains(KEY_DEFAULT_LAT) && prefs.contains(KEY_DEFAULT_LNG)) {
+                GeoPoint(
+                    lat = prefs.getFloat(KEY_DEFAULT_LAT, 0f).toDouble(),
+                    lng = prefs.getFloat(KEY_DEFAULT_LNG, 0f).toDouble()
+                )
+            } else {
+                null
+            }
+            UserProfile(id, name, email, phone, rolesSet, avatar, defaultAddress, defaultLocation)
         } catch (e: Exception) {
             null
         }
@@ -68,14 +78,21 @@ class SharedPreferencesSessionStore(
     override suspend fun saveSession(user: UserProfile) {
         _currentUser.value = user
         try {
-            prefs.edit()
+            val editor = prefs.edit()
                 .putString(KEY_USER_ID, user.id)
                 .putString(KEY_USER_NAME, user.fullName)
                 .putString(KEY_USER_EMAIL, user.email)
                 .putString(KEY_USER_PHONE, user.phone)
                 .putStringSet(KEY_USER_ROLES, user.roles)
                 .putString(KEY_USER_AVATAR, user.avatarUrl)
-                .apply()
+                .putString(KEY_DEFAULT_ADDRESS, user.defaultAddress)
+            if (user.defaultLocation != null) {
+                editor.putFloat(KEY_DEFAULT_LAT, user.defaultLocation.lat.toFloat())
+                editor.putFloat(KEY_DEFAULT_LNG, user.defaultLocation.lng.toFloat())
+            } else {
+                editor.remove(KEY_DEFAULT_LAT).remove(KEY_DEFAULT_LNG)
+            }
+            editor.apply()
         } catch (_: Exception) {
         }
     }
@@ -97,6 +114,9 @@ class SharedPreferencesSessionStore(
         private const val KEY_USER_PHONE = "key_user_phone"
         private const val KEY_USER_ROLES = "key_user_roles"
         private const val KEY_USER_AVATAR = "key_user_avatar"
+        private const val KEY_DEFAULT_ADDRESS = "key_default_address"
+        private const val KEY_DEFAULT_LAT = "key_default_lat"
+        private const val KEY_DEFAULT_LNG = "key_default_lng"
     }
 }
 

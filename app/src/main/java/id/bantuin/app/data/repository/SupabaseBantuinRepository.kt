@@ -1,6 +1,7 @@
 package id.bantuin.app.data.repository
 
 import android.util.Log
+import id.bantuin.app.core.config.BantuinConfig
 import id.bantuin.app.core.result.AppResult
 import id.bantuin.app.core.session.UserSessionStore
 import id.bantuin.app.core.util.TimeUtils
@@ -10,6 +11,7 @@ import id.bantuin.app.domain.model.*
 import id.bantuin.app.domain.repository.BantuinRepository
 import id.bantuin.app.domain.repository.UserProfile
 import id.bantuin.app.domain.usecase.trust.RecalculateProviderMetricsUseCase
+import id.bantuin.app.domain.usecase.wallet.CalculateProviderRevenueUseCase
 import io.github.jan.supabase.SupabaseClient
 import io.github.jan.supabase.auth.auth
 import io.github.jan.supabase.auth.exception.AuthErrorCode
@@ -37,6 +39,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.launchIn
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -63,10 +66,14 @@ class SupabaseBantuinRepository(
     private val recalculateMetricsUseCase by lazy {
         RecalculateProviderMetricsUseCase(this)
     }
+    private val calculateRevenueUseCase = CalculateProviderRevenueUseCase()
 
     private val realtimeScope = CoroutineScope(SupervisorJob() + ioDispatcher)
     private val customerBookingsFlow = MutableStateFlow<List<BookingItem>>(emptyList())
     private val providerBookingsFlow = MutableStateFlow<List<BookingItem>>(emptyList())
+    private val acceptingOrdersFlow = MutableStateFlow<Map<String, Boolean>>(emptyMap())
+    private val chatMessagesFlow = MutableStateFlow<Map<String, List<ChatMessage>>>(emptyMap())
+    private val payoutsFlow = MutableStateFlow<Map<String, List<PayoutRequest>>>(emptyMap())
 
     private var activeRealtimeUserId: String? = null
     private var activeRealtimeChannel: RealtimeChannel? = null
@@ -96,6 +103,8 @@ class SupabaseBantuinRepository(
                     } else {
                         customerBookingsFlow.value = emptyList()
                         providerBookingsFlow.value = emptyList()
+                        chatMessagesFlow.value = emptyMap()
+                        payoutsFlow.value = emptyMap()
                     }
                 }
             }
@@ -113,6 +122,12 @@ class SupabaseBantuinRepository(
                     table = "bookings"
                 }.onEach {
                     refreshBookingsForCurrentUser()
+                }.launchIn(this)
+
+                channel.postgresChangeFlow<PostgresAction>(schema = "public") {
+                    table = "booking_messages"
+                }.onEach {
+                    refreshMessagesForKnownBookings()
                 }.launchIn(this)
 
                 channel.subscribe()
@@ -139,13 +154,16 @@ class SupabaseBantuinRepository(
     }
 
     private suspend fun refreshBookingsForCurrentUser() {
-        val roles = sessionStore.currentUserValue?.roles.orEmpty()
+        val user = sessionStore.currentUserValue
+        val roles = user?.roles.orEmpty()
         if ("customer" in roles || roles.isEmpty()) {
             myBookingsCustomer()
         }
         if ("provider" in roles) {
             myBookingsProvider()
+            user?.id?.let { refreshPayoutHistory(it) }
         }
+        refreshMessagesForKnownBookings()
     }
 
     private suspend fun teardownRealtimeChannel() {
@@ -254,6 +272,7 @@ class SupabaseBantuinRepository(
             }.getOrNull()
 
             val candidates = ppDtoList.mapNotNull { pp ->
+                if (!pp.isAcceptingOrders) return@mapNotNull null
                 val profile = profilesDto.find { it.id == pp.userId } ?: return@mapNotNull null
                 val userAvail = availDtoList.filter { it.providerId == pp.userId }
                 val isAvailableAnyDay = userAvail.isNotEmpty() && userAvail.any { it.mode != "OFF" }
@@ -498,6 +517,37 @@ class SupabaseBantuinRepository(
         }
     }
 
+    override fun observeAcceptingOrders(providerId: String): Flow<Boolean> {
+        if (!acceptingOrdersFlow.value.containsKey(providerId) && SupabaseClientProvider.isConfigured) {
+            realtimeScope.launch {
+                runCatching {
+                    val pp = client.postgrest["provider_profiles"]
+                        .select { filter { eq("user_id", providerId) } }
+                        .decodeList<ProviderProfileDto>()
+                        .firstOrNull()
+                    if (pp != null) {
+                        acceptingOrdersFlow.value = acceptingOrdersFlow.value + (providerId to pp.isAcceptingOrders)
+                    }
+                }
+            }
+        }
+        return acceptingOrdersFlow.map { it[providerId] ?: true }
+    }
+
+    override suspend fun setAcceptingOrders(providerId: String, accepting: Boolean): AppResult<Unit> = withContext(ioDispatcher) {
+        try {
+            client.postgrest["provider_profiles"].update(
+                buildJsonObject { put("is_accepting_orders", accepting) }
+            ) {
+                filter { eq("user_id", providerId) }
+            }
+            acceptingOrdersFlow.value = acceptingOrdersFlow.value + (providerId to accepting)
+            AppResult.Success(Unit)
+        } catch (e: Exception) {
+            mapSupabaseError(e, "Gagal mengubah status penerimaan pesanan")
+        }
+    }
+
     // =========================================================================
     // BOOKING REPOSITORY (F2, F3 & Realtime RPC)
     // =========================================================================
@@ -593,7 +643,8 @@ class SupabaseBantuinRepository(
                     totalCost = totalCost,
                     customerLat = draft.customerLocation.lat,
                     customerLng = draft.customerLocation.lng,
-                    notes = draft.notes.ifBlank { null }
+                    notes = draft.notes.ifBlank { null },
+                    paymentMethod = draft.paymentMethod.name
                 )
             ).decodeAs<String>()
 
@@ -601,6 +652,45 @@ class SupabaseBantuinRepository(
             AppResult.Success(bookingId)
         } catch (e: Exception) {
             mapSupabaseError(e, "Gagal membuat pesanan")
+        }
+    }
+
+    override suspend fun confirmQrisPayment(bookingId: String): AppResult<Unit> = withContext(ioDispatcher) {
+        try {
+            client.postgrest.rpc(
+                function = "confirm_qris_payment",
+                parameters = ConfirmQrisPaymentRpcParams(bookingId = bookingId)
+            )
+            refreshBookingsForCurrentUser()
+            AppResult.Success(Unit)
+        } catch (e: Exception) {
+            mapSupabaseError(e, "Gagal mengonfirmasi pembayaran QRIS")
+        }
+    }
+
+    override suspend fun completeBooking(
+        bookingId: String,
+        completionNote: String?,
+        cashCollectedConfirmed: Boolean
+    ): AppResult<Unit> = withContext(ioDispatcher) {
+        try {
+            client.postgrest.rpc(
+                function = "complete_booking",
+                parameters = CompleteBookingRpcParams(
+                    bookingId = bookingId,
+                    completionNote = completionNote?.trim()?.takeIf { it.isNotBlank() },
+                    cashCollected = cashCollectedConfirmed
+                )
+            )
+            refreshBookingsForCurrentUser()
+            val targetBooking = (customerBookingsFlow.value + providerBookingsFlow.value)
+                .find { it.id == bookingId }
+            if (targetBooking != null) {
+                recalculateMetricsUseCase(targetBooking.providerId)
+            }
+            AppResult.Success(Unit)
+        } catch (e: Exception) {
+            mapSupabaseError(e, "Gagal menyelesaikan pesanan")
         }
     }
 
@@ -1008,6 +1098,309 @@ class SupabaseBantuinRepository(
 
     override fun currentUser(): Flow<UserProfile?> = sessionStore.currentUser
 
+    override suspend fun updateCustomerProfile(
+        fullName: String,
+        phone: String,
+        defaultAddress: String,
+        defaultLocation: GeoPoint
+    ): AppResult<UserProfile> = withContext(ioDispatcher) {
+        try {
+            val uid = currentUidOrNull()
+                ?: return@withContext AppResult.Error("Sesi login berakhir, silakan masuk kembali")
+            val trimmedName = fullName.trim()
+            val trimmedPhone = phone.trim()
+            val trimmedAddress = defaultAddress.trim()
+
+            client.postgrest["profiles"].update(
+                buildJsonObject {
+                    put("full_name", trimmedName)
+                    put("phone", trimmedPhone)
+                    put("default_address", trimmedAddress)
+                    put("default_lat", defaultLocation.lat)
+                    put("default_lng", defaultLocation.lng)
+                }
+            ) {
+                filter { eq("id", uid) }
+            }
+
+            val current = sessionStore.currentUserValue ?: UserProfile(
+                id = uid,
+                fullName = trimmedName,
+                email = "",
+                phone = trimmedPhone,
+                roles = setOf("customer")
+            )
+            val updated = current.copy(
+                fullName = trimmedName,
+                phone = trimmedPhone,
+                defaultAddress = trimmedAddress,
+                defaultLocation = defaultLocation
+            )
+            sessionStore.saveSession(updated)
+            AppResult.Success(updated)
+        } catch (e: Exception) {
+            mapSupabaseError(e, "Gagal menyimpan profil pelanggan")
+        }
+    }
+
+    // =========================================================================
+    // CHAT REPOSITORY (Built-in Chat per Pesanan)
+    // =========================================================================
+
+    override fun observeChatThreads(role: String): Flow<List<ChatThreadSummary>> {
+        return combine(
+            customerBookingsFlow,
+            providerBookingsFlow,
+            chatMessagesFlow,
+            sessionStore.currentUser
+        ) { customerList, providerList, msgMap, user ->
+            val userId = user?.id ?: return@combine emptyList()
+            val source = if (role == "provider") providerList else customerList
+            source.mapNotNull { b ->
+                val msgs = msgMap[b.id].orEmpty()
+                if (msgs.isEmpty() && !b.status.isActive) return@mapNotNull null
+                val last = msgs.lastOrNull()
+                val counterpartyId = if (role == "provider") b.customerId else b.providerId
+                val counterpartyName = if (role == "provider") b.customerName else b.providerName
+                val unreadCount = if (last != null && last.senderId != userId) 1 else 0
+                ChatThreadSummary(
+                    bookingId = b.id,
+                    counterpartyId = counterpartyId,
+                    counterpartyName = counterpartyName,
+                    serviceName = b.serviceName,
+                    bookingStatus = b.status,
+                    lastMessageText = last?.text ?: "Ketuk untuk mulai obrolan terkait pesanan",
+                    lastMessageAt = last?.createdAt ?: b.createdAt,
+                    unreadCount = unreadCount
+                )
+            }.sortedByDescending { it.lastMessageAt }
+        }
+    }
+
+    override fun observeMessages(bookingId: String): Flow<List<ChatMessage>> {
+        if (!chatMessagesFlow.value.containsKey(bookingId) && SupabaseClientProvider.isConfigured) {
+            realtimeScope.launch {
+                refreshMessagesForBooking(bookingId)
+            }
+        }
+        return chatMessagesFlow.map { map ->
+            map[bookingId].orEmpty().sortedBy { it.createdAt }
+        }
+    }
+
+    override suspend fun sendMessage(bookingId: String, text: String): AppResult<Unit> = withContext(ioDispatcher) {
+        val trimmed = text.trim()
+        if (trimmed.isBlank()) {
+            return@withContext AppResult.Error("Pesan tidak boleh kosong.")
+        }
+        if (trimmed.length > BantuinConfig.MAX_CHAT_MESSAGE_LENGTH) {
+            return@withContext AppResult.Error("Pesan maksimal ${BantuinConfig.MAX_CHAT_MESSAGE_LENGTH} karakter.")
+        }
+        try {
+            val uid = currentUidOrNull()
+                ?: return@withContext AppResult.Error("Sesi login berakhir, silakan masuk kembali")
+            val role = if (sessionStore.activeRoleValue == "provider") "provider" else "customer"
+
+            client.postgrest["booking_messages"].insert(
+                BookingMessageInsertDto(
+                    bookingId = bookingId,
+                    senderId = uid,
+                    senderRole = role,
+                    messageText = trimmed
+                )
+            )
+            refreshMessagesForBooking(bookingId)
+            AppResult.Success(Unit)
+        } catch (e: Exception) {
+            mapSupabaseError(e, "Gagal mengirim pesan")
+        }
+    }
+
+    private suspend fun refreshMessagesForKnownBookings() {
+        val ids = (customerBookingsFlow.value + providerBookingsFlow.value)
+            .map { it.id }
+            .distinct()
+        if (ids.isEmpty() || !SupabaseClientProvider.isConfigured) return
+        runCatching {
+            val msgsDto = client.postgrest["booking_messages"]
+                .select {
+                    filter { isIn("booking_id", ids) }
+                    order(column = "created_at", order = Order.ASCENDING)
+                }
+                .decodeList<BookingMessageDto>()
+            val senderIds = msgsDto.map { it.senderId }.distinct()
+            val profilesMap = if (senderIds.isNotEmpty()) {
+                runCatching {
+                    client.postgrest["profiles"]
+                        .select { filter { isIn("id", senderIds) } }
+                        .decodeList<ProfileDto>()
+                        .associateBy { it.id }
+                }.getOrDefault(emptyMap())
+            } else {
+                emptyMap()
+            }
+            val grouped = msgsDto.groupBy { it.bookingId }.mapValues { (_, list) ->
+                list.map { dto ->
+                    ChatMessage(
+                        id = dto.id,
+                        bookingId = dto.bookingId,
+                        senderId = dto.senderId,
+                        senderName = profilesMap[dto.senderId]?.fullName
+                            ?: if (dto.senderRole == "provider") "Mitra" else "Pelanggan",
+                        senderRole = dto.senderRole,
+                        text = dto.messageText,
+                        createdAt = parseInstantOrNull(dto.createdAt) ?: Clock.System.now()
+                    )
+                }
+            }
+            chatMessagesFlow.value = chatMessagesFlow.value + grouped
+        }
+    }
+
+    private suspend fun refreshMessagesForBooking(bookingId: String) {
+        if (!SupabaseClientProvider.isConfigured) return
+        runCatching {
+            val msgsDto = client.postgrest["booking_messages"]
+                .select {
+                    filter { eq("booking_id", bookingId) }
+                    order(column = "created_at", order = Order.ASCENDING)
+                }
+                .decodeList<BookingMessageDto>()
+            val senderIds = msgsDto.map { it.senderId }.distinct()
+            val profilesMap = if (senderIds.isNotEmpty()) {
+                runCatching {
+                    client.postgrest["profiles"]
+                        .select { filter { isIn("id", senderIds) } }
+                        .decodeList<ProfileDto>()
+                        .associateBy { it.id }
+                }.getOrDefault(emptyMap())
+            } else {
+                emptyMap()
+            }
+            val mapped = msgsDto.map { dto ->
+                ChatMessage(
+                    id = dto.id,
+                    bookingId = dto.bookingId,
+                    senderId = dto.senderId,
+                    senderName = profilesMap[dto.senderId]?.fullName
+                        ?: if (dto.senderRole == "provider") "Mitra" else "Pelanggan",
+                    senderRole = dto.senderRole,
+                    text = dto.messageText,
+                    createdAt = parseInstantOrNull(dto.createdAt) ?: Clock.System.now()
+                )
+            }
+            chatMessagesFlow.value = chatMessagesFlow.value + (bookingId to mapped)
+        }
+    }
+
+    // =========================================================================
+    // WALLET REPOSITORY (Saldo QRIS, Analisis Gabungan, & Pencairan Mitra)
+    // =========================================================================
+
+    override fun observeProviderRevenue(providerId: String): Flow<ProviderRevenueAnalytics> {
+        if (!payoutsFlow.value.containsKey(providerId) && SupabaseClientProvider.isConfigured) {
+            realtimeScope.launch {
+                refreshPayoutHistory(providerId)
+            }
+        }
+        return combine(providerBookingsFlow, payoutsFlow) { bookings, payoutsMap ->
+            val providerBookings = bookings.filter { it.providerId == providerId }
+            val providerPayouts = payoutsMap[providerId].orEmpty()
+            calculateRevenueUseCase(providerBookings, providerPayouts)
+        }
+    }
+
+    override fun observePayoutHistory(providerId: String): Flow<List<PayoutRequest>> {
+        if (!payoutsFlow.value.containsKey(providerId) && SupabaseClientProvider.isConfigured) {
+            realtimeScope.launch {
+                refreshPayoutHistory(providerId)
+            }
+        }
+        return payoutsFlow.map { map ->
+            map[providerId].orEmpty().sortedByDescending { it.createdAt }
+        }
+    }
+
+    override suspend fun requestPayout(
+        providerId: String,
+        amount: Int,
+        channelType: PayoutChannelType,
+        channelName: String,
+        accountNumber: String,
+        accountHolder: String
+    ): AppResult<PayoutRequest> = withContext(ioDispatcher) {
+        if (amount < BantuinConfig.MIN_PAYOUT_AMOUNT) {
+            return@withContext AppResult.Error("Minimal penarikan dana adalah Rp20.000.")
+        }
+        val cleanChannel = channelName.trim()
+        val cleanAccNumber = accountNumber.trim()
+        val cleanAccHolder = accountHolder.trim()
+        if (cleanChannel.isBlank() || cleanAccNumber.isBlank() || cleanAccHolder.isBlank()) {
+            return@withContext AppResult.Error("Lengkapi data rekening atau e-wallet tujuan.")
+        }
+
+        try {
+            val payoutId = client.postgrest.rpc(
+                function = "request_provider_payout",
+                parameters = RequestPayoutRpcParams(
+                    amount = amount,
+                    channelType = channelType.name,
+                    channelName = cleanChannel,
+                    accountNumber = cleanAccNumber,
+                    accountHolder = cleanAccHolder
+                )
+            ).decodeAs<String>()
+
+            refreshPayoutHistory(providerId)
+            val created = payoutsFlow.value[providerId]?.find { it.id == payoutId } ?: PayoutRequest(
+                id = payoutId,
+                providerId = providerId,
+                amount = amount,
+                adminFee = BantuinConfig.PAYOUT_ADMIN_FEE,
+                netAmount = (amount - BantuinConfig.PAYOUT_ADMIN_FEE).coerceAtLeast(0),
+                channelType = channelType,
+                channelName = cleanChannel,
+                accountNumber = cleanAccNumber,
+                accountHolder = cleanAccHolder,
+                status = PayoutStatus.COMPLETED,
+                createdAt = Clock.System.now()
+            )
+            AppResult.Success(created)
+        } catch (e: Exception) {
+            mapSupabaseError(e, "Gagal mengajukan pencairan dana")
+        }
+    }
+
+    private suspend fun refreshPayoutHistory(providerId: String) {
+        if (!SupabaseClientProvider.isConfigured) return
+        runCatching {
+            val dtoList = client.postgrest["payout_requests"]
+                .select {
+                    filter { eq("provider_id", providerId) }
+                    order(column = "created_at", order = Order.DESCENDING)
+                }
+                .decodeList<PayoutRequestDto>()
+            val items = dtoList.map { dto ->
+                PayoutRequest(
+                    id = dto.id,
+                    providerId = dto.providerId,
+                    amount = dto.amount,
+                    adminFee = dto.adminFee,
+                    netAmount = dto.netAmount,
+                    channelType = runCatching { PayoutChannelType.valueOf(dto.channelType) }
+                        .getOrDefault(PayoutChannelType.BANK),
+                    channelName = dto.channelName,
+                    accountNumber = dto.accountNumber,
+                    accountHolder = dto.accountHolder,
+                    status = runCatching { PayoutStatus.valueOf(dto.status) }
+                        .getOrDefault(PayoutStatus.COMPLETED),
+                    createdAt = parseInstantOrNull(dto.createdAt) ?: Clock.System.now()
+                )
+            }
+            payoutsFlow.value = payoutsFlow.value + (providerId to items)
+        }
+    }
+
     // =========================================================================
     // ERROR MAPPING & HELPERS
     // =========================================================================
@@ -1031,6 +1424,19 @@ class SupabaseBantuinRepository(
                 "Aksi tidak diizinkan"
             raw.contains("SELF_BOOKING", ignoreCase = true) ->
                 "Tidak bisa memesan layanan sendiri"
+            raw.contains("CASH_CONFIRMATION_REQUIRED", ignoreCase = true) ->
+                "Konfirmasikan bahwa uang tunai sudah diterima dari pelanggan."
+            raw.contains("QRIS_UNPAID", ignoreCase = true) ->
+                "Pembayaran QRIS pelanggan belum lunas."
+            raw.contains("MIN_PAYOUT_NOT_MET", ignoreCase = true) ->
+                "Minimal penarikan dana adalah Rp20.000."
+            raw.contains("INSUFFICIENT_BALANCE", ignoreCase = true) ->
+                "Saldo siap cair tidak mencukupi."
+            raw.contains("INVALID_PAYMENT_METHOD", ignoreCase = true) ->
+                "Metode pembayaran tidak valid."
+            raw.contains("INVALID_CHANNEL", ignoreCase = true) ||
+                raw.contains("INVALID_ACCOUNT_DETAILS", ignoreCase = true) ->
+                "Lengkapi data rekening atau e-wallet tujuan."
             raw.contains("UNAUTHENTICATED", ignoreCase = true) ||
                 raw.contains("JWT", ignoreCase = true) ->
                 "Sesi login berakhir, silakan masuk kembali"
@@ -1140,7 +1546,12 @@ class SupabaseBantuinRepository(
                 customerLng = dto.customerLng,
                 providerLocation = providerLocationDto?.let { GeoPoint(it.lat, it.lng) },
                 providerPhone = providerProfile?.phone,
-                customerPhone = customerProfile?.phone
+                customerPhone = customerProfile?.phone,
+                paymentMethod = runCatching { PaymentMethod.valueOf(dto.paymentMethod) }
+                    .getOrDefault(PaymentMethod.CASH),
+                paymentStatus = runCatching { PaymentStatus.valueOf(dto.paymentStatus) }
+                    .getOrDefault(PaymentStatus.UNPAID),
+                completionNote = dto.completionNote
             )
         }
     }
@@ -1197,13 +1608,20 @@ class SupabaseBantuinRepository(
         }
 
         if (profileDto != null) {
+            val defaultLoc = if (profileDto.defaultLat != null && profileDto.defaultLng != null) {
+                GeoPoint(profileDto.defaultLat, profileDto.defaultLng)
+            } else {
+                null
+            }
             return UserProfile(
                 id = profileDto.id,
                 fullName = profileDto.fullName,
                 email = authUser.email ?: fallbackEmail.trim(),
                 phone = profileDto.phone.orEmpty(),
                 roles = profileDto.roles.toSet().ifEmpty { setOf("customer") },
-                avatarUrl = profileDto.avatarUrl
+                avatarUrl = profileDto.avatarUrl,
+                defaultAddress = profileDto.defaultAddress,
+                defaultLocation = defaultLoc
             )
         }
 

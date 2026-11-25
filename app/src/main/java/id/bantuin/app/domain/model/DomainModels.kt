@@ -186,7 +186,8 @@ data class OrderDraft(
     val customerAddress: String,
     val distanceKm: Double,
     val costEstimate: CostEstimate? = null,
-    val lockInfo: LockInfo? = null
+    val lockInfo: LockInfo? = null,
+    val paymentMethod: PaymentMethod = PaymentMethod.CASH
 )
 
 data class BookingItem(
@@ -212,7 +213,10 @@ data class BookingItem(
     val customerLng: Double? = null,
     val providerLocation: GeoPoint? = null,
     val providerPhone: String? = null,
-    val customerPhone: String? = null
+    val customerPhone: String? = null,
+    val paymentMethod: PaymentMethod = PaymentMethod.CASH,
+    val paymentStatus: PaymentStatus = PaymentStatus.UNPAID,
+    val completionNote: String? = null
 )
 
 data class BookingEvent(
