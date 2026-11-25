@@ -62,9 +62,9 @@ class ProviderProfileEditViewModel(
                     errorMessage = null
                 )
             }
-            when (val res = catalogRepository.candidates(2)) {
+            when (val res = catalogRepository.providerProfile(resolvedId)) {
                 is AppResult.Success -> {
-                    val p = res.data.find { it.providerId == resolvedId }
+                    val p = res.data
                     if (p != null) {
                         _uiState.update {
                             it.copy(

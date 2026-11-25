@@ -153,9 +153,10 @@ class ScheduleViewModel(
         val startMin = state.selectedStartMin
         val durationMin = state.service?.durationMin ?: 60
 
+        val dateIso = state.selectedDate.toString()
         viewModelScope.launch {
             _uiState.update { it.copy(isLocking = true, errorMessage = null) }
-            when (val lockRes = bookingRepository.acquireLock(providerId, startMin, startMin + durationMin)) {
+            when (val lockRes = bookingRepository.acquireLock(providerId, dateIso, startMin, startMin + durationMin)) {
                 is AppResult.Success -> {
                     _uiState.update { it.copy(isLocking = false, lockInfo = lockRes.data) }
                     onSuccess(lockRes.data)

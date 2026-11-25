@@ -354,7 +354,13 @@ object FakeData {
         ServiceItem("s09", "p09", 3, "Darurat Bocor Atap Kos", "Penambalan genteng dan talang darurat", 90000, 180),
         ServiceItem("s10", "p10", 4, "Deep Clean Kamar Mandi Kos", "Pembersihan kerak keramik, kloset & dinding kamar mandi", 50000, 120),
         ServiceItem("s11", "p12", 5, "Angkut Pindahan Kos", "Pick-up dan bantuan angkat barang kos hingga sampai tujuan", 100000, 120),
-        ServiceItem("s12", "p13", 6, "Bimbingan Belajar Privat (90 mnt)", "Bimbingan satu lawan satu mata kuliah / pelajaran sekolah", 60000, 90)
+        ServiceItem("s12", "p13", 6, "Bimbingan Belajar Privat (90 mnt)", "Bimbingan satu lawan satu mata kuliah / pelajaran sekolah", 60000, 90),
+        ServiceItem("s13", "p05", 1, "Perbaikan Kelistrikan Rumah", "Perbaikan saklar rusak dan pengecekan jalur", 40000, 60),
+        ServiceItem("s14", "p06", 1, "Instalasi Listrik Kos", "Pemasangan jalur lampu dan fiting", 45000, 60),
+        ServiceItem("s15", "p07", 1, "Perbaikan Lampu & Fitting", "Ganti instalasi fiting dan lampu kos", 40000, 45),
+        ServiceItem("s16", "p11", 4, "Pembersihan Kamar Kos", "Sapu, pel, lap perabot kamar kos", 45000, 90),
+        ServiceItem("s17", "p14", 1, "Servis Listrik Wilayah Selatan", "Perbaikan kelistrikan Kepanjen dan sekitarnya", 70000, 90),
+        ServiceItem("s18", "p15", 2, "Servis Kulkas & Freon", "Pengecekan mesin kompresor kulkas", 50000, 60)
     )
 
     // Jadwal ketersediaan mitra

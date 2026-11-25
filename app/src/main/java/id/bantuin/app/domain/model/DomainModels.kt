@@ -131,7 +131,8 @@ data class LockInfo(
     val providerId: String,
     val startMin: Int,
     val endMin: Int,
-    val expiresAtMillis: Long
+    val expiresAtMillis: Long,
+    val dateIso: String = ""
 )
 
 data class CompletedJob(
@@ -202,7 +203,23 @@ data class BookingItem(
     val address: String,
     val createdAt: Instant,
     val notes: String? = null,
-    val review: ReviewItem? = null
+    val review: ReviewItem? = null,
+    val expiresAt: Instant? = null,
+    val startedAt: Instant? = null,
+    val finishedAt: Instant? = null,
+    val customerLat: Double? = null,
+    val customerLng: Double? = null,
+    val providerLocation: GeoPoint? = null,
+    val providerPhone: String? = null,
+    val customerPhone: String? = null
+)
+
+data class BookingEvent(
+    val id: Long,
+    val bookingId: String,
+    val status: BookingStatus,
+    val actorId: String?,
+    val createdAt: Instant
 )
 
 data class ReviewItem(

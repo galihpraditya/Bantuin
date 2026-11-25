@@ -54,12 +54,10 @@ class ProviderHomeViewModel(
             val resolvedId = providerId?.takeIf { it.isNotBlank() } ?: user?.id
             _uiState.update { it.copy(user = user, isLoading = true) }
 
-            val candidatesRes = catalogRepository.candidates(2) // AC category
+            val providerRes = if (resolvedId != null) catalogRepository.providerProfile(resolvedId) else null
             val ordersRes = bookingRepository.myBookingsProvider()
 
-            val provider = if (candidatesRes is AppResult.Success && resolvedId != null) {
-                candidatesRes.data.find { it.providerId == resolvedId }
-            } else null
+            val provider = (providerRes as? AppResult.Success)?.data
 
             val orders = if (ordersRes is AppResult.Success) ordersRes.data else emptyList()
             val pending = orders.count { it.status == BookingStatus.PENDING }

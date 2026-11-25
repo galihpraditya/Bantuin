@@ -9,7 +9,6 @@ import id.bantuin.app.data.remote.dto.*
 import id.bantuin.app.domain.model.*
 import id.bantuin.app.domain.repository.BantuinRepository
 import id.bantuin.app.domain.repository.UserProfile
-import id.bantuin.app.domain.usecase.matchmaking.MatchmakingUseCase
 import id.bantuin.app.domain.usecase.trust.RecalculateProviderMetricsUseCase
 import io.github.jan.supabase.SupabaseClient
 import io.github.jan.supabase.auth.auth
@@ -18,13 +17,27 @@ import io.github.jan.supabase.auth.exception.AuthRestException
 import io.github.jan.supabase.auth.providers.builtin.Email
 import io.github.jan.supabase.auth.user.UserInfo
 import io.github.jan.supabase.postgrest.postgrest
+import io.github.jan.supabase.postgrest.query.Order
 import io.github.jan.supabase.postgrest.rpc
+import io.github.jan.supabase.realtime.PostgresAction
+import io.github.jan.supabase.realtime.Realtime
+import io.github.jan.supabase.realtime.RealtimeChannel
+import io.github.jan.supabase.realtime.channel
+import io.github.jan.supabase.realtime.postgresChangeFlow
+import io.github.jan.supabase.realtime.realtime
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.launchIn
+import kotlinx.coroutines.flow.onEach
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.datetime.Clock
 import kotlinx.datetime.Instant
@@ -37,24 +50,124 @@ import kotlinx.serialization.json.put
 import kotlinx.serialization.json.putJsonArray
 import java.util.Locale
 import java.util.UUID
+import kotlin.time.Duration.Companion.days
 
 class SupabaseBantuinRepository(
     private val client: SupabaseClient = SupabaseClientProvider.client,
     private val sessionStore: UserSessionStore,
-    private val fallback: FakeBantuinRepository? = null,
-    private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO
+    private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
+    private val enableRealtime: Boolean = SupabaseClientProvider.isConfigured
 ) : BantuinRepository {
 
-    private val matchmakingUseCase = MatchmakingUseCase()
     private val recalculateMetricsUseCase by lazy {
         RecalculateProviderMetricsUseCase(this)
     }
 
+    private val realtimeScope = CoroutineScope(SupervisorJob() + ioDispatcher)
     private val customerBookingsFlow = MutableStateFlow<List<BookingItem>>(emptyList())
+    private val providerBookingsFlow = MutableStateFlow<List<BookingItem>>(emptyList())
+
+    private var activeRealtimeUserId: String? = null
+    private var activeRealtimeChannel: RealtimeChannel? = null
+    private var realtimeChangesJob: Job? = null
+    private var realtimeStatusJob: Job? = null
 
     companion object {
         private const val LOG_TAG_LOGIN = "LOGIN"
+        private const val LOG_TAG_REALTIME = "BantuinRealtime"
     }
+
+    init {
+        if (enableRealtime) {
+            observeSessionForRealtime()
+        }
+    }
+
+    private fun observeSessionForRealtime() {
+        sessionStore.currentUser
+            .onEach { user ->
+                val userId = user?.id
+                if (userId != activeRealtimeUserId) {
+                    teardownRealtimeChannel()
+                    activeRealtimeUserId = userId
+                    if (userId != null) {
+                        startRealtimeForUser(userId)
+                    } else {
+                        customerBookingsFlow.value = emptyList()
+                        providerBookingsFlow.value = emptyList()
+                    }
+                }
+            }
+            .launchIn(realtimeScope)
+    }
+
+    private fun startRealtimeForUser(userId: String) {
+        realtimeChangesJob = realtimeScope.launch {
+            try {
+                client.auth.awaitInitialization()
+                val channel = client.realtime.channel("bookings_sync_$userId")
+                activeRealtimeChannel = channel
+
+                channel.postgresChangeFlow<PostgresAction>(schema = "public") {
+                    table = "bookings"
+                }.onEach {
+                    refreshBookingsForCurrentUser()
+                }.launchIn(this)
+
+                channel.subscribe()
+                refreshBookingsForCurrentUser()
+            } catch (ce: CancellationException) {
+                throw ce
+            } catch (t: Throwable) {
+                logDebug(LOG_TAG_REALTIME, "Gagal langganan Realtime: ${t.message}")
+            }
+        }
+
+        realtimeStatusJob = realtimeScope.launch {
+            try {
+                client.realtime.status.collect { status ->
+                    if (status == Realtime.Status.CONNECTED && activeRealtimeUserId == userId) {
+                        refreshBookingsForCurrentUser()
+                    }
+                }
+            } catch (ce: CancellationException) {
+                throw ce
+            } catch (_: Throwable) {
+            }
+        }
+    }
+
+    private suspend fun refreshBookingsForCurrentUser() {
+        val roles = sessionStore.currentUserValue?.roles.orEmpty()
+        if ("customer" in roles || roles.isEmpty()) {
+            myBookingsCustomer()
+        }
+        if ("provider" in roles) {
+            myBookingsProvider()
+        }
+    }
+
+    private suspend fun teardownRealtimeChannel() {
+        realtimeChangesJob?.cancel()
+        realtimeStatusJob?.cancel()
+        realtimeChangesJob = null
+        realtimeStatusJob = null
+        val prev = activeRealtimeChannel
+        activeRealtimeChannel = null
+        if (prev != null) {
+            try {
+                client.realtime.removeChannel(prev)
+            } catch (_: Throwable) {
+            }
+        }
+    }
+
+    private fun currentUidOrNull(): String? =
+        sessionStore.currentUserValue?.id ?: try {
+            client.auth.currentUserOrNull()?.id
+        } catch (_: Throwable) {
+            null
+        }
 
     // =========================================================================
     // CATALOG REPOSITORY (CRUD-1, CRUD-2, CRUD-3, F1)
@@ -63,7 +176,9 @@ class SupabaseBantuinRepository(
     override suspend fun categories(): AppResult<List<ServiceCategory>> = withContext(ioDispatcher) {
         try {
             val dtoList = client.postgrest["service_categories"]
-                .select()
+                .select {
+                    order(column = "id", order = Order.ASCENDING)
+                }
                 .decodeList<ServiceCategoryDto>()
             val list = dtoList.map { dto ->
                 ServiceCategory(
@@ -71,17 +186,18 @@ class SupabaseBantuinRepository(
                     name = dto.name,
                     iconKey = dto.icon,
                     defaultDurationMin = dto.defaultDurationMin,
-                    description = ""
+                    description = categorySubtitle(dto.id)
                 )
             }
             AppResult.Success(list)
         } catch (e: Exception) {
-            fallback?.categories() ?: AppResult.Error(e.message ?: "Gagal memuat kategori", e)
+            mapSupabaseError(e, "Gagal memuat kategori layanan")
         }
     }
 
     override suspend fun candidates(categoryId: Int): AppResult<List<ProviderCandidate>> = withContext(ioDispatcher) {
         try {
+            val selfId = currentUidOrNull()
             val servicesDto = client.postgrest["services"]
                 .select {
                     filter {
@@ -91,7 +207,10 @@ class SupabaseBantuinRepository(
                 }
                 .decodeList<ServiceDto>()
 
-            val providerIds = servicesDto.map { it.providerId }.distinct()
+            val providerIds = servicesDto
+                .map { it.providerId }
+                .distinct()
+                .filter { selfId == null || it != selfId }
             if (providerIds.isEmpty()) {
                 return@withContext AppResult.Success(emptyList())
             }
@@ -128,46 +247,56 @@ class SupabaseBantuinRepository(
                 if (!isAvailableAnyDay) return@mapNotNull null
 
                 val pServices = servicesDto.filter { it.providerId == pp.userId }
-                val minFare = pServices.minOfOrNull { it.baseFare } ?: 50000
-
-                ProviderCandidate(
-                    providerId = pp.userId,
-                    name = profile.fullName,
-                    avatarUrl = profile.avatarUrl,
-                    location = GeoPoint(pp.lat, pp.lng),
-                    address = pp.address ?: "Malang, Jawa Timur",
-                    bio = pp.bio ?: "Teknisi profesional Bantuin",
-                    ratingAvg = pp.ratingAvg,
-                    reviewCount = pp.txCount30d,
-                    completionRate = pp.completionRate,
-                    flagAnomaly = pp.flagAnomaly,
-                    badge = when (pp.badge) {
-                        "TRUSTED" -> ProviderBadge.TRUSTED
-                        "NEW" -> ProviderBadge.NEW
-                        else -> ProviderBadge.NONE
-                    },
-                    minBaseFare = minFare,
-                    responseTimeText = when {
-                        pp.trustScore >= 90.0 -> "< 5 mnt"
-                        pp.trustScore >= 80.0 -> "~10 mnt"
-                        else -> "~20 mnt"
-                    }
-                )
+                val minFare = pServices.minOfOrNull { it.baseFare }
+                mapProviderCandidate(pp, profile, minFare)
             }
             AppResult.Success(candidates)
         } catch (e: Exception) {
-            fallback?.candidates(categoryId) ?: AppResult.Error(e.message ?: "Gagal memuat mitra", e)
+            mapSupabaseError(e, "Gagal memuat daftar mitra")
         }
     }
 
-    override suspend fun servicesOf(providerId: String): AppResult<List<ServiceItem>> = withContext(ioDispatcher) {
+    override suspend fun providerProfile(providerId: String): AppResult<ProviderCandidate?> = withContext(ioDispatcher) {
         try {
-            val listDto = client.postgrest["services"]
+            val pp = client.postgrest["provider_profiles"]
+                .select { filter { eq("user_id", providerId) } }
+                .decodeList<ProviderProfileDto>()
+                .firstOrNull()
+                ?: return@withContext AppResult.Success(null)
+
+            val profile = client.postgrest["profiles"]
+                .select { filter { eq("id", providerId) } }
+                .decodeList<ProfileDto>()
+                .firstOrNull()
+                ?: return@withContext AppResult.Success(null)
+
+            val services = client.postgrest["services"]
                 .select {
                     filter {
                         eq("provider_id", providerId)
                         eq("is_active", true)
                     }
+                }
+                .decodeList<ServiceDto>()
+
+            AppResult.Success(mapProviderCandidate(pp, profile, services.minOfOrNull { it.baseFare }))
+        } catch (e: Exception) {
+            mapSupabaseError(e, "Gagal memuat profil mitra")
+        }
+    }
+
+    override suspend fun servicesOf(providerId: String): AppResult<List<ServiceItem>> = withContext(ioDispatcher) {
+        try {
+            val isOwner = currentUidOrNull() == providerId
+            val listDto = client.postgrest["services"]
+                .select {
+                    filter {
+                        eq("provider_id", providerId)
+                        if (!isOwner) {
+                            eq("is_active", true)
+                        }
+                    }
+                    order(column = "created_at", order = Order.ASCENDING)
                 }
                 .decodeList<ServiceDto>()
             val items = listDto.map { dto ->
@@ -184,7 +313,7 @@ class SupabaseBantuinRepository(
             }
             AppResult.Success(items)
         } catch (e: Exception) {
-            fallback?.servicesOf(providerId) ?: AppResult.Error(e.message ?: "Gagal memuat layanan", e)
+            mapSupabaseError(e, "Gagal memuat daftar layanan")
         }
     }
 
@@ -195,23 +324,35 @@ class SupabaseBantuinRepository(
                     filter {
                         eq("provider_id", providerId)
                     }
+                    order(column = "day_of_week", order = Order.ASCENDING)
                 }
                 .decodeList<AvailabilityDto>()
-            val list = listDto.map { dto ->
-                DayAvailability(
-                    dayOfWeek = dto.dayOfWeek,
-                    mode = when (dto.mode) {
-                        "ALWAYS_ON" -> AvailabilityMode.ALWAYS_ON
-                        "ON" -> AvailabilityMode.ON
-                        else -> AvailabilityMode.OFF
-                    },
-                    openMin = dto.openTime?.let { parseTimeToMin(it) },
-                    closeMin = dto.closeTime?.let { parseTimeToMin(it) }
-                )
+            val existingByDay = listDto.associateBy { it.dayOfWeek }
+            val list = (1..7).map { day ->
+                val dto = existingByDay[day]
+                if (dto == null) {
+                    DayAvailability(
+                        dayOfWeek = day,
+                        mode = if (day == 7) AvailabilityMode.OFF else AvailabilityMode.ON,
+                        openMin = if (day == 7) null else 480,
+                        closeMin = if (day == 7) null else 1020
+                    )
+                } else {
+                    DayAvailability(
+                        dayOfWeek = dto.dayOfWeek,
+                        mode = when (dto.mode) {
+                            "ALWAYS_ON" -> AvailabilityMode.ALWAYS_ON
+                            "ON" -> AvailabilityMode.ON
+                            else -> AvailabilityMode.OFF
+                        },
+                        openMin = dto.openTime?.let { parseTimeToMin(it) },
+                        closeMin = dto.closeTime?.let { parseTimeToMin(it) }
+                    )
+                }
             }
             AppResult.Success(list)
         } catch (e: Exception) {
-            fallback?.availability(providerId) ?: AppResult.Error(e.message ?: "Gagal memuat ketersediaan", e)
+            mapSupabaseError(e, "Gagal memuat jadwal ketersediaan")
         }
     }
 
@@ -229,14 +370,19 @@ class SupabaseBantuinRepository(
             client.postgrest["availability"].upsert(dtoList)
             AppResult.Success(Unit)
         } catch (e: Exception) {
-            fallback?.saveAvailability(providerId, days) ?: AppResult.Error(e.message ?: "Gagal menyimpan jadwal", e)
+            mapSupabaseError(e, "Gagal menyimpan jadwal ketersediaan")
         }
     }
 
     override suspend fun upsertService(service: ServiceItem): AppResult<Unit> = withContext(ioDispatcher) {
         try {
+            val validUuid = try {
+                UUID.fromString(service.id).toString()
+            } catch (_: Exception) {
+                UUID.randomUUID().toString()
+            }
             val dto = ServiceDto(
-                id = if (service.id.isBlank()) UUID.randomUUID().toString() else service.id,
+                id = validUuid,
                 providerId = service.providerId,
                 categoryId = service.categoryId,
                 name = service.name,
@@ -248,7 +394,7 @@ class SupabaseBantuinRepository(
             client.postgrest["services"].upsert(dto)
             AppResult.Success(Unit)
         } catch (e: Exception) {
-            fallback?.upsertService(service) ?: AppResult.Error(e.message ?: "Gagal menyimpan katalog", e)
+            mapSupabaseError(e, "Gagal menyimpan layanan")
         }
     }
 
@@ -261,7 +407,7 @@ class SupabaseBantuinRepository(
             }
             AppResult.Success(Unit)
         } catch (e: Exception) {
-            fallback?.deleteService(serviceId) ?: AppResult.Error(e.message ?: "Gagal menghapus layanan", e)
+            mapSupabaseError(e, "Gagal menghapus layanan")
         }
     }
 
@@ -279,20 +425,42 @@ class SupabaseBantuinRepository(
             ) {
                 filter { eq("id", providerId) }
             }
-            client.postgrest["provider_profiles"].update(
-                mapOf(
-                    "bio" to bio,
-                    "address" to address,
-                    "lat" to location.lat,
-                    "lng" to location.lng
+
+            val existing = client.postgrest["provider_profiles"]
+                .select { filter { eq("user_id", providerId) } }
+                .decodeList<ProviderProfileDto>()
+                .firstOrNull()
+
+            if (existing != null) {
+                client.postgrest["provider_profiles"].update(
+                    mapOf(
+                        "bio" to bio,
+                        "address" to address,
+                        "lat" to location.lat,
+                        "lng" to location.lng
+                    )
+                ) {
+                    filter { eq("user_id", providerId) }
+                }
+            } else {
+                client.postgrest["provider_profiles"].insert(
+                    ProviderProfileUpsertDto(
+                        userId = providerId,
+                        bio = bio,
+                        address = address,
+                        lat = location.lat,
+                        lng = location.lng
+                    )
                 )
-            ) {
-                filter { eq("user_id", providerId) }
+            }
+
+            val user = sessionStore.currentUserValue
+            if (user != null && user.id == providerId) {
+                sessionStore.saveSession(user.copy(fullName = name, phone = phone))
             }
             AppResult.Success(Unit)
         } catch (e: Exception) {
-            fallback?.updateProviderProfile(providerId, name, bio, location, address, phone)
-                ?: AppResult.Error(e.message ?: "Gagal memperbarui profil", e)
+            mapSupabaseError(e, "Gagal memperbarui profil mitra")
         }
     }
 
@@ -321,16 +489,19 @@ class SupabaseBantuinRepository(
             }
             AppResult.Success(blocks)
         } catch (e: Exception) {
-            fallback?.busyBlocks(providerId, dateIso)
-                ?: AppResult.Error(e.message ?: "Gagal mengecek jadwal bentrok", e)
+            mapSupabaseError(e, "Gagal mengecek jadwal bentrok")
         }
     }
 
-    override suspend fun acquireLock(providerId: String, startMin: Int, endMin: Int): AppResult<LockInfo> = withContext(ioDispatcher) {
+    override suspend fun acquireLock(
+        providerId: String,
+        dateIso: String,
+        startMin: Int,
+        endMin: Int
+    ): AppResult<LockInfo> = withContext(ioDispatcher) {
         try {
-            val todayIso = TimeUtils.todayIso()
-            val startIso = TimeUtils.toIsoString(todayIso, startMin)
-            val endIso = TimeUtils.toIsoString(todayIso, endMin)
+            val startIso = TimeUtils.toIsoString(dateIso, startMin)
+            val endIso = TimeUtils.toIsoString(dateIso, endMin)
 
             val lockId = client.postgrest.rpc(
                 function = "acquire_slot_lock",
@@ -346,12 +517,12 @@ class SupabaseBantuinRepository(
                 providerId = providerId,
                 startMin = startMin,
                 endMin = endMin,
-                expiresAtMillis = Clock.System.now().toEpochMilliseconds() + 600_000L
+                expiresAtMillis = Clock.System.now().toEpochMilliseconds() + 600_000L,
+                dateIso = dateIso
             )
             AppResult.Success(lockInfo)
         } catch (e: Exception) {
-            fallback?.acquireLock(providerId, startMin, endMin)
-                ?: AppResult.Error(e.message ?: "Slot sedang dikunci pengguna lain", e)
+            mapSupabaseError(e, "Slot sedang dikunci pengguna lain")
         }
     }
 
@@ -360,13 +531,14 @@ class SupabaseBantuinRepository(
             client.postgrest.rpc("release_slot_lock")
             AppResult.Success(Unit)
         } catch (e: Exception) {
-            fallback?.releaseLock(lockId) ?: AppResult.Error(e.message ?: "Gagal melepas kunci slot", e)
+            mapSupabaseError(e, "Gagal melepas kunci slot")
         }
     }
 
     override suspend fun createBooking(draft: OrderDraft): AppResult<String> = withContext(ioDispatcher) {
         try {
-            val lockId = draft.lockInfo?.lockId ?: UUID.randomUUID().toString()
+            val lockId = draft.lockInfo?.lockId
+                ?: return@withContext AppResult.Error("Waktu penahanan slot habis, pilih jadwal lagi")
             val estimate = draft.costEstimate
             val baseFare = estimate?.baseFare ?: draft.service.baseFare
             val baseCost = estimate?.baseCost ?: baseFare
@@ -387,14 +559,14 @@ class SupabaseBantuinRepository(
                     totalCost = totalCost,
                     customerLat = draft.customerLocation.lat,
                     customerLng = draft.customerLocation.lng,
-                    notes = draft.notes
+                    notes = draft.notes.ifBlank { null }
                 )
             ).decodeAs<String>()
 
             myBookingsCustomer()
             AppResult.Success(bookingId)
         } catch (e: Exception) {
-            fallback?.createBooking(draft) ?: AppResult.Error(e.message ?: "Gagal membuat pesanan", e)
+            mapSupabaseError(e, "Gagal membuat pesanan")
         }
     }
 
@@ -407,53 +579,116 @@ class SupabaseBantuinRepository(
                     newStatus = newStatus.name
                 )
             )
-            myBookingsCustomer()
-            myBookingsProvider()
+            refreshBookingsForCurrentUser()
+            if (newStatus in setOf(BookingStatus.SELESAI, BookingStatus.DIBATALKAN_MITRA)) {
+                val targetBooking = (customerBookingsFlow.value + providerBookingsFlow.value)
+                    .find { it.id == bookingId }
+                if (targetBooking != null) {
+                    recalculateMetricsUseCase(targetBooking.providerId)
+                }
+            }
             AppResult.Success(Unit)
         } catch (e: Exception) {
-            fallback?.updateStatus(bookingId, newStatus)
-                ?: AppResult.Error(e.message ?: "Gagal memperbarui status", e)
+            mapSupabaseError(e, "Gagal memperbarui status pesanan")
         }
     }
 
     override suspend fun myBookingsCustomer(): AppResult<List<BookingItem>> = withContext(ioDispatcher) {
         try {
+            val uid = currentUidOrNull()
+                ?: return@withContext AppResult.Error("Sesi login berakhir, silakan masuk kembali")
+
             val dtoList = client.postgrest["bookings"]
-                .select()
+                .select {
+                    filter { eq("customer_id", uid) }
+                    order(column = "created_at", order = Order.DESCENDING)
+                }
                 .decodeList<BookingDto>()
 
-            val items = dtoList.map { dto ->
-                mapDtoToBookingItem(dto)
-            }
+            val items = enrichBookingDtos(dtoList)
             customerBookingsFlow.value = items
             AppResult.Success(items)
         } catch (e: Exception) {
-            fallback?.myBookingsCustomer() ?: AppResult.Error(e.message ?: "Gagal memuat pesanan", e)
+            mapSupabaseError(e, "Gagal memuat pesanan pelanggan")
         }
     }
 
     override suspend fun myBookingsProvider(): AppResult<List<BookingItem>> = withContext(ioDispatcher) {
         try {
+            val uid = currentUidOrNull()
+                ?: return@withContext AppResult.Error("Sesi login berakhir, silakan masuk kembali")
+
             val dtoList = client.postgrest["bookings"]
-                .select()
+                .select {
+                    filter { eq("provider_id", uid) }
+                    order(column = "created_at", order = Order.DESCENDING)
+                }
                 .decodeList<BookingDto>()
-            val items = dtoList.map { dto ->
-                mapDtoToBookingItem(dto)
-            }
+
+            val items = enrichBookingDtos(dtoList)
+            providerBookingsFlow.value = items
             AppResult.Success(items)
         } catch (e: Exception) {
-            fallback?.myBookingsProvider() ?: AppResult.Error(e.message ?: "Gagal memuat antrean mitra", e)
+            mapSupabaseError(e, "Gagal memuat antrean pesanan mitra")
         }
     }
 
     override fun observeBooking(bookingId: String): Flow<BookingItem?> {
-        return customerBookingsFlow.map { list ->
-            list.find { it.id == bookingId }
+        return combine(customerBookingsFlow, providerBookingsFlow) { customerList, providerList ->
+            customerList.find { it.id == bookingId } ?: providerList.find { it.id == bookingId }
         }
     }
 
     override fun observeCustomerBookings(): Flow<List<BookingItem>> {
         return customerBookingsFlow.asStateFlow()
+    }
+
+    override fun observeProviderBookings(): Flow<List<BookingItem>> {
+        return providerBookingsFlow.asStateFlow()
+    }
+
+    override suspend fun events(bookingId: String): AppResult<List<BookingEvent>> = withContext(ioDispatcher) {
+        try {
+            val dtoList = client.postgrest["booking_events"]
+                .select {
+                    filter { eq("booking_id", bookingId) }
+                    order(column = "created_at", order = Order.ASCENDING)
+                }
+                .decodeList<BookingEventDto>()
+
+            val events = dtoList.map { dto ->
+                val status = try {
+                    BookingStatus.valueOf(dto.status)
+                } catch (_: Exception) {
+                    BookingStatus.PENDING
+                }
+                val created = try {
+                    dto.createdAt?.let { Instant.parse(it) } ?: Clock.System.now()
+                } catch (_: Exception) {
+                    Clock.System.now()
+                }
+                BookingEvent(
+                    id = dto.id ?: 0L,
+                    bookingId = dto.bookingId,
+                    status = status,
+                    actorId = dto.actorId,
+                    createdAt = created
+                )
+            }
+            AppResult.Success(events)
+        } catch (e: Exception) {
+            mapSupabaseError(e, "Gagal memuat riwayat status pesanan")
+        }
+    }
+
+    override suspend fun expirePending(): AppResult<Unit> = withContext(ioDispatcher) {
+        try {
+            client.postgrest.rpc("expire_pending_bookings")
+            refreshBookingsForCurrentUser()
+            AppResult.Success(Unit)
+        } catch (e: Exception) {
+            mapSupabaseError(e, "Gagal menyinkronkan batas waktu pesanan")
+        }
     }
 
     // =========================================================================
@@ -468,24 +703,25 @@ class SupabaseBantuinRepository(
         tags: List<String>
     ): AppResult<Unit> = withContext(ioDispatcher) {
         try {
-            val currentUserId = sessionStore.currentUserValue?.id ?: "c0000000-0000-0000-0000-000000000001"
+            val currentUserId = currentUidOrNull()
+                ?: return@withContext AppResult.Error("Sesi login berakhir, silakan masuk kembali")
             val reviewDto = ReviewDto(
                 id = UUID.randomUUID().toString(),
                 bookingId = bookingId,
                 customerId = currentUserId,
                 providerId = providerId,
                 rating = rating,
-                comment = comment
+                comment = comment?.takeIf { it.isNotBlank() }
             )
             client.postgrest["reviews"].insert(reviewDto)
 
-            // Jalankan feedback loop rekalkulasi metrik mitra (F4)
+            // Jalankan feedback loop rekalkulasi metrik mitra (F4 -> F1)
             recalculateMetricsUseCase(providerId)
+            refreshBookingsForCurrentUser()
 
             AppResult.Success(Unit)
         } catch (e: Exception) {
-            fallback?.submitReview(bookingId, providerId, rating, comment, tags)
-                ?: AppResult.Error(e.message ?: "Gagal mengirim ulasan", e)
+            mapSupabaseError(e, "Gagal mengirim ulasan")
         }
     }
 
@@ -493,26 +729,35 @@ class SupabaseBantuinRepository(
         try {
             val listDto = client.postgrest["reviews"]
                 .select {
-                    filter {
-                        eq("provider_id", providerId)
-                    }
+                    filter { eq("provider_id", providerId) }
+                    order(column = "created_at", order = Order.DESCENDING)
                 }
                 .decodeList<ReviewDto>()
+
+            val customerIds = listDto.map { it.customerId }.distinct()
+            val profilesMap = if (customerIds.isNotEmpty()) {
+                client.postgrest["profiles"]
+                    .select { filter { isIn("id", customerIds) } }
+                    .decodeList<ProfileDto>()
+                    .associateBy { it.id }
+            } else {
+                emptyMap()
+            }
 
             val reviews = listDto.map { dto ->
                 ReviewItem(
                     id = dto.id,
                     bookingId = dto.bookingId,
-                    customerName = "Pelanggan Terverifikasi",
+                    customerName = profilesMap[dto.customerId]?.fullName ?: "Pelanggan",
                     rating = dto.rating,
                     comment = dto.comment,
-                    tags = listOf("Pekerjaan Rapi", "Tepat Waktu"),
+                    tags = emptyList(),
                     createdAtText = dto.createdAt?.take(10) ?: "Baru saja"
                 )
             }
             AppResult.Success(reviews)
         } catch (e: Exception) {
-            fallback?.reviewsOf(providerId) ?: AppResult.Error(e.message ?: "Gagal memuat ulasan", e)
+            mapSupabaseError(e, "Gagal memuat ulasan")
         }
     }
 
@@ -522,10 +767,18 @@ class SupabaseBantuinRepository(
 
     override suspend fun trustInput(providerId: String, sinceDays: Int): AppResult<TrustInput> = withContext(ioDispatcher) {
         try {
-            val reviewsRes = reviewsOf(providerId)
-            val ratings = if (reviewsRes is AppResult.Success) {
-                reviewsRes.data.map { it.rating }
-            } else emptyList()
+            val cutoff = Clock.System.now() - sinceDays.days
+            val cutoffIso = cutoff.toString()
+
+            val reviewsDto = client.postgrest["reviews"]
+                .select {
+                    filter {
+                        eq("provider_id", providerId)
+                        gte("created_at", cutoffIso)
+                    }
+                }
+                .decodeList<ReviewDto>()
+            val ratings = reviewsDto.map { it.rating }
 
             val bookingsDto = client.postgrest["bookings"]
                 .select {
@@ -535,24 +788,30 @@ class SupabaseBantuinRepository(
                 }
                 .decodeList<BookingDto>()
 
-            val finished = bookingsDto.filter { it.status == "SELESAI" }
-            val cancelledByProvider = bookingsDto.filter { it.status == "DIBATALKAN_MITRA" }
+            val recentBookings = bookingsDto.filter { b ->
+                val refIso = b.finishedAt ?: b.createdAt ?: b.startAt
+                val refInstant = parseInstantOrNull(refIso)
+                refInstant == null || refInstant >= cutoff
+            }
+
+            val finished = recentBookings.filter { it.status == "SELESAI" }
+            val cancelledByProvider = recentBookings.filter { it.status == "DIBATALKAN_MITRA" }
 
             val jobs = finished.map { b ->
-                val startInstant = try { Instant.parse(b.startAt) } catch (_: Exception) { Clock.System.now() }
-                val startedInstant = try { b.startedAt?.let { Instant.parse(it) } ?: startInstant } catch (_: Exception) { startInstant }
+                val startInstant = parseInstantOrNull(b.startAt) ?: Clock.System.now()
+                val startedInstant = b.startedAt?.let { parseInstantOrNull(it) } ?: startInstant
                 CompletedJob(startAt = startInstant, startedAt = startedInstant)
             }
 
-            val input = TrustInput(
-                completed = jobs,
-                mitraCancelledCount = cancelledByProvider.size,
-                ratings = ratings
+            AppResult.Success(
+                TrustInput(
+                    completed = jobs,
+                    mitraCancelledCount = cancelledByProvider.size,
+                    ratings = ratings
+                )
             )
-            AppResult.Success(input)
         } catch (e: Exception) {
-            fallback?.trustInput(providerId, sinceDays)
-                ?: AppResult.Error(e.message ?: "Gagal menghitung data trust", e)
+            mapSupabaseError(e, "Gagal menghitung data trust mitra")
         }
     }
 
@@ -575,8 +834,7 @@ class SupabaseBantuinRepository(
             )
             AppResult.Success(Unit)
         } catch (e: Exception) {
-            fallback?.apply(providerId, result)
-                ?: AppResult.Error(e.message ?: "Gagal menerapkan metrik", e)
+            mapSupabaseError(e, "Gagal menerapkan metrik evaluasi")
         }
     }
 
@@ -587,6 +845,7 @@ class SupabaseBantuinRepository(
                     filter {
                         eq("provider_id", providerId)
                     }
+                    order(column = "computed_at", order = Order.ASCENDING)
                 }
                 .decodeList<ProviderMetricSnapshotDto>()
 
@@ -595,13 +854,13 @@ class SupabaseBantuinRepository(
                     label = dto.computedAt?.take(10) ?: "Snapshot",
                     trustScore = dto.trustScore,
                     ratingScore = dto.ratingScore ?: 70.0,
-                    onTimeRate = dto.onTimeRate ?: 90.0,
+                    onTimeRate = dto.onTimeRate ?: 0.0,
                     cancelRate = dto.cancelRate ?: 0.0
                 )
             }
             AppResult.Success(history)
         } catch (e: Exception) {
-            fallback?.history(providerId) ?: AppResult.Error(e.message ?: "Gagal memuat snapshot metrik", e)
+            mapSupabaseError(e, "Gagal memuat riwayat metrik")
         }
     }
 
@@ -613,38 +872,21 @@ class SupabaseBantuinRepository(
         val normalizedEmail = email.trim()
         try {
             client.auth.awaitInitialization()
-            logLoginDebug("Mencoba login dengan email: $normalizedEmail")
+            logDebug(LOG_TAG_LOGIN, "Mencoba login dengan email: $normalizedEmail")
             client.auth.signInWith(Email) {
                 this.email = normalizedEmail
                 this.password = pass
             }
-            logLoginDebug("Login berhasil")
 
             val authUser = client.auth.currentUserOrNull()
-                ?: run {
-                    logLoginError("Login gagal: sesi pengguna tidak ditemukan setelah signInWith")
-                    return@withContext AppResult.Error("Gagal masuk: sesi pengguna tidak ditemukan.")
-                }
-            logLoginDebug("Auth user: id=${authUser.id}, email=${authUser.email}")
+                ?: return@withContext AppResult.Error("Gagal masuk: sesi pengguna tidak ditemukan.")
 
             val user = loadUserProfile(authUser, email)
             sessionStore.setActiveRole(preferredRole(user))
             sessionStore.saveSession(user)
-            logLoginDebug("Sesi tersimpan: ${user.fullName}, roles=${user.roles}, activeRole=${preferredRole(user)}")
             AppResult.Success(user.id)
         } catch (e: Exception) {
-            // Log diagnostik: jangan pernah mencatat password.
-            logLoginError("Login gagal: ${e.message}", e)
-            if (e is AuthRestException) {
-                logLoginError(
-                    "Detail login gagal | exception=${e::class.java.simpleName} | " +
-                        "code=${e.errorCode?.value ?: e.error} | " +
-                        "description=${e.errorDescription} | " +
-                        "http=${e.response.status.value}"
-                )
-            }
-            // Jangan pernah fallback ke akun demo di sini. Fallback pada autentikasi
-            // membuat kredensial salah seolah-olah berhasil masuk sebagai Rani Wijaya.
+            logError(LOG_TAG_LOGIN, "Login gagal: ${e.message}", e)
             AppResult.Error(authErrorMessage(e, "masuk"), e)
         }
     }
@@ -657,7 +899,7 @@ class SupabaseBantuinRepository(
         isProvider: Boolean
     ): AppResult<String> = withContext(ioDispatcher) {
         try {
-            val initialRole = if (isProvider) "provider" else "customer"
+            val roleList = if (isProvider) listOf("customer", "provider") else listOf("customer")
             client.auth.awaitInitialization()
             client.auth.signUpWith(Email) {
                 this.email = email.trim()
@@ -665,7 +907,7 @@ class SupabaseBantuinRepository(
                 data = buildJsonObject {
                     put("full_name", name.trim())
                     if (phone.isNotBlank()) put("phone", phone.trim())
-                    putJsonArray("roles") { add(initialRole) }
+                    putJsonArray("roles") { roleList.forEach { add(it) } }
                 }
             }
 
@@ -675,7 +917,8 @@ class SupabaseBantuinRepository(
                 )
 
             val user = loadUserProfile(authUser, email)
-            sessionStore.setActiveRole(preferredRole(user))
+            val initialActiveRole = if (isProvider && "provider" in user.roles) "provider" else preferredRole(user)
+            sessionStore.setActiveRole(initialActiveRole)
             sessionStore.saveSession(user)
             AppResult.Success(user.id)
         } catch (e: Exception) {
@@ -683,12 +926,44 @@ class SupabaseBantuinRepository(
         }
     }
 
+    override suspend fun enableProviderRole(
+        address: String,
+        location: GeoPoint,
+        bio: String
+    ): AppResult<Unit> = withContext(ioDispatcher) {
+        try {
+            client.postgrest.rpc(
+                function = "enable_provider_role",
+                parameters = EnableProviderRoleRpcParams(
+                    bio = bio.trim(),
+                    address = address.trim(),
+                    lat = location.lat,
+                    lng = location.lng
+                )
+            )
+            val authUser = client.auth.currentUserOrNull()
+            if (authUser != null) {
+                val updated = loadUserProfile(authUser, authUser.email.orEmpty())
+                sessionStore.saveSession(updated)
+            } else {
+                sessionStore.currentUserValue?.let { cur ->
+                    sessionStore.saveSession(cur.copy(roles = cur.roles + "provider"))
+                }
+            }
+            sessionStore.setActiveRole("provider")
+            AppResult.Success(Unit)
+        } catch (e: Exception) {
+            mapSupabaseError(e, "Gagal mengaktifkan peran mitra")
+        }
+    }
+
     override suspend fun signOut(): AppResult<Unit> = withContext(ioDispatcher) {
         try {
+            teardownRealtimeChannel()
             client.auth.signOut()
             sessionStore.clearSession()
             AppResult.Success(Unit)
-        } catch (e: Exception) {
+        } catch (_: Exception) {
             sessionStore.clearSession()
             AppResult.Success(Unit)
         }
@@ -703,22 +978,183 @@ class SupabaseBantuinRepository(
     override fun currentUser(): Flow<UserProfile?> = sessionStore.currentUser
 
     // =========================================================================
-    // AUTH HELPERS
+    // ERROR MAPPING & HELPERS
     // =========================================================================
 
-    /**
-     * Memuat profil asli pengguna dari tabel public.profiles. Metadata auth hanya
-     * dipakai sebagai cadangan bila baris profil belum tersedia (misalnya trigger
-     * handle_new_user belum berjalan).
-     */
+    internal fun mapSupabaseError(e: Throwable, defaultMessage: String): AppResult.Error {
+        val raw = buildString {
+            append(e.message.orEmpty())
+            e.cause?.message?.let { append(" "); append(it) }
+        }
+        val mapped = when {
+            raw.contains("SLOT_CONFLICT", ignoreCase = true) ||
+                raw.contains("SLOT_LOCKED", ignoreCase = true) ||
+                raw.contains("23P01", ignoreCase = true) ->
+                "Slot baru saja diambil, pilih jam lain"
+            raw.contains("LOCK_EXPIRED", ignoreCase = true) ->
+                "Waktu penahanan slot habis, pilih jadwal lagi"
+            raw.contains("EXPIRED", ignoreCase = true) ->
+                "Pesanan sudah kedaluwarsa"
+            raw.contains("INVALID_TRANSITION", ignoreCase = true) ||
+                raw.contains("FORBIDDEN", ignoreCase = true) ->
+                "Aksi tidak diizinkan"
+            raw.contains("SELF_BOOKING", ignoreCase = true) ->
+                "Tidak bisa memesan layanan sendiri"
+            raw.contains("UNAUTHENTICATED", ignoreCase = true) ||
+                raw.contains("JWT", ignoreCase = true) ->
+                "Sesi login berakhir, silakan masuk kembali"
+            raw.contains("NOT_FOUND", ignoreCase = true) ->
+                "Data tidak ditemukan"
+            raw.contains("timeout", ignoreCase = true) ||
+                raw.contains("Unable to resolve host", ignoreCase = true) ||
+                raw.contains("connect", ignoreCase = true) ->
+                "Koneksi ke server terputus. Periksa internet Anda lalu coba lagi."
+            else -> defaultMessage
+        }
+        return AppResult.Error(mapped, e)
+    }
+
+    private suspend fun enrichBookingDtos(dtoList: List<BookingDto>): List<BookingItem> {
+        if (dtoList.isEmpty()) return emptyList()
+
+        val profileIds = (dtoList.map { it.customerId } + dtoList.map { it.providerId }).distinct()
+        val providerIds = dtoList.map { it.providerId }.distinct()
+        val serviceIds = dtoList.map { it.serviceId }.distinct()
+        val bookingIds = dtoList.map { it.id }.distinct()
+
+        val profilesMap = runCatching {
+            client.postgrest["profiles"]
+                .select { filter { isIn("id", profileIds) } }
+                .decodeList<ProfileDto>()
+                .associateBy { it.id }
+        }.getOrDefault(emptyMap())
+
+        val providerProfilesMap = runCatching {
+            client.postgrest["provider_profiles"]
+                .select { filter { isIn("user_id", providerIds) } }
+                .decodeList<ProviderProfileDto>()
+                .associateBy { it.userId }
+        }.getOrDefault(emptyMap())
+
+        val servicesMap = runCatching {
+            client.postgrest["services"]
+                .select { filter { isIn("id", serviceIds) } }
+                .decodeList<ServiceDto>()
+                .associateBy { it.id }
+        }.getOrDefault(emptyMap())
+
+        val reviewsMap = runCatching {
+            client.postgrest["reviews"]
+                .select { filter { isIn("booking_id", bookingIds) } }
+                .decodeList<ReviewDto>()
+                .associateBy { it.bookingId }
+        }.getOrDefault(emptyMap())
+
+        return dtoList.map { dto ->
+            val customerProfile = profilesMap[dto.customerId]
+            val providerProfile = profilesMap[dto.providerId]
+            val providerLocationDto = providerProfilesMap[dto.providerId]
+            val serviceDto = servicesMap[dto.serviceId]
+            val reviewDto = reviewsMap[dto.id]
+
+            val startInstant = parseInstantOrNull(dto.startAt)
+            val endInstant = parseInstantOrNull(dto.endAt)
+            val startMin = startInstant?.let { TimeUtils.toWibMinutesOfDay(it) } ?: 480
+            val endMin = endInstant?.let { TimeUtils.toWibMinutesOfDay(it) } ?: (startMin + 60)
+            val status = try {
+                BookingStatus.valueOf(dto.status)
+            } catch (_: Exception) {
+                BookingStatus.PENDING
+            }
+
+            BookingItem(
+                id = dto.id,
+                customerId = dto.customerId,
+                customerName = customerProfile?.fullName ?: "Pelanggan",
+                providerId = dto.providerId,
+                providerName = providerProfile?.fullName ?: "Mitra Bantuin",
+                serviceName = serviceDto?.name ?: "Layanan Bantuin",
+                scheduledDate = startInstant?.let { TimeUtils.formatInstantToDate(it) } ?: dto.startAt.take(10),
+                scheduledTime = String.format(
+                    Locale.US,
+                    "%02d:%02d - %02d:%02d WIB",
+                    startMin / 60,
+                    startMin % 60,
+                    endMin / 60,
+                    endMin % 60
+                ),
+                totalCost = dto.totalCost,
+                status = status,
+                address = String.format(Locale.US, "%.4f, %.4f", dto.customerLat, dto.customerLng),
+                createdAt = parseInstantOrNull(dto.createdAt) ?: Clock.System.now(),
+                notes = dto.notes,
+                review = reviewDto?.let { r ->
+                    ReviewItem(
+                        id = r.id,
+                        bookingId = r.bookingId,
+                        customerName = customerProfile?.fullName ?: "Pelanggan",
+                        rating = r.rating,
+                        comment = r.comment,
+                        tags = emptyList(),
+                        createdAtText = r.createdAt?.take(10) ?: "Baru saja"
+                    )
+                },
+                expiresAt = parseInstantOrNull(dto.expiresAt),
+                startedAt = parseInstantOrNull(dto.startedAt),
+                finishedAt = parseInstantOrNull(dto.finishedAt),
+                customerLat = dto.customerLat,
+                customerLng = dto.customerLng,
+                providerLocation = providerLocationDto?.let { GeoPoint(it.lat, it.lng) },
+                providerPhone = providerProfile?.phone,
+                customerPhone = customerProfile?.phone
+            )
+        }
+    }
+
+    private fun mapProviderCandidate(
+        pp: ProviderProfileDto,
+        profile: ProfileDto,
+        minFare: Int?
+    ): ProviderCandidate {
+        return ProviderCandidate(
+            providerId = pp.userId,
+            name = profile.fullName,
+            avatarUrl = profile.avatarUrl,
+            location = GeoPoint(pp.lat, pp.lng),
+            address = pp.address ?: "Malang, Jawa Timur",
+            bio = pp.bio ?: "Mitra jasa Bantuin",
+            ratingAvg = pp.ratingAvg,
+            reviewCount = pp.txCount30d,
+            completionRate = pp.completionRate,
+            flagAnomaly = pp.flagAnomaly,
+            badge = when (pp.badge) {
+                "TRUSTED" -> ProviderBadge.TRUSTED
+                "NEW" -> ProviderBadge.NEW
+                else -> ProviderBadge.NONE
+            },
+            minBaseFare = minFare,
+            responseTimeText = when {
+                pp.trustScore >= 90.0 -> "< 5 mnt"
+                pp.trustScore >= 80.0 -> "~10 mnt"
+                else -> "~20 mnt"
+            }
+        )
+    }
+
+    private fun categorySubtitle(categoryId: Int): String = when (categoryId) {
+        1 -> "Korslet, saklar, panel & MCB"
+        2 -> "Cuci AC, perbaikan kulkas & TV"
+        3 -> "Atap bocor, kran air, cat dinding"
+        4 -> "Deep clean kamar mandi & kos"
+        5 -> "Pindahan kos, perabot & lemari"
+        6 -> "Matematika, sains, bahasa & les"
+        else -> "Layanan jasa profesional"
+    }
+
     private suspend fun loadUserProfile(authUser: UserInfo, fallbackEmail: String): UserProfile {
         val profileDto = try {
             client.postgrest["profiles"]
-                .select {
-                    filter {
-                        eq("id", authUser.id)
-                    }
-                }
+                .select { filter { eq("id", authUser.id) } }
                 .decodeList<ProfileDto>()
                 .firstOrNull()
         } catch (_: Exception) {
@@ -760,23 +1196,19 @@ class SupabaseBantuinRepository(
     private fun preferredRole(user: UserProfile): String =
         if ("provider" in user.roles && "customer" !in user.roles) "provider" else "customer"
 
-    /**
-     * Pembungkus Log agar repository tetap aman dipakai dari local JVM unit test,
-     * di mana android.util.Log merupakan stub yang melempar exception.
-     */
-    private fun logLoginDebug(message: String) {
+    private fun logDebug(tag: String, message: String) {
         try {
-            Log.d(LOG_TAG_LOGIN, message)
+            Log.d(tag, message)
         } catch (_: Throwable) {
         }
     }
 
-    private fun logLoginError(message: String, throwable: Throwable? = null) {
+    private fun logError(tag: String, message: String, throwable: Throwable? = null) {
         try {
             if (throwable != null) {
-                Log.e(LOG_TAG_LOGIN, message, throwable)
+                Log.e(tag, message, throwable)
             } else {
-                Log.e(LOG_TAG_LOGIN, message)
+                Log.e(tag, message)
             }
         } catch (_: Throwable) {
         }
@@ -801,35 +1233,13 @@ class SupabaseBantuinRepository(
         }
     }
 
-    // =========================================================================
-    // HELPER MAPPERS
-    // =========================================================================
-
-    private fun mapDtoToBookingItem(dto: BookingDto): BookingItem {
-        val startMin = parseIsoToWibMinutes(dto.startAt)
-        val endMin = parseIsoToWibMinutes(dto.endAt)
-        val status = try {
-            BookingStatus.valueOf(dto.status)
+    private fun parseInstantOrNull(iso: String?): Instant? {
+        if (iso.isNullOrBlank()) return null
+        return try {
+            Instant.parse(iso)
         } catch (_: Exception) {
-            BookingStatus.PENDING
+            null
         }
-
-        return BookingItem(
-            id = dto.id,
-            customerId = dto.customerId,
-            customerName = "Pelanggan Demo",
-            providerId = dto.providerId,
-            providerName = "Mitra Bantuin",
-            serviceName = "Layanan Pemesanan",
-            scheduledDate = dto.startAt.take(10),
-            scheduledTime = String.format(Locale.US, "%02d:%02d - %02d:%02d WIB", startMin / 60, startMin % 60, endMin / 60, endMin % 60),
-            totalCost = dto.totalCost,
-            status = status,
-            address = "Malang, Jawa Timur",
-            createdAt = try { dto.createdAt?.let { Instant.parse(it) } ?: Clock.System.now() } catch (_: Exception) { Clock.System.now() },
-            notes = dto.notes,
-            review = null
-        )
     }
 
     private fun parseIsoToWibMinutes(isoString: String): Int {

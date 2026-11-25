@@ -1,13 +1,18 @@
 package id.bantuin.app.data.repository
 
+import id.bantuin.app.core.config.BantuinConfig
 import id.bantuin.app.core.result.AppResult
+import id.bantuin.app.core.session.InMemorySessionStore
+import id.bantuin.app.core.session.UserSessionStore
 import id.bantuin.app.core.util.TimeUtils
 import id.bantuin.app.data.fake.FakeData
 import id.bantuin.app.domain.model.AvailabilityMode
+import id.bantuin.app.domain.model.BookingEvent
 import id.bantuin.app.domain.model.BookingItem
 import id.bantuin.app.domain.model.BookingStatus
 import id.bantuin.app.domain.model.CompletedJob
 import id.bantuin.app.domain.model.DayAvailability
+import id.bantuin.app.domain.model.GeoPoint
 import id.bantuin.app.domain.model.LockInfo
 import id.bantuin.app.domain.model.MetricSnapshot
 import id.bantuin.app.domain.model.OrderDraft
@@ -19,33 +24,30 @@ import id.bantuin.app.domain.model.ServiceItem
 import id.bantuin.app.domain.model.TimeBlock
 import id.bantuin.app.domain.model.TrustInput
 import id.bantuin.app.domain.model.TrustResult
-import id.bantuin.app.domain.repository.AuthRepository
 import id.bantuin.app.domain.repository.BantuinRepository
-import id.bantuin.app.domain.repository.BookingRepository
-import id.bantuin.app.domain.repository.CatalogRepository
-import id.bantuin.app.domain.repository.MetricsRepository
-import id.bantuin.app.domain.repository.ReviewRepository
 import id.bantuin.app.domain.repository.UserProfile
-import id.bantuin.app.domain.usecase.matchmaking.MatchmakingUseCase
+import id.bantuin.app.domain.usecase.trust.RecalculateProviderMetricsUseCase
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.map
 import kotlinx.datetime.Clock
 import kotlinx.datetime.Instant
 import java.util.UUID
+import kotlin.time.Duration.Companion.days
 import kotlin.time.Duration.Companion.minutes
 
 class FakeBantuinRepository(
-    private val sessionStore: id.bantuin.app.core.session.UserSessionStore = id.bantuin.app.core.session.InMemorySessionStore()
+    private val sessionStore: UserSessionStore = InMemorySessionStore()
 ) : BantuinRepository {
 
-    private val matchmakingUseCase = MatchmakingUseCase()
     private val recalculateMetricsUseCase by lazy {
-        id.bantuin.app.domain.usecase.trust.RecalculateProviderMetricsUseCase(this)
+        RecalculateProviderMetricsUseCase(this)
     }
 
-    // Data in-memory
+    private data class StoredReview(val providerId: String, val item: ReviewItem)
+    private data class StoredSlotMeta(val dateIso: String, val startMin: Int, val endMin: Int, val startAt: Instant)
+
     private val categoriesList = FakeData.categories.toMutableList()
     private val providersList = FakeData.providers.toMutableList()
     private val servicesList = FakeData.services.toMutableList()
@@ -55,27 +57,45 @@ class FakeBantuinRepository(
         }
     }
     private val bookingsFlow = MutableStateFlow<List<BookingItem>>(emptyList())
-    private val reviewsList = FakeData.sampleReviews.toMutableList()
-    private val activeLocks = mutableMapOf<String, LockInfo>()
+    private val bookingMetaMap = mutableMapOf<String, StoredSlotMeta>()
+    private val bookingEventsMap = mutableMapOf<String, MutableList<BookingEvent>>()
+    private val reviewsList = FakeData.sampleReviews.map { StoredReview("p01", it) }.toMutableList()
+    private val activeLocks = mutableMapOf<String, Pair<String, LockInfo>>() // lockId -> (lockedByUserId, LockInfo)
+    private val providerSnapshotsMap = mutableMapOf<String, MutableList<MetricSnapshot>>()
+    private var nextEventId = 100L
 
     init {
-        // Inisialisasi beberapa pesanan demo
+        val now = Clock.System.now()
+        val initialStart = now - 60.minutes
         val initialBooking = BookingItem(
             id = "b01",
             customerId = "user_demo_rani",
             customerName = "Rani Wijaya",
             providerId = "p01",
             providerName = "Budi Santoso, S.T.",
-            serviceName = "Servis AC Sedang (1/2 - 1 PK)",
-            scheduledDate = "Selasa, 15 Okt 2024",
+            serviceName = "Cuci AC Standar (0.5 - 1 PK)",
+            scheduledDate = TimeUtils.todayIso(),
             scheduledTime = "14:30 WIB",
             totalCost = 94220,
             status = BookingStatus.DALAM_PENGERJAAN,
-            address = "Kost Putri Griya Asri, Jl. Kaliurang KM 5, Gang Wuni No. 12, Sleman",
-            createdAt = Clock.System.now(),
-            notes = "AC di kamar lantai 2 meneteskan air terus dan tidak dingin."
+            address = "Jl. Merdeka Barat, Alun-alun Malang",
+            createdAt = initialStart,
+            notes = "AC di kamar lantai 2 meneteskan air terus dan tidak dingin.",
+            startedAt = initialStart + 5.minutes,
+            customerLat = FakeData.MALANG_CENTER.lat,
+            customerLng = FakeData.MALANG_CENTER.lng,
+            providerLocation = FakeData.providers.first().location,
+            providerPhone = "081200000001",
+            customerPhone = "081234567890"
         )
         bookingsFlow.value = listOf(initialBooking)
+        bookingMetaMap["b01"] = StoredSlotMeta(TimeUtils.todayIso(), 870, 990, initialStart)
+        bookingEventsMap["b01"] = mutableListOf(
+            BookingEvent(1L, "b01", BookingStatus.PENDING, "user_demo_rani", initialStart),
+            BookingEvent(2L, "b01", BookingStatus.DIKONFIRMASI, "p01", initialStart + 2.minutes),
+            BookingEvent(3L, "b01", BookingStatus.DALAM_PENGERJAAN, "p01", initialStart + 5.minutes)
+        )
+        providerSnapshotsMap["p01"] = FakeData.sampleSnapshots.toMutableList()
     }
 
     // ================= CATALOG REPOSITORY =================
@@ -84,18 +104,24 @@ class FakeBantuinRepository(
     }
 
     override suspend fun candidates(categoryId: Int): AppResult<List<ProviderCandidate>> {
-        // Filter mitra yang memiliki layanan di kategori ini dan bukan semua hari OFF
+        val selfId = sessionStore.currentUserValue?.id
         val activeProviders = providersList.filter { p ->
+            val notSelf = selfId == null || p.providerId != selfId
             val hasService = servicesList.any { it.providerId == p.providerId && it.categoryId == categoryId && it.isActive }
             val days = availabilityMap[p.providerId] ?: emptyList()
             val hasActiveDays = days.any { it.mode != AvailabilityMode.OFF }
-            hasService && hasActiveDays
+            notSelf && hasService && hasActiveDays
         }
         return AppResult.Success(activeProviders)
     }
 
+    override suspend fun providerProfile(providerId: String): AppResult<ProviderCandidate?> {
+        return AppResult.Success(providersList.find { it.providerId == providerId })
+    }
+
     override suspend fun servicesOf(providerId: String): AppResult<List<ServiceItem>> {
-        val s = servicesList.filter { it.providerId == providerId && it.isActive }
+        val isOwner = sessionStore.currentUserValue?.id == providerId
+        val s = servicesList.filter { it.providerId == providerId && (isOwner || it.isActive) }
         return AppResult.Success(s)
     }
 
@@ -128,7 +154,7 @@ class FakeBantuinRepository(
         providerId: String,
         name: String,
         bio: String,
-        location: id.bantuin.app.domain.model.GeoPoint,
+        location: GeoPoint,
         address: String,
         phone: String
     ): AppResult<Unit> {
@@ -141,9 +167,26 @@ class FakeBantuinRepository(
                 location = location,
                 address = address
             )
+        } else {
+            providersList.add(
+                ProviderCandidate(
+                    providerId = providerId,
+                    name = name,
+                    avatarUrl = null,
+                    location = location,
+                    address = address,
+                    bio = bio,
+                    ratingAvg = null,
+                    reviewCount = 0,
+                    completionRate = null,
+                    flagAnomaly = false,
+                    badge = ProviderBadge.NEW,
+                    minBaseFare = null
+                )
+            )
         }
         val user = sessionStore.currentUserValue
-        if (user != null) {
+        if (user != null && user.id == providerId) {
             sessionStore.saveSession(user.copy(fullName = name, phone = phone))
         }
         return AppResult.Success(Unit)
@@ -151,8 +194,11 @@ class FakeBantuinRepository(
 
     // ================= BOOKING REPOSITORY =================
     override suspend fun busyBlocks(providerId: String, dateIso: String): AppResult<List<TimeBlock>> {
-        // Blok sibuk demo: untuk Pak Budi Santoso (p01), ada pesanan lain 10:00 - 11:30 dan 12:00 - 13:45
-        val blocks = if (providerId == "p01") {
+        expirePending()
+        val nowMs = System.currentTimeMillis()
+        val selfId = sessionStore.currentUserValue?.id
+
+        val demoBlocks = if (providerId == "p01") {
             listOf(
                 TimeBlock(startMin = 600, endMin = 690), // 10:00 - 11:30 (+ buffer)
                 TimeBlock(startMin = 720, endMin = 825)  // 12:00 - 13:45
@@ -160,19 +206,55 @@ class FakeBantuinRepository(
         } else {
             emptyList()
         }
-        return AppResult.Success(blocks)
+
+        val dynamicBookingBlocks = bookingsFlow.value
+            .filter { it.providerId == providerId && it.status.isActive && it.scheduledDate == dateIso }
+            .mapNotNull { booking ->
+                bookingMetaMap[booking.id]?.let { TimeBlock(it.startMin, it.endMin) }
+            }
+
+        val lockBlocks = activeLocks.values
+            .filter { (lockedBy, lock) ->
+                lock.providerId == providerId &&
+                    lock.dateIso == dateIso &&
+                    lock.expiresAtMillis > nowMs &&
+                    (selfId == null || lockedBy != selfId)
+            }
+            .map { (_, lock) -> TimeBlock(lock.startMin, lock.endMin) }
+
+        return AppResult.Success((demoBlocks + dynamicBookingBlocks + lockBlocks).distinct())
     }
 
-    override suspend fun acquireLock(providerId: String, startMin: Int, endMin: Int): AppResult<LockInfo> {
+    override suspend fun acquireLock(
+        providerId: String,
+        dateIso: String,
+        startMin: Int,
+        endMin: Int
+    ): AppResult<LockInfo> {
+        val currentUserId = sessionStore.currentUserValue?.id ?: "user_guest"
+        if (currentUserId == providerId) {
+            return AppResult.Error("Tidak bisa memesan layanan sendiri")
+        }
+
+        val nowMs = System.currentTimeMillis()
+        activeLocks.entries.removeIf { it.value.second.expiresAtMillis <= nowMs || it.value.first == currentUserId }
+
+        val endWithBuffer = endMin + BantuinConfig.TRAVEL_BUFFER_MIN
+        val busy = (busyBlocks(providerId, dateIso) as? AppResult.Success)?.data.orEmpty()
+        if (busy.any { it.startMin < endWithBuffer && startMin < it.endMin }) {
+            return AppResult.Error("Slot baru saja diambil, pilih jam lain")
+        }
+
         val lockId = UUID.randomUUID().toString()
         val info = LockInfo(
             lockId = lockId,
             providerId = providerId,
             startMin = startMin,
             endMin = endMin,
-            expiresAtMillis = System.currentTimeMillis() + 10 * 60 * 1000L
+            expiresAtMillis = nowMs + BantuinConfig.SLOT_LOCK_MINUTES * 60_000L,
+            dateIso = dateIso
         )
-        activeLocks[lockId] = info
+        activeLocks[lockId] = currentUserId to info
         return AppResult.Success(info)
     }
 
@@ -182,52 +264,109 @@ class FakeBantuinRepository(
     }
 
     override suspend fun createBooking(draft: OrderDraft): AppResult<String> {
-        val bookingId = "bti_" + UUID.randomUUID().toString().take(6)
+        val user = sessionStore.currentUserValue
+        val customerId = user?.id ?: "user_guest"
+        if (customerId == draft.provider.providerId) {
+            return AppResult.Error("Tidak bisa memesan layanan sendiri")
+        }
+        val lockId = draft.lockInfo?.lockId
+        if (lockId != null) {
+            val locked = activeLocks[lockId]
+            if (locked != null && locked.second.expiresAtMillis <= System.currentTimeMillis()) {
+                activeLocks.remove(lockId)
+                return AppResult.Error("Waktu penahanan slot habis, pilih jadwal lagi")
+            }
+        }
+
+        val now = Clock.System.now()
+        val bookingId = "bti_" + UUID.randomUUID().toString().take(8)
+        val endWithBuffer = draft.startMin + draft.durationMin + BantuinConfig.TRAVEL_BUFFER_MIN
         val newBooking = BookingItem(
             id = bookingId,
-            customerId = sessionStore.currentUserValue?.id ?: "user_guest",
-            customerName = sessionStore.currentUserValue?.fullName ?: "Pelanggan",
+            customerId = customerId,
+            customerName = user?.fullName ?: "Pelanggan",
             providerId = draft.provider.providerId,
             providerName = draft.provider.name,
             serviceName = draft.service.name,
             scheduledDate = draft.dateIso,
-            scheduledTime = TimeUtils.formatMinuteOfDay(draft.startMin),
+            scheduledTime = "${TimeUtils.formatMinuteOfDay(draft.startMin, false)} - ${TimeUtils.formatMinuteOfDay(draft.startMin + draft.durationMin)}",
             totalCost = draft.costEstimate?.total ?: draft.service.baseFare,
             status = BookingStatus.PENDING,
             address = draft.customerAddress,
-            createdAt = Clock.System.now(),
-            notes = draft.notes.ifBlank { null }
+            createdAt = now,
+            notes = draft.notes.ifBlank { null },
+            expiresAt = now + BantuinConfig.PENDING_EXPIRY_MINUTES.minutes,
+            customerLat = draft.customerLocation.lat,
+            customerLng = draft.customerLocation.lng,
+            providerLocation = draft.provider.location,
+            customerPhone = user?.phone
+        )
+
+        val startAtInstant = try {
+            Instant.parse(TimeUtils.toIsoString(draft.dateIso, draft.startMin))
+        } catch (_: Exception) {
+            now
+        }
+        bookingMetaMap[bookingId] = StoredSlotMeta(draft.dateIso, draft.startMin, endWithBuffer, startAtInstant)
+        bookingEventsMap[bookingId] = mutableListOf(
+            BookingEvent(nextEventId++, bookingId, BookingStatus.PENDING, customerId, now)
         )
 
         val updated = bookingsFlow.value.toMutableList()
         updated.add(0, newBooking)
         bookingsFlow.value = updated
 
-        draft.lockInfo?.lockId?.let { activeLocks.remove(it) }
+        lockId?.let { activeLocks.remove(it) }
         return AppResult.Success(bookingId)
     }
 
     override suspend fun updateStatus(bookingId: String, newStatus: BookingStatus): AppResult<Unit> {
         val list = bookingsFlow.value.toMutableList()
         val idx = list.indexOfFirst { it.id == bookingId }
-        if (idx >= 0) {
-            val item = list[idx]
-            list[idx] = item.copy(status = newStatus)
+        if (idx < 0) return AppResult.Error("Pesanan tidak ditemukan")
+
+        val item = list[idx]
+        val now = Clock.System.now()
+        if (item.status == BookingStatus.PENDING &&
+            newStatus in setOf(BookingStatus.DIKONFIRMASI, BookingStatus.DITOLAK) &&
+            item.expiresAt != null &&
+            item.expiresAt <= now
+        ) {
+            list[idx] = item.copy(status = BookingStatus.KEDALUWARSA)
             bookingsFlow.value = list
-            return AppResult.Success(Unit)
+            bookingEventsMap.getOrPut(bookingId) { mutableListOf() }
+                .add(BookingEvent(nextEventId++, bookingId, BookingStatus.KEDALUWARSA, null, now))
+            return AppResult.Error("Pesanan sudah kedaluwarsa")
         }
-        return AppResult.Error("Pesanan tidak ditemukan")
+
+        val updatedItem = when (newStatus) {
+            BookingStatus.DALAM_PENGERJAAN -> item.copy(status = newStatus, startedAt = now)
+            BookingStatus.SELESAI, BookingStatus.DIBATALKAN_MITRA, BookingStatus.DIBATALKAN_PELANGGAN ->
+                item.copy(status = newStatus, finishedAt = now)
+            else -> item.copy(status = newStatus)
+        }
+        list[idx] = updatedItem
+        bookingsFlow.value = list
+        bookingEventsMap.getOrPut(bookingId) { mutableListOf() }
+            .add(BookingEvent(nextEventId++, bookingId, newStatus, sessionStore.currentUserValue?.id, now))
+
+        if (newStatus in setOf(BookingStatus.SELESAI, BookingStatus.DIBATALKAN_MITRA)) {
+            recalculateMetricsUseCase(item.providerId)
+        }
+        return AppResult.Success(Unit)
     }
 
     override suspend fun myBookingsCustomer(): AppResult<List<BookingItem>> {
+        expirePending()
         val userId = sessionStore.currentUserValue?.id ?: ""
-        val list = bookingsFlow.value.filter { it.customerId == userId || it.customerId == "user_demo_rani" }
+        val list = bookingsFlow.value.filter { it.customerId == userId }
         return AppResult.Success(list)
     }
 
     override suspend fun myBookingsProvider(): AppResult<List<BookingItem>> {
-        // Menampilkan pesanan yang masuk ke mitra p01 (Pak Budi)
-        val list = bookingsFlow.value.filter { it.providerId == "p01" }
+        expirePending()
+        val userId = sessionStore.currentUserValue?.id ?: ""
+        val list = bookingsFlow.value.filter { it.providerId == userId }
         return AppResult.Success(list)
     }
 
@@ -236,10 +375,40 @@ class FakeBantuinRepository(
     }
 
     override fun observeCustomerBookings(): Flow<List<BookingItem>> {
-        val userId = sessionStore.currentUserValue?.id ?: ""
-        return bookingsFlow.map { list ->
-            list.filter { it.customerId == userId || it.customerId == "user_demo_rani" }
+        return combine(bookingsFlow, sessionStore.currentUser) { list, user ->
+            val userId = user?.id ?: ""
+            list.filter { it.customerId == userId }
         }
+    }
+
+    override fun observeProviderBookings(): Flow<List<BookingItem>> {
+        return combine(bookingsFlow, sessionStore.currentUser) { list, user ->
+            val userId = user?.id ?: ""
+            list.filter { it.providerId == userId }
+        }
+    }
+
+    override suspend fun events(bookingId: String): AppResult<List<BookingEvent>> {
+        return AppResult.Success(bookingEventsMap[bookingId]?.toList().orEmpty())
+    }
+
+    override suspend fun expirePending(): AppResult<Unit> {
+        val now = Clock.System.now()
+        var changed = false
+        val updated = bookingsFlow.value.map { item ->
+            if (item.status == BookingStatus.PENDING && item.expiresAt != null && item.expiresAt <= now) {
+                changed = true
+                bookingEventsMap.getOrPut(item.id) { mutableListOf() }
+                    .add(BookingEvent(nextEventId++, item.id, BookingStatus.KEDALUWARSA, null, now))
+                item.copy(status = BookingStatus.KEDALUWARSA)
+            } else {
+                item
+            }
+        }
+        if (changed) {
+            bookingsFlow.value = updated
+        }
+        return AppResult.Success(Unit)
     }
 
     // ================= REVIEW REPOSITORY =================
@@ -259,9 +428,8 @@ class FakeBantuinRepository(
             tags = tags,
             createdAtText = "Baru saja"
         )
-        reviewsList.add(0, review)
+        reviewsList.add(0, StoredReview(providerId, review))
 
-        // Update booking dengan ulasan
         val list = bookingsFlow.value.toMutableList()
         val idx = list.indexOfFirst { it.id == bookingId }
         if (idx >= 0) {
@@ -269,33 +437,69 @@ class FakeBantuinRepository(
             bookingsFlow.value = list
         }
 
-        // Panggil Feedback Loop F4 -> F1
         recalculateMetricsUseCase(providerId)
         return AppResult.Success(Unit)
     }
 
     override suspend fun reviewsOf(providerId: String): AppResult<List<ReviewItem>> {
-        return AppResult.Success(reviewsList.toList())
+        return AppResult.Success(reviewsList.filter { it.providerId == providerId }.map { it.item })
     }
 
     // ================= METRICS REPOSITORY =================
     override suspend fun trustInput(providerId: String, sinceDays: Int): AppResult<TrustInput> {
         val now = Clock.System.now()
-        val completed = listOf(
-            CompletedJob(now - 120.minutes, now - 115.minutes),
-            CompletedJob(now - 240.minutes, now - 238.minutes),
-            CompletedJob(now - 360.minutes, now - 355.minutes),
-            CompletedJob(now - 480.minutes, now - 470.minutes),
-            CompletedJob(now - 600.minutes, now - 590.minutes)
-        )
-        val ratings = reviewsList.map { it.rating }
+        val cutoff = now - sinceDays.days
+        val providerBookings = bookingsFlow.value.filter { it.providerId == providerId }
+
+        val dynamicCompleted = providerBookings
+            .filter { it.status == BookingStatus.SELESAI && (it.finishedAt == null || it.finishedAt >= cutoff) }
+            .map { b ->
+                val startAt = bookingMetaMap[b.id]?.startAt ?: b.createdAt
+                val startedAt = b.startedAt ?: startAt
+                CompletedJob(startAt = startAt, startedAt = startedAt)
+            }
+        val dynamicCancelled = providerBookings.count {
+            it.status == BookingStatus.DIBATALKAN_MITRA && (it.finishedAt == null || it.finishedAt >= cutoff)
+        }
+
+        val baseJobs = seededJobsFor(providerId, now)
+        val baseCancels = when (providerId) {
+            "p05" -> 4
+            "p06" -> 2
+            "p07", "p11" -> 0
+            else -> 1
+        }
+        val providerRatings = reviewsList.filter { it.providerId == providerId }.map { it.item.rating }
+        val baseRatings = when (providerId) {
+            "p01" -> listOf(5, 5, 5, 5, 5, 5, 4) // + 3 seeded 5-star = 4.9 exact
+            "p05" -> listOf(4, 4, 4, 5, 4)
+            "p06" -> listOf(2, 3, 2, 2, 3)
+            "p07", "p11" -> emptyList()
+            else -> listOf(5, 5, 4, 5, 5)
+        }
+
         return AppResult.Success(
             TrustInput(
-                completed = completed,
-                mitraCancelledCount = 1,
-                ratings = if (ratings.isEmpty()) listOf(5, 5, 4, 5) else ratings
+                completed = baseJobs + dynamicCompleted,
+                mitraCancelledCount = baseCancels + dynamicCancelled,
+                ratings = if (providerRatings.isNotEmpty()) baseRatings + providerRatings else baseRatings
             )
         )
+    }
+
+    private fun seededJobsFor(providerId: String, now: Instant): List<CompletedJob> {
+        return when (providerId) {
+            "p07", "p11" -> listOf(CompletedJob(now - 2.days, now - 2.days + 5.minutes))
+            "p06" -> (1..5).map { idx ->
+                val start = now - idx.days
+                val delay = if (idx == 1) 5.minutes else 25.minutes
+                CompletedJob(start, start + delay)
+            }
+            else -> (1..5).map { idx ->
+                val start = now - idx.days
+                CompletedJob(start, start + 5.minutes)
+            }
+        }
     }
 
     override suspend fun apply(providerId: String, result: TrustResult): AppResult<Unit> {
@@ -309,11 +513,26 @@ class FakeBantuinRepository(
                 badge = result.badge
             )
         }
+        val history = providerSnapshotsMap.getOrPut(providerId) {
+            FakeData.sampleSnapshots.toMutableList()
+        }
+        history.add(
+            MetricSnapshot(
+                label = "Baru saja",
+                trustScore = result.trustScore,
+                ratingScore = result.ratingScore,
+                onTimeRate = result.onTimeRate,
+                cancelRate = result.cancelRate
+            )
+        )
         return AppResult.Success(Unit)
     }
 
     override suspend fun history(providerId: String): AppResult<List<MetricSnapshot>> {
-        return AppResult.Success(FakeData.sampleSnapshots)
+        val existing = providerSnapshotsMap[providerId]
+        return AppResult.Success(
+            existing?.toList() ?: if (providerId == "p01") FakeData.sampleSnapshots else emptyList()
+        )
     }
 
     // ================= AUTH REPOSITORY =================
@@ -348,16 +567,80 @@ class FakeBantuinRepository(
 
         val roles = mutableSetOf("customer")
         if (isProvider) roles.add("provider")
+        val userId = "user_" + UUID.randomUUID().toString().take(8)
         val user = UserProfile(
-            id = "user_" + UUID.randomUUID().toString().take(6),
+            id = userId,
             fullName = name.trim(),
             email = normalizedEmail,
             phone = phone.trim(),
             roles = roles
         )
-        sessionStore.setActiveRole(preferredRole(user))
+        if (isProvider) {
+            ensureProviderProfileAndAvailability(
+                providerId = userId,
+                name = user.fullName,
+                address = "Malang, Jawa Timur",
+                location = FakeData.MALANG_CENTER,
+                bio = "Mitra jasa Bantuin"
+            )
+        }
+        val active = if (isProvider) "provider" else "customer"
+        sessionStore.setActiveRole(active)
         sessionStore.saveSession(user)
         return AppResult.Success(user.id)
+    }
+
+    override suspend fun enableProviderRole(
+        address: String,
+        location: GeoPoint,
+        bio: String
+    ): AppResult<Unit> {
+        val user = sessionStore.currentUserValue
+            ?: return AppResult.Error("Sesi login tidak ditemukan.")
+        val updatedRoles = user.roles + "provider"
+        val updatedUser = user.copy(roles = updatedRoles)
+        ensureProviderProfileAndAvailability(
+            providerId = user.id,
+            name = user.fullName,
+            address = address.ifBlank { "Malang, Jawa Timur" },
+            location = location,
+            bio = bio.ifBlank { "Mitra jasa Bantuin" }
+        )
+        sessionStore.saveSession(updatedUser)
+        sessionStore.setActiveRole("provider")
+        return AppResult.Success(Unit)
+    }
+
+    private fun ensureProviderProfileAndAvailability(
+        providerId: String,
+        name: String,
+        address: String,
+        location: GeoPoint,
+        bio: String
+    ) {
+        if (providersList.none { it.providerId == providerId }) {
+            providersList.add(
+                ProviderCandidate(
+                    providerId = providerId,
+                    name = name,
+                    avatarUrl = null,
+                    location = location,
+                    address = address,
+                    bio = bio,
+                    ratingAvg = null,
+                    reviewCount = 0,
+                    completionRate = null,
+                    flagAnomaly = false,
+                    badge = ProviderBadge.NEW,
+                    minBaseFare = null
+                )
+            )
+        }
+        if (!availabilityMap.containsKey(providerId)) {
+            availabilityMap[providerId] = ((1..6).map {
+                DayAvailability(it, AvailabilityMode.ON, openMin = 480, closeMin = 1020)
+            } + DayAvailability(7, AvailabilityMode.OFF)).toMutableList()
+        }
     }
 
     private fun preferredRole(user: UserProfile): String =

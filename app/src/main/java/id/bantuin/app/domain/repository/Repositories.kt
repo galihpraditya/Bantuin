@@ -1,9 +1,11 @@
 package id.bantuin.app.domain.repository
 
 import id.bantuin.app.core.result.AppResult
+import id.bantuin.app.domain.model.BookingEvent
 import id.bantuin.app.domain.model.BookingItem
 import id.bantuin.app.domain.model.BookingStatus
 import id.bantuin.app.domain.model.DayAvailability
+import id.bantuin.app.domain.model.GeoPoint
 import id.bantuin.app.domain.model.LockInfo
 import id.bantuin.app.domain.model.MetricSnapshot
 import id.bantuin.app.domain.model.OrderDraft
@@ -15,11 +17,11 @@ import id.bantuin.app.domain.model.TimeBlock
 import id.bantuin.app.domain.model.TrustInput
 import id.bantuin.app.domain.model.TrustResult
 import kotlinx.coroutines.flow.Flow
-import kotlinx.datetime.Instant
 
 interface CatalogRepository {
     suspend fun categories(): AppResult<List<ServiceCategory>>
     suspend fun candidates(categoryId: Int): AppResult<List<ProviderCandidate>>
+    suspend fun providerProfile(providerId: String): AppResult<ProviderCandidate?>
     suspend fun servicesOf(providerId: String): AppResult<List<ServiceItem>>
     suspend fun availability(providerId: String): AppResult<List<DayAvailability>>
     suspend fun saveAvailability(providerId: String, days: List<DayAvailability>): AppResult<Unit>
@@ -29,7 +31,7 @@ interface CatalogRepository {
         providerId: String,
         name: String,
         bio: String,
-        location: id.bantuin.app.domain.model.GeoPoint,
+        location: GeoPoint,
         address: String,
         phone: String
     ): AppResult<Unit>
@@ -37,7 +39,7 @@ interface CatalogRepository {
 
 interface BookingRepository {
     suspend fun busyBlocks(providerId: String, dateIso: String): AppResult<List<TimeBlock>>
-    suspend fun acquireLock(providerId: String, startMin: Int, endMin: Int): AppResult<LockInfo>
+    suspend fun acquireLock(providerId: String, dateIso: String, startMin: Int, endMin: Int): AppResult<LockInfo>
     suspend fun releaseLock(lockId: String): AppResult<Unit>
     suspend fun createBooking(draft: OrderDraft): AppResult<String>
     suspend fun updateStatus(bookingId: String, newStatus: BookingStatus): AppResult<Unit>
@@ -45,6 +47,9 @@ interface BookingRepository {
     suspend fun myBookingsProvider(): AppResult<List<BookingItem>>
     fun observeBooking(bookingId: String): Flow<BookingItem?>
     fun observeCustomerBookings(): Flow<List<BookingItem>>
+    fun observeProviderBookings(): Flow<List<BookingItem>>
+    suspend fun events(bookingId: String): AppResult<List<BookingEvent>>
+    suspend fun expirePending(): AppResult<Unit>
 }
 
 interface ReviewRepository {
@@ -65,6 +70,11 @@ interface AuthRepository {
     fun activeRole(): Flow<String> // "customer" or "provider"
     suspend fun setActiveRole(role: String)
     fun currentUser(): Flow<UserProfile?>
+    suspend fun enableProviderRole(
+        address: String = "Malang, Jawa Timur",
+        location: GeoPoint = GeoPoint(-7.9797, 112.6304),
+        bio: String = ""
+    ): AppResult<Unit>
 }
 
 interface BantuinRepository :

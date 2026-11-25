@@ -175,14 +175,25 @@ class CustomerViewModelsTest {
 
         assertEquals(7, vm.uiState.value.dynamicDates.size)
 
-        // Pilih slot jam
+        // Pilih slot jam bentrok -> harus ditolak saat mengunci
         vm.selectSlot(600) // 10:00 (bentrok dengan busyBlocks demo)
         assertTrue(vm.uiState.value.slotCheckResult != null)
+        assertEquals(false, vm.uiState.value.slotCheckResult?.valid)
 
         var lockAcquired = false
+        vm.acquireLockAndProceed { lockAcquired = true }
+        testDispatcher.scheduler.advanceUntilIdle()
+        assertTrue(!lockAcquired)
+        assertNotNull(vm.uiState.value.errorMessage)
+
+        // Pilih slot valid berikutnya (14:00 = 840, di luar blok 10:00-11:30 dan 12:00-13:45)
+        vm.selectDate(1) // besok agar tidak terkena PAST_TIME pada waktu siang/malam test
+        testDispatcher.scheduler.advanceUntilIdle()
+        vm.selectSlot(840)
         vm.acquireLockAndProceed { lockInfo ->
             lockAcquired = true
             assertNotNull(lockInfo.lockId)
+            assertEquals(vm.uiState.value.selectedDate.toString(), lockInfo.dateIso)
         }
         testDispatcher.scheduler.advanceUntilIdle()
 

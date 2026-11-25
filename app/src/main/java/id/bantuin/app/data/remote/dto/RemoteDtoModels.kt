@@ -41,6 +41,23 @@ data class ProviderProfileDto(
 )
 
 @Serializable
+data class ProviderProfileUpsertDto(
+    @SerialName("user_id") val userId: String,
+    @SerialName("bio") val bio: String? = null,
+    @SerialName("address") val address: String? = null,
+    @SerialName("lat") val lat: Double,
+    @SerialName("lng") val lng: Double
+)
+
+@Serializable
+data class EnableProviderRoleRpcParams(
+    @SerialName("p_bio") val bio: String,
+    @SerialName("p_address") val address: String,
+    @SerialName("p_lat") val lat: Double,
+    @SerialName("p_lng") val lng: Double
+)
+
+@Serializable
 data class ServiceDto(
     @SerialName("id") val id: String,
     @SerialName("provider_id") val providerId: String,
