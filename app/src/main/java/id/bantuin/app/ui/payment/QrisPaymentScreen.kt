@@ -242,7 +242,7 @@ fun QrisPaymentScreen(
                                             Icon(
                                                 imageVector = Icons.Default.CheckCircle,
                                                 contentDescription = "Pembayaran Lunas",
-                                                tint = Color.White,
+                                                tint = if (colors.isDark) colors.background else Color.White,
                                                 modifier = Modifier.size(32.dp)
                                             )
                                         }

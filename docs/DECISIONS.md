@@ -44,7 +44,32 @@ Dokumen ini mencatat keputusan arsitektur dan implementasi proyek **Bantuin** ya
 - **Konteks**: `PRD.md` Bagian 10.5 mensyaratkan lokasi pelanggan diambil via Fused Location dengan fallback pemilihan titik peta dan default Alun-alun Malang (`-7.9797, 112.6304`).
 - **Keputusan**: Menambahkan `LocationHelper` berbasis `play-services-location` (`21.3.0`) dan `Geocoder`, serta `MapEventsOverlay` pada `OsmMapView.kt` agar pengguna dapat mengetuk peta untuk memindahkan pin atau memilih 4 area cepat di Malang ketika izin GPS ditolak atau perangkat dalam ruang.
 
-## 8. Tab Navigasi Ketiga Pelanggan Menggunakan `CUSTOMER_NOTIFICATIONS`
+## 8. Penataan Ulang Bottom Navigation Bar 4 Tab per Peran
 
-- **Konteks**: `NavGraph.kt` sudah memakai `Routes.CUSTOMER_NOTIFICATIONS` (`Notifikasi`) yang menyinkronkan status pesanan aktif, riwayat transaksi, dan informasi garansi secara real-time, dengan rute `CUSTOMER_SCHEDULE` diarahkan ke tampilan yang sama.
-- **Keputusan**: Mempertahankan tab ke-3 pelanggan sebagai `Notifikasi` dengan lencana jumlah pesanan aktif agar tetap konsisten dengan `NavGraph.kt`, `BantuinBottomBar.kt`, dan unit test `CustomerNotificationsViewModelTest`.
+- **Konteks**: Versi awal menaruh tab `Notifikasi` (`CUSTOMER_NOTIFICATIONS`) di navbar pelanggan sehingga bar bawah berjumlah 5 tab dan duplikat dengan pintasan cepat, sedangkan navbar mitra memiliki 5 tab.
+- **Keputusan**: Merampingkan bottom navigation bar menjadi 4 tab inti per peran (`Beranda`, `Cari`, `Pesanan`, `Profil` untuk pelanggan; `Beranda`, `Pesanan`, `Dashboard`, `Profil` untuk mitra) di `BantuinBottomBar.kt`. Layar `CUSTOMER_NOTIFICATIONS` dan `PROVIDER_CALENDAR` tetap aktif sebagai rute penuh yang diakses lewat ikon lonceng notifikasi di beranda pelanggan maupun pintasan operasional di beranda mitra.
+- **Alasan**: Mengurangi kepadatan visual navbar pada layar sempit, memperbesar area sentuh setiap tab, dan memisahkan alur operasional utama dari halaman utilitas sekunder.
+
+## 9. Pemisahan Layar Profil Spesifik Peran dan Pengaturan Universal
+
+- **Konteks**: Sebelumnya pengaturan tema, ganti peran, dan keluar akun bercampur di halaman Profil Pelanggan serta Dashboard Mitra.
+- **Keputusan**: Memisahkan `CustomerProfileScreen` (edit identitas & alamat layanan utama pelanggan dengan `LocationPickerDialog`), `ProviderProfileScreen` (identitas usaha, jam kerja, status terima order, daftar layanan/tarif), dan `SettingsScreen` universal (ganti tema `SYSTEM`/`LIGHT`/`DARK`, switch peran, preferensi notifikasi, serta tombol keluar akun dengan dialog konfirmasi).
+- **Alasan**: Menjaga kohesi tanggung jawab tiap layar agar pengguna tidak perlu berpindah halaman hanya untuk menemukan pengaturan akun atau tema.
+
+## 10. Pergantian Peran Pelanggan dan Mitra Tanpa `signOut()`
+
+- **Konteks**: Sebelumnya berpindah peran atau mengaktifkan akun mitra memaksa pengguna keluar dan login ulang.
+- **Keputusan**: Menambahkan `UserSessionStore.setActiveRole(...)` serta metode `AuthRepository.switchActiveRole(...)` dan `AuthRepository.activateProviderRole(...)` yang memperbarui peran aktif langsung di memori, `SharedPreferencesSessionStore`, dan metadata Supabase tanpa memanggil `signOut()`. Akun khusus pelanggan yang ingin menjadi mitra diarahkan melalui dialog aktivasi di `SettingsScreen` lengkap dengan pemilih titik koordinat usaha (`LocationPickerDialog`).
+- **Alasan**: Menghilangkan friksi saat pengguna multi-peran beralih antara memesan layanan dan mengelola pekerjaan sebagai mitra.
+
+## 11. Model Pembayaran QRIS/Tunai dan Aturan Saldo Pencairan Mitra
+
+- **Konteks**: Pelanggan membutuhkan fleksibilitas bayar di tempat (`CASH`) maupun non-tunai (`QRIS`), sedangkan mitra memerlukan transparansi mana dana yang bisa dicairkan dan mana yang sudah diterima tunai di lokasi.
+- **Keputusan**: Menambahkan `PaymentMethod` (`CASH`, `QRIS`), `PaymentStatus`, `PayoutRequest`, dan `ProviderRevenueAnalytics` bersama migrasi `supabase/migrations/004_ux_chat_payment_wallet.sql` serta `ProviderRevenueUseCase`. Hanya booking berstatus `SELESAI` dengan `paymentMethod = QRIS` dan `paymentStatus = PAID` yang masuk ke `availableBalance` untuk pencairan (`MIN_PAYOUT_AMOUNT = 20_000`, `PAYOUT_ADMIN_FEE = 2_500`). Booking `SELESAI` dengan `paymentMethod = CASH` dicatat ke `cashRevenue` dan `totalCombinedRevenue` pada analisis pendapatan di `ProviderDashboardScreen`, tetapi tidak menambah `availableBalance`.
+- **Alasan**: Mencegah mitra mencairkan uang tunai yang sudah diterima langsung di lokasi sekaligus tetap menampilkan performa omzet keseluruhan secara akurat.
+
+## 12. Chat Pesanan Terintegrasi dan Konfirmasi Selesai Model Geser
+
+- **Konteks**: Koordinasi pelanggan dan mitra sebelumnya hanya mengandalkan panggilan telepon (`ACTION_DIAL`), dan penyelesaian pesanan oleh mitra rawan tertekan tidak sengaja.
+- **Keputusan**: Menyediakan `ChatListScreen` dan `ChatRoomScreen` berbasis `ChatRepository` (dengan tabel `booking_messages` + Realtime pada cloud dan state flow lokal pada mode demo), serta layar khusus `CompleteOrderConfirmScreen` yang mewajibkan verifikasi status lunas (untuk `QRIS`) atau centang penerimaan uang tunai (untuk `CASH`) sebelum `SlideToConfirmBar` (threshold geser `>= 0.85f` plus tombol aksesibilitas non-drag) dapat menyelesaikan pesanan ke `SELESAI`.
+- **Alasan**: Memudahkan koordinasi dan riwayat komunikasi per pesanan langsung di dalam aplikasi sekaligus mencegah perubahan status selesai maupun pencatatan saldo secara tidak sengaja.
