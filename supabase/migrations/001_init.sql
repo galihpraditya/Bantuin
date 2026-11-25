@@ -160,24 +160,44 @@ language plpgsql
 security definer
 set search_path = public
 as $$
+declare
+  v_roles text[];
 begin
+  v_roles := coalesce(
+    array(
+      select jsonb_array_elements_text(
+        new.raw_user_meta_data->'roles'
+      )
+    ),
+    array['customer']::text[]
+  );
+
   insert into public.profiles (id, full_name, phone, roles)
   values (
     new.id,
     coalesce(new.raw_user_meta_data->>'full_name', 'Pengguna'),
     new.raw_user_meta_data->>'phone',
-    coalesce(
-      array(
-        select jsonb_array_elements_text(
-          new.raw_user_meta_data->'roles'
-        )
-      ),
-      array['customer']::text[]
-    )
+    v_roles
   )
   on conflict (id) do update set
     full_name = coalesce(excluded.full_name, public.profiles.full_name),
     phone = coalesce(excluded.phone, public.profiles.phone);
+
+  if 'provider' = any(v_roles) then
+    insert into public.provider_profiles (user_id, bio, address, lat, lng)
+    values (new.id, 'Mitra jasa Bantuin', 'Malang, Jawa Timur', -7.9797, 112.6304)
+    on conflict (user_id) do nothing;
+
+    insert into public.availability (provider_id, day_of_week, mode, open_time, close_time)
+    select
+      new.id,
+      d.day,
+      case when d.day = 7 then 'OFF' else 'ON' end,
+      case when d.day = 7 then null else '08:00:00'::time end,
+      case when d.day = 7 then null else '17:00:00'::time end
+    from (values (1),(2),(3),(4),(5),(6),(7)) as d(day)
+    on conflict (provider_id, day_of_week) do nothing;
+  end if;
 
   return new;
 end;
@@ -224,11 +244,11 @@ create or replace function public.acquire_slot_lock(p_provider uuid, p_start tim
 returns uuid language plpgsql security definer set search_path = public as $$
 declare v_id uuid; v_uid uuid := auth.uid();
 begin
-  delete from public.slot_locks where expires_at < now();
-  if v_uid is not null then
-    delete from public.slot_locks where locked_by = v_uid;
-    if v_uid = p_provider then raise exception 'SELF_BOOKING'; end if;
-  end if;
+  if v_uid is null then raise exception 'UNAUTHENTICATED'; end if;
+
+  delete from public.slot_locks where expires_at <= now();
+  delete from public.slot_locks where locked_by = v_uid;
+  if v_uid = p_provider then raise exception 'SELF_BOOKING'; end if;
 
   if exists (select 1 from public.bookings b
               where b.provider_id = p_provider
@@ -238,22 +258,25 @@ begin
   end if;
 
   if exists (select 1 from public.slot_locks l
-              where l.provider_id = p_provider and (v_uid is null or l.locked_by <> v_uid)
+              where l.provider_id = p_provider and l.locked_by <> v_uid
+                and l.expires_at > now()
                 and tstzrange(l.start_at, l.end_at, '[)') && tstzrange(p_start, p_end, '[)')) then
     raise exception 'SLOT_LOCKED';
   end if;
 
   insert into public.slot_locks (provider_id, locked_by, start_at, end_at, expires_at)
-  values (p_provider, coalesce(v_uid, 'c0000000-0000-0000-0000-000000000001'::uuid), p_start, p_end, now() + interval '10 minutes')
+  values (p_provider, v_uid, p_start, p_end, now() + interval '10 minutes')
   returning id into v_id;
   return v_id;
 end $$;
 
 -- RPC 3: Lepaskan kunci slot milik pengguna aktif
 create or replace function public.release_slot_lock() returns void
-language sql security definer set search_path = public as $$
+language plpgsql security definer set search_path = public as $$
+begin
+  if auth.uid() is null then raise exception 'UNAUTHENTICATED'; end if;
   delete from public.slot_locks where locked_by = auth.uid();
-$$;
+end $$;
 
 -- RPC 4: Buat pesanan baru dengan validasi slot_lock (F2 & F3)
 create or replace function public.create_booking(
@@ -265,14 +288,17 @@ declare
   l public.slot_locks;
   v_provider uuid;
   v_id uuid;
-  v_user uuid := coalesce(auth.uid(), 'c0000000-0000-0000-0000-000000000001'::uuid);
+  v_user uuid := auth.uid();
 begin
+  if v_user is null then raise exception 'UNAUTHENTICATED'; end if;
+
   select * into l from public.slot_locks
-   where id = p_lock_id and (auth.uid() is null or locked_by = auth.uid()) and expires_at > now();
+   where id = p_lock_id and locked_by = v_user and expires_at > now();
   if not found then raise exception 'LOCK_EXPIRED'; end if;
 
   select provider_id into v_provider from public.services where id = p_service_id and is_active;
   if v_provider is null or v_provider <> l.provider_id then raise exception 'INVALID_SERVICE'; end if;
+  if v_user = l.provider_id then raise exception 'SELF_BOOKING'; end if;
 
   insert into public.bookings (
     customer_id, provider_id, service_id, start_at, end_at, complexity,
@@ -304,13 +330,10 @@ declare
   b public.bookings;
   uid uuid := auth.uid();
 begin
+  if uid is null then raise exception 'UNAUTHENTICATED'; end if;
+
   select * into b from public.bookings where id = p_booking for update;
   if not found then raise exception 'NOT_FOUND'; end if;
-
-  -- Fallback untuk simulasi dev / service_role tanpa JWT
-  if uid is null then
-    uid := b.provider_id;
-  end if;
 
   if uid = b.provider_id then
     if b.status = 'PENDING' and p_new in ('DIKONFIRMASI','DITOLAK') then
@@ -342,9 +365,12 @@ create or replace function public.apply_provider_metrics(
   p_cancel_rate numeric, p_trust_score numeric, p_tx_count int, p_flag boolean, p_badge text,
   p_rating_score numeric
 ) returns void language plpgsql security definer set search_path = public as $$
+declare
+  uid uuid := auth.uid();
 begin
-  if auth.uid() is not null and auth.uid() <> p_provider and not exists (
-      select 1 from public.bookings where provider_id = p_provider and customer_id = auth.uid()) then
+  if uid is null then raise exception 'UNAUTHENTICATED'; end if;
+  if uid <> p_provider and not exists (
+      select 1 from public.bookings where provider_id = p_provider and customer_id = uid) then
     raise exception 'FORBIDDEN';
   end if;
 
@@ -366,14 +392,55 @@ begin
     (p_provider, p_trust_score, p_rating_score, p_on_time_rate, p_cancel_rate, p_tx_count, p_flag);
 end $$;
 
+-- RPC 8: Aktifkan peran Mitra untuk akun Pelanggan
+create or replace function public.enable_provider_role(
+  p_bio text default '',
+  p_address text default '',
+  p_lat double precision default -7.9797,
+  p_lng double precision default 112.6304
+) returns void language plpgsql security definer set search_path = public as $$
+declare
+  uid uuid := auth.uid();
+begin
+  if uid is null then raise exception 'UNAUTHENTICATED'; end if;
+
+  update public.profiles
+     set roles = array(
+       select distinct r
+       from unnest(coalesce(roles, array['customer']::text[]) || array['provider']::text[]) as r
+     )
+   where id = uid;
+
+  insert into public.provider_profiles (user_id, bio, address, lat, lng)
+  values (
+    uid,
+    coalesce(nullif(trim(p_bio), ''), 'Mitra jasa Bantuin'),
+    coalesce(nullif(trim(p_address), ''), 'Malang, Jawa Timur'),
+    p_lat,
+    p_lng
+  )
+  on conflict (user_id) do nothing;
+
+  insert into public.availability (provider_id, day_of_week, mode, open_time, close_time)
+  select
+    uid,
+    d.day,
+    case when d.day = 7 then 'OFF' else 'ON' end,
+    case when d.day = 7 then null else '08:00:00'::time end,
+    case when d.day = 7 then null else '17:00:00'::time end
+  from (values (1),(2),(3),(4),(5),(6),(7)) as d(day)
+  on conflict (provider_id, day_of_week) do nothing;
+end $$;
+
 -- Hak Akses Eksekusi RPC
-grant execute on function public.get_busy_blocks(uuid, timestamptz, timestamptz) to anon, authenticated;
-grant execute on function public.acquire_slot_lock(uuid, timestamptz, timestamptz) to anon, authenticated;
-grant execute on function public.release_slot_lock() to anon, authenticated;
-grant execute on function public.expire_pending_bookings() to anon, authenticated;
-grant execute on function public.update_booking_status(uuid, text) to anon, authenticated;
-grant execute on function public.create_booking(uuid, uuid, text, boolean, numeric, int, int, boolean, int, double precision, double precision, text) to anon, authenticated;
-grant execute on function public.apply_provider_metrics(uuid, numeric, numeric, numeric, numeric, numeric, int, boolean, text, numeric) to anon, authenticated;
+grant execute on function public.get_busy_blocks(uuid, timestamptz, timestamptz) to authenticated;
+grant execute on function public.acquire_slot_lock(uuid, timestamptz, timestamptz) to authenticated;
+grant execute on function public.release_slot_lock() to authenticated;
+grant execute on function public.expire_pending_bookings() to authenticated;
+grant execute on function public.update_booking_status(uuid, text) to authenticated;
+grant execute on function public.create_booking(uuid, uuid, text, boolean, numeric, int, int, boolean, int, double precision, double precision, text) to authenticated;
+grant execute on function public.apply_provider_metrics(uuid, numeric, numeric, numeric, numeric, numeric, int, boolean, text, numeric) to authenticated;
+grant execute on function public.enable_provider_role(text, text, double precision, double precision) to authenticated;
 
 -- ===== 4. Row Level Security (RLS) =====
 alter table public.profiles enable row level security;
@@ -487,3 +554,6 @@ begin
     alter publication supabase_realtime add table public.booking_events;
   end if;
 end $$;
+
+alter table public.bookings replica identity full;
+alter table public.booking_events replica identity full;

@@ -14,7 +14,7 @@ import io.github.jan.supabase.createSupabaseClient
 import io.github.jan.supabase.auth.Auth
 import io.github.jan.supabase.postgrest.Postgrest
 import io.github.jan.supabase.realtime.Realtime
-import io.ktor.client.engine.android.Android
+import io.ktor.client.engine.okhttp.OkHttp
 
 object SupabaseClientProvider {
 
@@ -42,7 +42,7 @@ object SupabaseClientProvider {
             supabaseKey = BuildConfig.SUPABASE_ANON_KEY
         ) {
             try {
-                httpEngine = Android.create()
+                httpEngine = OkHttp.create()
             } catch (_: Throwable) {
                 // JVM host / Unit test environment
             }
