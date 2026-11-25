@@ -14,6 +14,9 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
+import androidx.lifecycle.viewmodel.compose.viewModel
+import id.bantuin.app.core.theme.InMemoryThemeStore
+import id.bantuin.app.core.theme.ThemePreferenceStore
 import id.bantuin.app.domain.model.BookingStatus
 import id.bantuin.app.domain.repository.BantuinRepository
 import id.bantuin.app.domain.repository.UserProfile
@@ -21,6 +24,7 @@ import id.bantuin.app.ui.auth.LoginScreen
 import id.bantuin.app.ui.auth.RegisterScreen
 import id.bantuin.app.ui.common.BantuinBottomBar
 import id.bantuin.app.ui.customer.OrderFlowManager
+import id.bantuin.app.ui.customer.OrderFlowViewModel
 import id.bantuin.app.ui.customer.estimate.EstimateScreen
 import id.bantuin.app.ui.customer.home.CustomerHomeScreen
 import id.bantuin.app.ui.customer.notifications.CustomerNotificationsScreen
@@ -41,10 +45,12 @@ import id.bantuin.app.ui.provider.services.ProviderServicesScreen
 @Composable
 fun BantuinNavGraph(
     repository: BantuinRepository,
+    themeStore: ThemePreferenceStore = remember { InMemoryThemeStore() },
     initialUser: UserProfile? = null,
     initialRole: String = "customer",
     navController: NavHostController = rememberNavController(),
-    orderFlow: OrderFlowManager = remember { OrderFlowManager() },
+    orderFlowViewModel: OrderFlowViewModel = viewModel(),
+    orderFlow: OrderFlowManager = orderFlowViewModel.flow,
     modifier: Modifier = Modifier
 ) {
     val navBackStackEntry by navController.currentBackStackEntryAsState()

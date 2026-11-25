@@ -23,12 +23,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import id.bantuin.app.domain.model.ProviderBadge
-import id.bantuin.app.ui.theme.GreenSuccess
-import id.bantuin.app.ui.theme.GreenSuccessContainer
-import id.bantuin.app.ui.theme.NeutralBadge
-import id.bantuin.app.ui.theme.NeutralBadgeContainer
-import id.bantuin.app.ui.theme.RedError
-import id.bantuin.app.ui.theme.RedErrorContainer
+import id.bantuin.app.ui.theme.BantuinTheme
 
 @Composable
 fun ProviderBadgeChip(
@@ -36,16 +31,17 @@ fun ProviderBadgeChip(
     flagAnomaly: Boolean = false,
     modifier: Modifier = Modifier
 ) {
+    val colors = BantuinTheme.colors
     if (flagAnomaly) {
         BadgeContainer(
             text = "Anomali Akun",
-            color = RedError,
-            backgroundColor = RedErrorContainer,
+            color = colors.error,
+            backgroundColor = colors.errorContainer,
             icon = {
                 Icon(
                     imageVector = Icons.Default.Warning,
                     contentDescription = null,
-                    tint = RedError,
+                    tint = colors.error,
                     modifier = Modifier.size(13.dp)
                 )
             },
@@ -58,13 +54,13 @@ fun ProviderBadgeChip(
         ProviderBadge.TRUSTED -> {
             BadgeContainer(
                 text = "Mitra Terpercaya",
-                color = GreenSuccess,
-                backgroundColor = GreenSuccessContainer,
+                color = colors.success,
+                backgroundColor = colors.successContainer,
                 icon = {
                     Icon(
                         imageVector = Icons.Default.CheckCircle,
                         contentDescription = null,
-                        tint = GreenSuccess,
+                        tint = colors.success,
                         modifier = Modifier.size(13.dp)
                     )
                 },
@@ -74,13 +70,13 @@ fun ProviderBadgeChip(
         ProviderBadge.NEW -> {
             BadgeContainer(
                 text = "Mitra Baru",
-                color = NeutralBadge,
-                backgroundColor = NeutralBadgeContainer,
+                color = colors.neutralBadge,
+                backgroundColor = colors.neutralBadgeContainer,
                 icon = {
                     Icon(
                         imageVector = Icons.Default.FiberNew,
                         contentDescription = null,
-                        tint = NeutralBadge,
+                        tint = colors.neutralBadge,
                         modifier = Modifier.size(14.dp)
                     )
                 },
@@ -105,7 +101,7 @@ fun BadgeContainer(
         modifier = modifier
             .clip(RoundedCornerShape(6.dp))
             .background(backgroundColor)
-            .border(0.5.dp, color.copy(alpha = 0.3f), RoundedCornerShape(6.dp))
+            .border(0.5.dp, color.copy(alpha = 0.35f), RoundedCornerShape(6.dp))
             .padding(horizontal = 7.dp, vertical = 3.dp),
         contentAlignment = Alignment.Center
     ) {

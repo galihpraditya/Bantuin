@@ -3,6 +3,8 @@ package id.bantuin.app
 import android.app.Application
 import id.bantuin.app.core.session.SharedPreferencesSessionStore
 import id.bantuin.app.core.session.UserSessionStore
+import id.bantuin.app.core.theme.SharedPreferencesThemeStore
+import id.bantuin.app.core.theme.ThemePreferenceStore
 import id.bantuin.app.data.remote.SupabaseClientProvider
 import id.bantuin.app.data.repository.FakeBantuinRepository
 import id.bantuin.app.data.repository.SupabaseBantuinRepository
@@ -12,6 +14,9 @@ import org.osmdroid.config.Configuration
 class BantuinApp : Application() {
 
     lateinit var sessionStore: UserSessionStore
+        private set
+
+    lateinit var themeStore: ThemePreferenceStore
         private set
 
     lateinit var repository: BantuinRepository
@@ -27,6 +32,7 @@ class BantuinApp : Application() {
         Configuration.getInstance().userAgentValue = packageName
 
         sessionStore = SharedPreferencesSessionStore(this)
+        themeStore = SharedPreferencesThemeStore(this)
 
         // Aktifkan sesi Supabase yang persisten sebelum client pertama kali dibuat.
         SupabaseClientProvider.initialize(this)
@@ -47,4 +53,3 @@ class BantuinApp : Application() {
             private set
     }
 }
-

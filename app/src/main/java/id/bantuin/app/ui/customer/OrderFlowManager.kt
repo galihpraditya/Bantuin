@@ -3,10 +3,10 @@ package id.bantuin.app.ui.customer
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import id.bantuin.app.core.util.TimeUtils
 import id.bantuin.app.data.fake.FakeData
 import id.bantuin.app.domain.model.Complexity
 import id.bantuin.app.domain.model.CostEstimate
-import id.bantuin.app.domain.model.GeoPoint
 import id.bantuin.app.domain.model.LockInfo
 import id.bantuin.app.domain.model.OrderDraft
 import id.bantuin.app.domain.model.ProviderCandidate
@@ -17,16 +17,16 @@ import id.bantuin.app.domain.model.ServiceItem
  */
 class OrderFlowManager {
     var customerLocation by mutableStateOf(FakeData.MALANG_CENTER)
-    var customerAddress by mutableStateOf("Kost Putri Griya Asri, Jl. Kaliurang KM 5, Sleman")
+    var customerAddress by mutableStateOf("Jl. Ijen No. 25, Klojen, Kota Malang")
     var selectedCategoryId by mutableStateOf(2) // Default AC & Elektronik
     var selectedProvider by mutableStateOf<ProviderCandidate?>(null)
     var selectedService by mutableStateOf<ServiceItem?>(null)
-    var selectedDateIso by mutableStateOf("Selasa, 15 Okt 2024")
+    var selectedDateIso by mutableStateOf(TimeUtils.todayIso())
     var selectedStartMin by mutableStateOf(870) // 14:30 WIB
     var selectedDurationMin by mutableStateOf(90)
     var selectedComplexity by mutableStateOf(Complexity.SEDANG)
     var isUrgent by mutableStateOf(false)
-    var orderNotes by mutableStateOf("AC di kamar lantai 2 meneteskan air terus dan tidak dingin.")
+    var orderNotes by mutableStateOf("")
     var currentEstimate by mutableStateOf<CostEstimate?>(null)
     var currentLock by mutableStateOf<LockInfo?>(null)
 
@@ -54,6 +54,9 @@ class OrderFlowManager {
     fun reset() {
         selectedProvider = null
         selectedService = null
+        selectedComplexity = Complexity.SEDANG
+        isUrgent = false
+        orderNotes = ""
         currentEstimate = null
         currentLock = null
     }

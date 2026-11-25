@@ -1,12 +1,12 @@
 package id.bantuin.app.ui.common
 
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ReceiptLong
 import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.Dashboard
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Person
-import androidx.compose.material.icons.filled.ReceiptLong
 import androidx.compose.material3.Badge
 import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.Icon
@@ -20,12 +20,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
 import id.bantuin.app.ui.navigation.Routes
-import id.bantuin.app.ui.theme.BorderSubtle
-import id.bantuin.app.ui.theme.NeutralSurface
-import id.bantuin.app.ui.theme.OrangeContainer
-import id.bantuin.app.ui.theme.OrangePrimary
-import id.bantuin.app.ui.theme.TextMuted
-import id.bantuin.app.ui.theme.TextPrimary
+import id.bantuin.app.ui.theme.BantuinTheme
 
 data class NavTabItem(
     val route: String,
@@ -42,24 +37,25 @@ fun BantuinBottomBar(
     hasUnreadNotifications: Boolean = false,
     modifier: Modifier = Modifier
 ) {
+    val colors = BantuinTheme.colors
     val items = if (activeRole == "provider") {
         listOf(
             NavTabItem(Routes.PROVIDER_HOME, "Beranda", Icons.Default.Home),
-            NavTabItem(Routes.PROVIDER_ORDERS, "Pesanan", Icons.Default.ReceiptLong),
+            NavTabItem(Routes.PROVIDER_ORDERS, "Pesanan", Icons.AutoMirrored.Filled.ReceiptLong),
             NavTabItem(Routes.PROVIDER_CALENDAR, "Jadwal", Icons.Default.CalendarMonth),
             NavTabItem(Routes.PROVIDER_DASHBOARD, "Dashboard", Icons.Default.Dashboard)
         )
     } else {
         listOf(
             NavTabItem(Routes.CUSTOMER_HOME, "Beranda", Icons.Default.Home),
-            NavTabItem(Routes.CUSTOMER_ORDERS, "Pesanan", Icons.Default.ReceiptLong),
+            NavTabItem(Routes.CUSTOMER_ORDERS, "Pesanan", Icons.AutoMirrored.Filled.ReceiptLong),
             NavTabItem(Routes.CUSTOMER_NOTIFICATIONS, "Notifikasi", Icons.Default.Notifications, hasBadge = hasUnreadNotifications),
             NavTabItem(Routes.CUSTOMER_PROFILE, "Profil", Icons.Default.Person)
         )
     }
 
     NavigationBar(
-        containerColor = NeutralSurface,
+        containerColor = colors.surface,
         tonalElevation = 2.dp,
         modifier = modifier
     ) {
@@ -77,21 +73,21 @@ fun BantuinBottomBar(
                         BadgedBox(
                             badge = {
                                 Badge(
-                                    containerColor = OrangePrimary
+                                    containerColor = colors.primary
                                 )
                             }
                         ) {
                             Icon(
                                 imageVector = item.icon,
                                 contentDescription = item.label,
-                                tint = if (isSelected) OrangePrimary else TextMuted
+                                tint = if (isSelected) colors.onPrimaryContainer else colors.textMuted
                             )
                         }
                     } else {
                         Icon(
                             imageVector = item.icon,
                             contentDescription = item.label,
-                            tint = if (isSelected) OrangePrimary else TextMuted
+                            tint = if (isSelected) colors.onPrimaryContainer else colors.textMuted
                         )
                     }
                 },
@@ -99,11 +95,15 @@ fun BantuinBottomBar(
                     Text(
                         text = item.label,
                         style = MaterialTheme.typography.labelSmall,
-                        color = if (isSelected) TextPrimary else TextMuted
+                        color = if (isSelected) colors.textPrimary else colors.textMuted
                     )
                 },
                 colors = NavigationBarItemDefaults.colors(
-                    indicatorColor = OrangeContainer
+                    indicatorColor = colors.primaryContainer,
+                    selectedIconColor = colors.onPrimaryContainer,
+                    unselectedIconColor = colors.textMuted,
+                    selectedTextColor = colors.textPrimary,
+                    unselectedTextColor = colors.textMuted
                 )
             )
         }

@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
@@ -23,17 +24,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import id.bantuin.app.ui.theme.OrangePrimary
-import id.bantuin.app.ui.theme.RedError
-import id.bantuin.app.ui.theme.TextMuted
-import id.bantuin.app.ui.theme.TextPrimary
-import id.bantuin.app.ui.theme.TextSecondary
+import id.bantuin.app.ui.theme.BantuinTheme
 
 @Composable
 fun LoadingView(
     message: String = "Memuat data...",
     modifier: Modifier = Modifier
 ) {
+    val colors = BantuinTheme.colors
     Box(
         modifier = modifier.fillMaxSize(),
         contentAlignment = Alignment.Center
@@ -43,7 +41,7 @@ fun LoadingView(
             verticalArrangement = Arrangement.Center
         ) {
             CircularProgressIndicator(
-                color = OrangePrimary,
+                color = colors.primary,
                 modifier = Modifier.size(36.dp),
                 strokeWidth = 3.dp
             )
@@ -51,7 +49,7 @@ fun LoadingView(
             Text(
                 text = message,
                 style = MaterialTheme.typography.bodyMedium,
-                color = TextSecondary
+                color = colors.textSecondary
             )
         }
     }
@@ -63,6 +61,7 @@ fun ErrorView(
     onRetry: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val colors = BantuinTheme.colors
     Box(
         modifier = modifier
             .fillMaxSize()
@@ -76,26 +75,30 @@ fun ErrorView(
             Icon(
                 imageVector = Icons.Outlined.ErrorOutline,
                 contentDescription = null,
-                tint = RedError,
+                tint = colors.error,
                 modifier = Modifier.size(48.dp)
             )
             Spacer(modifier = Modifier.height(12.dp))
             Text(
                 text = "Terjadi Kendala",
                 style = MaterialTheme.typography.titleMedium,
-                color = TextPrimary
+                color = colors.textPrimary
             )
             Spacer(modifier = Modifier.height(6.dp))
             Text(
                 text = message,
                 style = MaterialTheme.typography.bodyMedium,
-                color = TextSecondary,
+                color = colors.textSecondary,
                 textAlign = TextAlign.Center
             )
             Spacer(modifier = Modifier.height(18.dp))
             Button(
                 onClick = onRetry,
-                colors = ButtonDefaults.buttonColors(containerColor = OrangePrimary)
+                modifier = Modifier.heightIn(min = 48.dp),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = colors.primary,
+                    contentColor = colors.onPrimary
+                )
             ) {
                 Text("Coba Lagi")
             }
@@ -112,6 +115,7 @@ fun EmptyView(
     onAction: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
+    val colors = BantuinTheme.colors
     Box(
         modifier = modifier
             .fillMaxSize()
@@ -125,27 +129,31 @@ fun EmptyView(
             Icon(
                 imageVector = icon,
                 contentDescription = null,
-                tint = TextMuted,
+                tint = colors.textMuted,
                 modifier = Modifier.size(52.dp)
             )
             Spacer(modifier = Modifier.height(12.dp))
             Text(
                 text = title,
                 style = MaterialTheme.typography.titleMedium,
-                color = TextPrimary
+                color = colors.textPrimary
             )
             Spacer(modifier = Modifier.height(6.dp))
             Text(
                 text = message,
                 style = MaterialTheme.typography.bodyMedium,
-                color = TextSecondary,
+                color = colors.textSecondary,
                 textAlign = TextAlign.Center
             )
             if (actionText != null && onAction != null) {
                 Spacer(modifier = Modifier.height(18.dp))
                 Button(
                     onClick = onAction,
-                    colors = ButtonDefaults.buttonColors(containerColor = OrangePrimary)
+                    modifier = Modifier.heightIn(min = 48.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = colors.primary,
+                        contentColor = colors.onPrimary
+                    )
                 ) {
                     Text(actionText)
                 }

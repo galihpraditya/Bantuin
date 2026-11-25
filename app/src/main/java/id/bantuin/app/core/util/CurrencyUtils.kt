@@ -4,7 +4,7 @@ import java.text.NumberFormat
 import java.util.Locale
 
 object CurrencyUtils {
-    private val rupiahLocale = Locale("id", "ID")
+    private val rupiahLocale = Locale.forLanguageTag("id-ID")
 
     fun formatRupiah(amount: Int): String {
         val formatter = NumberFormat.getCurrencyInstance(rupiahLocale).apply {

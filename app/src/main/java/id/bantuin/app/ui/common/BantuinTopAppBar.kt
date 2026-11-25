@@ -13,8 +13,7 @@ import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
-import id.bantuin.app.ui.theme.NeutralBackground
-import id.bantuin.app.ui.theme.TextPrimary
+import id.bantuin.app.ui.theme.BantuinTheme
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -25,12 +24,13 @@ fun BantuinTopAppBar(
     actions: @Composable RowScope.() -> Unit = {},
     modifier: Modifier = Modifier
 ) {
+    val colors = BantuinTheme.colors
     TopAppBar(
         title = {
             Text(
                 text = title,
                 style = MaterialTheme.typography.titleLarge,
-                color = TextPrimary,
+                color = colors.textPrimary,
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis
             )
@@ -41,14 +41,17 @@ fun BantuinTopAppBar(
                     Icon(
                         imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                         contentDescription = "Kembali",
-                        tint = TextPrimary
+                        tint = colors.textPrimary
                     )
                 }
             }
         },
         actions = actions,
         colors = TopAppBarDefaults.topAppBarColors(
-            containerColor = NeutralBackground
+            containerColor = colors.background,
+            titleContentColor = colors.textPrimary,
+            navigationIconContentColor = colors.textPrimary,
+            actionIconContentColor = colors.textPrimary
         ),
         modifier = modifier
     )
