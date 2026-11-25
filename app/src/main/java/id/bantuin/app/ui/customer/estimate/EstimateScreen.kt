@@ -1,7 +1,7 @@
 package id.bantuin.app.ui.customer.estimate
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -23,11 +24,10 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.filled.CalendarToday
-import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.EditNote
+import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Payments
 import androidx.compose.material.icons.filled.Receipt
-import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -47,36 +47,28 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
 import androidx.lifecycle.viewmodel.compose.viewModel
 import id.bantuin.app.core.util.CurrencyUtils
 import id.bantuin.app.core.util.TimeUtils
-import id.bantuin.app.data.fake.FakeData
 import id.bantuin.app.domain.model.Complexity
 import id.bantuin.app.domain.repository.BantuinRepository
+import id.bantuin.app.domain.usecase.matchmaking.HaversineCalculator
 import id.bantuin.app.domain.usecase.pricing.CostEstimatorUseCase
 import id.bantuin.app.ui.common.BantuinViewModelFactory
+import id.bantuin.app.ui.common.CountdownTimerView
+import id.bantuin.app.ui.common.ErrorView
 import id.bantuin.app.ui.customer.OrderFlowManager
-import id.bantuin.app.ui.theme.BorderSubtle
-import id.bantuin.app.ui.theme.GreenSuccess
-import id.bantuin.app.ui.theme.GreenSuccessContainer
-import id.bantuin.app.ui.theme.NeutralBackground
-import id.bantuin.app.ui.theme.NeutralSurface
-import id.bantuin.app.ui.theme.OrangeContainer
-import id.bantuin.app.ui.theme.OrangePrimary
-import id.bantuin.app.ui.theme.TextMuted
-import id.bantuin.app.ui.theme.TextPrimary
-import id.bantuin.app.ui.theme.TextSecondary
+import id.bantuin.app.ui.theme.BantuinTheme
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -89,19 +81,60 @@ fun EstimateScreen(
     modifier: Modifier = Modifier
 ) {
     val uiState by viewModel.uiState.collectAsState()
+    val colors = BantuinTheme.colors
 
-    val provider = orderFlow.selectedProvider ?: FakeData.providers.first()
-    val service = orderFlow.selectedService ?: FakeData.services.first()
+    val provider = orderFlow.selectedProvider
+    val service = orderFlow.selectedService
+
+    fun handleBack() {
+        viewModel.releaseLock {
+            orderFlow.currentLock = null
+            onNavigateBack()
+        }
+    }
+
+    BackHandler(onBack = ::handleBack)
+
+    if (provider == null || service == null) {
+        Scaffold(
+            topBar = {
+                TopAppBar(
+                    title = { Text("Estimasi Tarif & Order", color = colors.textPrimary) },
+                    navigationIcon = {
+                        IconButton(onClick = onNavigateBack) {
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                                contentDescription = "Kembali",
+                                tint = colors.textPrimary
+                            )
+                        }
+                    },
+                    colors = TopAppBarDefaults.topAppBarColors(containerColor = colors.background)
+                )
+            },
+            containerColor = colors.background
+        ) { innerPadding ->
+            ErrorView(
+                message = "Data layanan atau mitra tidak lengkap. Silakan kembali memilih layanan.",
+                onRetry = onNavigateBack,
+                modifier = Modifier.padding(innerPadding)
+            )
+        }
+        return
+    }
 
     val distanceKm = remember(orderFlow.customerLocation, provider.location) {
-        val d = id.bantuin.app.domain.usecase.matchmaking.HaversineCalculator.distanceKm(
-            orderFlow.customerLocation,
-            provider.location
-        )
+        val d = HaversineCalculator.distanceKm(orderFlow.customerLocation, provider.location)
         Math.round(d * 10.0) / 10.0
     }
 
-    androidx.compose.runtime.LaunchedEffect(provider.providerId, service.id) {
+    LaunchedEffect(
+        provider.providerId,
+        service.id,
+        orderFlow.selectedDateIso,
+        orderFlow.selectedStartMin,
+        orderFlow.currentLock?.lockId
+    ) {
         viewModel.initialize(
             categoryId = orderFlow.selectedCategoryId,
             provider = provider,
@@ -122,10 +155,14 @@ fun EstimateScreen(
     val estimate = uiState.costEstimate ?: CostEstimatorUseCase()(
         baseFare = service.baseFare,
         distanceKm = distanceKm,
-        complexity = orderFlow.selectedComplexity,
-        startMinOfDay = orderFlow.selectedStartMin,
-        isUrgent = orderFlow.isUrgent
+        complexity = uiState.complexity,
+        startMinOfDay = uiState.scheduledStartMin,
+        isUrgent = uiState.isUrgent
     )
+
+    LaunchedEffect(estimate) {
+        orderFlow.currentEstimate = estimate
+    }
 
     Scaffold(
         topBar = {
@@ -134,27 +171,26 @@ fun EstimateScreen(
                     Text(
                         text = "Estimasi Tarif & Order",
                         style = MaterialTheme.typography.titleLarge,
-                        color = TextPrimary
+                        color = colors.textPrimary
                     )
                 },
                 navigationIcon = {
-                    IconButton(onClick = onNavigateBack) {
+                    IconButton(onClick = ::handleBack) {
                         Icon(
                             imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                             contentDescription = "Kembali",
-                            tint = TextPrimary
+                            tint = colors.textPrimary
                         )
                     }
                 },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = NeutralBackground)
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = colors.background)
             )
         },
         bottomBar = {
-            // Bilah Bawah Konfirmasi Pesanan
             Card(
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp),
-                colors = CardDefaults.cardColors(containerColor = NeutralSurface),
+                colors = CardDefaults.cardColors(containerColor = colors.surface),
                 elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
             ) {
                 Row(
@@ -168,29 +204,42 @@ fun EstimateScreen(
                         Text(
                             text = "Total Pembayaran",
                             style = MaterialTheme.typography.bodySmall,
-                            color = TextMuted
+                            color = colors.textMuted
                         )
                         Text(
                             text = CurrencyUtils.formatRupiah(estimate.total),
                             style = MaterialTheme.typography.titleLarge.copy(fontSize = 20.sp),
-                            color = OrangePrimary,
+                            color = colors.primary,
                             fontWeight = FontWeight.Bold
                         )
                     }
 
                     Button(
                         onClick = {
-                            viewModel.confirmOrder { bookingId ->
-                                onOrderConfirmed(bookingId)
+                            if (uiState.isLockExpired) {
+                                handleBack()
+                            } else {
+                                viewModel.confirmOrder { bookingId ->
+                                    orderFlow.reset()
+                                    onOrderConfirmed(bookingId)
+                                }
                             }
                         },
                         enabled = !uiState.isSubmitting,
-                        colors = ButtonDefaults.buttonColors(containerColor = OrangePrimary),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = if (uiState.isLockExpired) colors.error else colors.primary,
+                            contentColor = colors.onPrimary
+                        ),
                         shape = RoundedCornerShape(12.dp),
-                        contentPadding = PaddingValues(horizontal = 20.dp, vertical = 12.dp)
+                        contentPadding = PaddingValues(horizontal = 20.dp, vertical = 12.dp),
+                        modifier = Modifier.heightIn(min = 48.dp)
                     ) {
                         Text(
-                            if (uiState.isSubmitting) "Memproses..." else "Konfirmasi Order",
+                            text = when {
+                                uiState.isLockExpired -> "Pilih Jadwal Ulang"
+                                uiState.isSubmitting -> "Memproses..."
+                                else -> "Konfirmasi Order"
+                            },
                             style = MaterialTheme.typography.labelLarge
                         )
                         Spacer(modifier = Modifier.width(6.dp))
@@ -203,7 +252,7 @@ fun EstimateScreen(
                 }
             }
         },
-        containerColor = NeutralBackground,
+        containerColor = colors.background,
         modifier = modifier
     ) { innerPadding ->
         LazyColumn(
@@ -213,13 +262,82 @@ fun EstimateScreen(
             contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 24.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
+            // 0. Hitung Mundur Kunci Slot 10 Menit
+            val activeLock = uiState.lockInfo
+            if (activeLock != null) {
+                item {
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp),
+                        colors = CardDefaults.cardColors(
+                            containerColor = if (uiState.isLockExpired) colors.errorContainer else colors.infoContainer
+                        )
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 14.dp, vertical = 10.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Lock,
+                                    contentDescription = null,
+                                    tint = if (uiState.isLockExpired) colors.error else colors.info,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(
+                                    text = if (uiState.isLockExpired) {
+                                        "Kunci slot 10 menit telah habis"
+                                    } else {
+                                        "Slot jadwal dikunci sementara"
+                                    },
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = if (uiState.isLockExpired) colors.error else colors.info,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                            }
+                            CountdownTimerView(
+                                targetEpochMillis = activeLock.expiresAtMillis,
+                                onExpired = { viewModel.onLockExpired() }
+                            )
+                        }
+                    }
+                }
+            }
+
+            // Pesan galat RPC / validasi
+            if (!uiState.errorMessage.isNullOrBlank()) {
+                item {
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp),
+                        colors = CardDefaults.cardColors(containerColor = colors.errorContainer)
+                    ) {
+                        Text(
+                            text = uiState.errorMessage ?: "",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = colors.error,
+                            modifier = Modifier.padding(14.dp)
+                        )
+                    }
+                }
+            }
+
             // 1. Ringkasan Pesanan & Jadwal
             item {
                 Card(
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(14.dp),
-                    colors = CardDefaults.cardColors(containerColor = NeutralSurface),
-                    border = CardDefaults.outlinedCardBorder().copy(brush = androidx.compose.ui.graphics.SolidColor(BorderSubtle))
+                    colors = CardDefaults.cardColors(containerColor = colors.surface),
+                    border = CardDefaults.outlinedCardBorder().copy(
+                        brush = androidx.compose.ui.graphics.SolidColor(colors.borderSubtle)
+                    )
                 ) {
                     Column(modifier = Modifier.padding(14.dp)) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -227,13 +345,13 @@ fun EstimateScreen(
                                 modifier = Modifier
                                     .size(44.dp)
                                     .clip(CircleShape)
-                                    .background(OrangeContainer),
+                                    .background(colors.primaryContainer),
                                 contentAlignment = Alignment.Center
                             ) {
                                 Text(
                                     text = provider.name.take(1),
                                     style = MaterialTheme.typography.titleLarge,
-                                    color = OrangePrimary
+                                    color = colors.onPrimaryContainer
                                 )
                             }
                             Spacer(modifier = Modifier.width(12.dp))
@@ -241,32 +359,32 @@ fun EstimateScreen(
                                 Text(
                                     text = provider.name,
                                     style = MaterialTheme.typography.titleMedium,
-                                    color = TextPrimary
+                                    color = colors.textPrimary
                                 )
                                 Text(
                                     text = service.name,
                                     style = MaterialTheme.typography.bodySmall,
-                                    color = TextSecondary
+                                    color = colors.textSecondary
                                 )
                             }
                         }
 
                         Spacer(modifier = Modifier.height(10.dp))
-                        HorizontalDivider(color = BorderSubtle)
+                        HorizontalDivider(color = colors.borderSubtle)
                         Spacer(modifier = Modifier.height(10.dp))
 
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Icon(
                                 imageVector = Icons.Default.CalendarToday,
                                 contentDescription = null,
-                                tint = OrangePrimary,
+                                tint = colors.primary,
                                 modifier = Modifier.size(16.dp)
                             )
                             Spacer(modifier = Modifier.width(8.dp))
                             Text(
-                                text = "${orderFlow.selectedDateIso} • ${TimeUtils.formatMinuteOfDay(orderFlow.selectedStartMin)}",
+                                text = "${uiState.scheduledDateIso} • ${TimeUtils.formatMinuteOfDay(uiState.scheduledStartMin)}",
                                 style = MaterialTheme.typography.bodyMedium,
-                                color = TextPrimary
+                                color = colors.textPrimary
                             )
                         }
                     }
@@ -284,18 +402,18 @@ fun EstimateScreen(
                         Text(
                             text = "Pilih Tingkat Kompleksitas",
                             style = MaterialTheme.typography.titleMedium,
-                            color = TextPrimary
+                            color = colors.textPrimary
                         )
                         Box(
                             modifier = Modifier
                                 .clip(RoundedCornerShape(6.dp))
-                                .background(Color(0xFFFFF3E0))
+                                .background(colors.primaryContainer)
                                 .padding(horizontal = 8.dp, vertical = 2.dp)
                         ) {
                             Text(
-                                text = "${orderFlow.selectedComplexity.weight}x Tarif",
+                                text = "${uiState.complexity.weight}x Tarif",
                                 style = MaterialTheme.typography.labelSmall,
-                                color = OrangePrimary,
+                                color = colors.onPrimaryContainer,
                                 fontWeight = FontWeight.Bold
                             )
                         }
@@ -304,20 +422,23 @@ fun EstimateScreen(
                     Spacer(modifier = Modifier.height(10.dp))
 
                     Complexity.entries.forEach { comp ->
-                        val isSelected = orderFlow.selectedComplexity == comp
+                        val isSelected = uiState.complexity == comp
                         Card(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .padding(vertical = 4.dp)
                                 .clip(RoundedCornerShape(12.dp))
-                                .clickable { orderFlow.selectedComplexity = comp },
+                                .clickable {
+                                    orderFlow.selectedComplexity = comp
+                                    viewModel.setComplexity(comp)
+                                },
                             shape = RoundedCornerShape(12.dp),
                             colors = CardDefaults.cardColors(
-                                containerColor = if (isSelected) OrangeContainer.copy(alpha = 0.25f) else NeutralSurface
+                                containerColor = if (isSelected) colors.primaryContainer.copy(alpha = 0.35f) else colors.surface
                             ),
                             border = CardDefaults.outlinedCardBorder().copy(
                                 brush = androidx.compose.ui.graphics.SolidColor(
-                                    if (isSelected) OrangePrimary else BorderSubtle
+                                    if (isSelected) colors.primary else colors.borderSubtle
                                 )
                             )
                         ) {
@@ -329,8 +450,11 @@ fun EstimateScreen(
                             ) {
                                 RadioButton(
                                     selected = isSelected,
-                                    onClick = { orderFlow.selectedComplexity = comp },
-                                    colors = RadioButtonDefaults.colors(selectedColor = OrangePrimary)
+                                    onClick = {
+                                        orderFlow.selectedComplexity = comp
+                                        viewModel.setComplexity(comp)
+                                    },
+                                    colors = RadioButtonDefaults.colors(selectedColor = colors.primary)
                                 )
                                 Spacer(modifier = Modifier.width(8.dp))
                                 Column(modifier = Modifier.weight(1f)) {
@@ -341,19 +465,19 @@ fun EstimateScreen(
                                         Text(
                                             text = comp.displayName + if (comp == Complexity.SEDANG) " (Rekomendasi)" else "",
                                             style = MaterialTheme.typography.labelLarge,
-                                            color = TextPrimary
+                                            color = colors.textPrimary
                                         )
                                         Text(
                                             text = "${comp.weight}x",
                                             style = MaterialTheme.typography.labelMedium,
-                                            color = OrangePrimary,
+                                            color = colors.primary,
                                             fontWeight = FontWeight.Bold
                                         )
                                     }
                                     Text(
                                         text = comp.description,
                                         style = MaterialTheme.typography.bodySmall,
-                                        color = TextSecondary
+                                        color = colors.textSecondary
                                     )
                                 }
                             }
@@ -367,8 +491,10 @@ fun EstimateScreen(
                 Card(
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(14.dp),
-                    colors = CardDefaults.cardColors(containerColor = NeutralSurface),
-                    border = CardDefaults.outlinedCardBorder().copy(brush = androidx.compose.ui.graphics.SolidColor(BorderSubtle))
+                    colors = CardDefaults.cardColors(containerColor = colors.surface),
+                    border = CardDefaults.outlinedCardBorder().copy(
+                        brush = androidx.compose.ui.graphics.SolidColor(colors.borderSubtle)
+                    )
                 ) {
                     Row(
                         modifier = Modifier
@@ -385,13 +511,13 @@ fun EstimateScreen(
                                 modifier = Modifier
                                     .size(36.dp)
                                     .clip(CircleShape)
-                                    .background(OrangeContainer),
+                                    .background(colors.primaryContainer),
                                 contentAlignment = Alignment.Center
                             ) {
                                 Icon(
                                     imageVector = Icons.Default.Bolt,
                                     contentDescription = null,
-                                    tint = OrangePrimary,
+                                    tint = colors.onPrimaryContainer,
                                     modifier = Modifier.size(20.dp)
                                 )
                             }
@@ -400,22 +526,25 @@ fun EstimateScreen(
                                 Text(
                                     text = "Layanan Cepat Tanggap",
                                     style = MaterialTheme.typography.labelLarge,
-                                    color = TextPrimary
+                                    color = colors.textPrimary
                                 )
                                 Text(
-                                    text = "Tiba dalam waktu < 30 menit",
+                                    text = "Penanganan prioritas ke lokasi Anda",
                                     style = MaterialTheme.typography.bodySmall,
-                                    color = TextSecondary
+                                    color = colors.textSecondary
                                 )
                             }
                         }
 
                         Switch(
-                            checked = orderFlow.isUrgent,
-                            onCheckedChange = { orderFlow.isUrgent = it },
+                            checked = uiState.isUrgent,
+                            onCheckedChange = {
+                                orderFlow.isUrgent = it
+                                viewModel.setUrgent(it)
+                            },
                             colors = SwitchDefaults.colors(
-                                checkedThumbColor = Color.White,
-                                checkedTrackColor = OrangePrimary
+                                checkedThumbColor = colors.onPrimary,
+                                checkedTrackColor = colors.primary
                             )
                         )
                     }
@@ -428,8 +557,10 @@ fun EstimateScreen(
                     Card(
                         modifier = Modifier.fillMaxWidth(),
                         shape = RoundedCornerShape(12.dp),
-                        colors = CardDefaults.cardColors(containerColor = Color(0xFFFFF8E1)),
-                        border = CardDefaults.outlinedCardBorder().copy(brush = androidx.compose.ui.graphics.SolidColor(Color(0xFFFFE082)))
+                        colors = CardDefaults.cardColors(containerColor = colors.warningContainer),
+                        border = CardDefaults.outlinedCardBorder().copy(
+                            brush = androidx.compose.ui.graphics.SolidColor(colors.borderSubtle)
+                        )
                     ) {
                         Row(
                             modifier = Modifier.padding(14.dp),
@@ -438,7 +569,7 @@ fun EstimateScreen(
                             Icon(
                                 imageVector = Icons.Default.Bolt,
                                 contentDescription = null,
-                                tint = OrangePrimary,
+                                tint = colors.warning,
                                 modifier = Modifier.size(22.dp)
                             )
                             Spacer(modifier = Modifier.width(10.dp))
@@ -446,13 +577,13 @@ fun EstimateScreen(
                                 Text(
                                     text = estimate.surgeReason.label,
                                     style = MaterialTheme.typography.labelLarge,
-                                    color = Color(0xFFE65100),
+                                    color = colors.warning,
                                     fontWeight = FontWeight.Bold
                                 )
                                 Text(
-                                    text = "Penanganan prioritas aktif untuk menjamin teknisi langsung meluncur ke kos atau rumah Anda tanpa antrean biasa.",
+                                    text = "Penambahan tunggal +20% berlaku sesuai jam sibuk, malam, atau prioritas darurat.",
                                     style = MaterialTheme.typography.bodySmall,
-                                    color = Color(0xFFBF360C)
+                                    color = colors.textSecondary
                                 )
                             }
                         }
@@ -462,11 +593,21 @@ fun EstimateScreen(
 
             // 5. Rincian Biaya Transparan (F2)
             item {
+                val preComplexity = estimate.baseFare + estimate.distanceCost
+                val complexityAdjustment = estimate.baseCost - preComplexity
+                val complexityDiffLabel = if (complexityAdjustment >= 0) {
+                    "+ ${CurrencyUtils.formatRupiah(complexityAdjustment)}"
+                } else {
+                    "- ${CurrencyUtils.formatRupiah(-complexityAdjustment)}"
+                }
+
                 Card(
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(16.dp),
-                    colors = CardDefaults.cardColors(containerColor = NeutralSurface),
-                    border = CardDefaults.outlinedCardBorder().copy(brush = androidx.compose.ui.graphics.SolidColor(BorderSubtle))
+                    colors = CardDefaults.cardColors(containerColor = colors.surface),
+                    border = CardDefaults.outlinedCardBorder().copy(
+                        brush = androidx.compose.ui.graphics.SolidColor(colors.borderSubtle)
+                    )
                 ) {
                     Column(modifier = Modifier.padding(16.dp)) {
                         Row(
@@ -478,27 +619,27 @@ fun EstimateScreen(
                                 Icon(
                                     imageVector = Icons.Default.Receipt,
                                     contentDescription = null,
-                                    tint = OrangePrimary,
+                                    tint = colors.primary,
                                     modifier = Modifier.size(18.dp)
                                 )
                                 Spacer(modifier = Modifier.width(6.dp))
                                 Text(
                                     text = "Rincian Biaya Transparan",
                                     style = MaterialTheme.typography.titleMedium,
-                                    color = TextPrimary
+                                    color = colors.textPrimary
                                 )
                             }
 
                             Box(
                                 modifier = Modifier
                                     .clip(RoundedCornerShape(6.dp))
-                                    .background(GreenSuccessContainer)
+                                    .background(colors.successContainer)
                                     .padding(horizontal = 6.dp, vertical = 2.dp)
                             ) {
                                 Text(
                                     text = "Garansi 7 Hari",
                                     style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
-                                    color = GreenSuccess,
+                                    color = colors.success,
                                     fontWeight = FontWeight.Bold
                                 )
                             }
@@ -508,33 +649,33 @@ fun EstimateScreen(
 
                         CostRow(label = "Tarif Dasar Jasa", amount = CurrencyUtils.formatRupiah(estimate.baseFare))
                         CostRow(
-                            label = "Biaya Jarak (${estimate.distanceKm} km × Rp2.000)",
+                            label = "Biaya Jarak (${estimate.distanceKm} km x Rp2.000)",
                             amount = CurrencyUtils.formatRupiah(estimate.distanceCost)
                         )
-
-                        Spacer(modifier = Modifier.height(6.dp))
-                        HorizontalDivider(color = BorderSubtle)
-                        Spacer(modifier = Modifier.height(6.dp))
-
                         CostRow(
-                            label = "Subtotal Biaya Dasar",
-                            amount = CurrencyUtils.formatRupiah(estimate.baseCost)
+                            label = "Kompleksitas (${uiState.complexity.displayName} ${uiState.complexity.weight}x)",
+                            amount = complexityDiffLabel
                         )
+
+                        Spacer(modifier = Modifier.height(6.dp))
+                        HorizontalDivider(color = colors.borderSubtle)
+                        Spacer(modifier = Modifier.height(6.dp))
+
                         CostRow(
-                            label = "Faktor Kompleksitas (${orderFlow.selectedComplexity.displayName} ${orderFlow.selectedComplexity.weight}x)",
-                            amount = "+ ${CurrencyUtils.formatRupiah((estimate.baseCost * (orderFlow.selectedComplexity.weight.toDouble() - 1.0)).toInt())}"
+                            label = "Subtotal Layanan",
+                            amount = CurrencyUtils.formatRupiah(estimate.baseCost)
                         )
 
                         if (estimate.surgeApplied) {
                             CostRow(
-                                label = "Surge Sibuk/Malam/Darurat (1.20x)",
+                                label = "Surge 1.20x (${estimate.surgeReason.label})",
                                 amount = "+ ${CurrencyUtils.formatRupiah(estimate.surgeAmount)}",
                                 isHighlight = true
                             )
                         }
 
                         Spacer(modifier = Modifier.height(8.dp))
-                        HorizontalDivider(color = BorderSubtle)
+                        HorizontalDivider(color = colors.borderSubtle)
                         Spacer(modifier = Modifier.height(8.dp))
 
                         Row(
@@ -546,19 +687,19 @@ fun EstimateScreen(
                                 Text(
                                     text = "Total Pembayaran",
                                     style = MaterialTheme.typography.titleMedium,
-                                    color = TextPrimary,
+                                    color = colors.textPrimary,
                                     fontWeight = FontWeight.Bold
                                 )
                                 Text(
                                     text = "Termasuk garansi servis 7 hari",
                                     style = MaterialTheme.typography.bodySmall,
-                                    color = TextMuted
+                                    color = colors.textMuted
                                 )
                             }
                             Text(
                                 text = CurrencyUtils.formatRupiah(estimate.total),
                                 style = MaterialTheme.typography.headlineSmall,
-                                color = OrangePrimary,
+                                color = colors.primary,
                                 fontWeight = FontWeight.Bold
                             )
                         }
@@ -571,29 +712,34 @@ fun EstimateScreen(
                 Card(
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(14.dp),
-                    colors = CardDefaults.cardColors(containerColor = NeutralSurface),
-                    border = CardDefaults.outlinedCardBorder().copy(brush = androidx.compose.ui.graphics.SolidColor(BorderSubtle))
+                    colors = CardDefaults.cardColors(containerColor = colors.surface),
+                    border = CardDefaults.outlinedCardBorder().copy(
+                        brush = androidx.compose.ui.graphics.SolidColor(colors.borderSubtle)
+                    )
                 ) {
                     Column(modifier = Modifier.padding(14.dp)) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Icon(
                                 imageVector = Icons.Default.EditNote,
                                 contentDescription = null,
-                                tint = OrangePrimary,
+                                tint = colors.primary,
                                 modifier = Modifier.size(18.dp)
                             )
                             Spacer(modifier = Modifier.width(6.dp))
                             Text(
-                                text = "Catatan untuk Teknisi",
+                                text = "Catatan untuk Teknisi (Opsional)",
                                 style = MaterialTheme.typography.titleSmall,
-                                color = TextPrimary
+                                color = colors.textPrimary
                             )
                         }
                         Spacer(modifier = Modifier.height(8.dp))
                         OutlinedTextField(
-                            value = orderFlow.orderNotes,
-                            onValueChange = { orderFlow.orderNotes = it },
-                            placeholder = { Text("Contoh: AC meneteskan air di kamar lantai 2...") },
+                            value = uiState.notes,
+                            onValueChange = {
+                                orderFlow.orderNotes = it.take(500)
+                                viewModel.setNotes(it)
+                            },
+                            placeholder = { Text("Contoh: Lokasi di lantai 2, patokan gerbang hijau...") },
                             modifier = Modifier.fillMaxWidth(),
                             maxLines = 3
                         )
@@ -601,13 +747,15 @@ fun EstimateScreen(
                 }
             }
 
-            // 7. Metode Pembayaran: Tunai di Tempat (Out of Scope Payment Gateway)
+            // 7. Metode Pembayaran Tunai di Tempat
             item {
                 Card(
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(14.dp),
-                    colors = CardDefaults.cardColors(containerColor = NeutralSurface),
-                    border = CardDefaults.outlinedCardBorder().copy(brush = androidx.compose.ui.graphics.SolidColor(BorderSubtle))
+                    colors = CardDefaults.cardColors(containerColor = colors.surface),
+                    border = CardDefaults.outlinedCardBorder().copy(
+                        brush = androidx.compose.ui.graphics.SolidColor(colors.borderSubtle)
+                    )
                 ) {
                     Row(
                         modifier = Modifier.padding(14.dp),
@@ -617,13 +765,13 @@ fun EstimateScreen(
                             modifier = Modifier
                                 .size(36.dp)
                                 .clip(CircleShape)
-                                .background(Color(0xFFE8F5E9)),
+                                .background(colors.successContainer),
                             contentAlignment = Alignment.Center
                         ) {
                             Icon(
                                 imageVector = Icons.Default.Payments,
                                 contentDescription = null,
-                                tint = GreenSuccess,
+                                tint = colors.success,
                                 modifier = Modifier.size(20.dp)
                             )
                         }
@@ -632,12 +780,12 @@ fun EstimateScreen(
                             Text(
                                 text = "Pembayaran Tunai di Tempat",
                                 style = MaterialTheme.typography.labelLarge,
-                                color = TextPrimary
+                                color = colors.textPrimary
                             )
                             Text(
                                 text = "Bayar langsung ke teknisi setelah pekerjaan selesai diperiksa.",
                                 style = MaterialTheme.typography.bodySmall,
-                                color = TextSecondary
+                                color = colors.textSecondary
                             )
                         }
                     }
@@ -653,6 +801,7 @@ private fun CostRow(
     amount: String,
     isHighlight: Boolean = false
 ) {
+    val colors = BantuinTheme.colors
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -663,12 +812,14 @@ private fun CostRow(
         Text(
             text = label,
             style = MaterialTheme.typography.bodySmall,
-            color = if (isHighlight) OrangePrimary else TextSecondary
+            color = if (isHighlight) colors.primary else colors.textSecondary,
+            modifier = Modifier.weight(1f)
         )
+        Spacer(modifier = Modifier.width(8.dp))
         Text(
             text = amount,
             style = MaterialTheme.typography.bodyMedium,
-            color = if (isHighlight) OrangePrimary else TextPrimary,
+            color = if (isHighlight) colors.primary else colors.textPrimary,
             fontWeight = if (isHighlight) FontWeight.Bold else FontWeight.Normal
         )
     }

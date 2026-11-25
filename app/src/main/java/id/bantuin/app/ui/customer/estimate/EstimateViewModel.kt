@@ -33,6 +33,7 @@ data class EstimateUiState(
     val isUrgent: Boolean = false,
     val notes: String = "",
     val costEstimate: CostEstimate? = null,
+    val isLockExpired: Boolean = false,
     val isSubmitting: Boolean = false,
     val createdBookingId: String? = null,
     val errorMessage: String? = null
@@ -61,6 +62,17 @@ class EstimateViewModel(
         initialUrgent: Boolean = false,
         initialNotes: String = ""
     ) {
+        val current = _uiState.value
+        if (current.provider?.providerId == provider.providerId &&
+            current.service?.id == service.id &&
+            current.scheduledDateIso == scheduledDateIso &&
+            current.scheduledStartMin == scheduledStartMin &&
+            current.lockInfo?.lockId == lockInfo?.lockId &&
+            current.costEstimate != null
+        ) {
+            return
+        }
+
         val initialEstimate = costEstimator(
             baseFare = service.baseFare,
             distanceKm = distanceKm,
@@ -84,7 +96,9 @@ class EstimateViewModel(
                 complexity = initialComplexity,
                 isUrgent = initialUrgent,
                 notes = initialNotes,
-                costEstimate = initialEstimate
+                costEstimate = initialEstimate,
+                isLockExpired = false,
+                errorMessage = null
             )
         }
     }
@@ -102,7 +116,8 @@ class EstimateViewModel(
         _uiState.update {
             it.copy(
                 complexity = complexity,
-                costEstimate = newEstimate
+                costEstimate = newEstimate,
+                errorMessage = null
             )
         }
     }
@@ -120,17 +135,44 @@ class EstimateViewModel(
         _uiState.update {
             it.copy(
                 isUrgent = isUrgent,
-                costEstimate = newEstimate
+                costEstimate = newEstimate,
+                errorMessage = null
             )
         }
     }
 
     fun setNotes(notes: String) {
-        _uiState.update { it.copy(notes = notes) }
+        _uiState.update { it.copy(notes = notes.take(500)) }
+    }
+
+    fun onLockExpired() {
+        _uiState.update {
+            it.copy(
+                isLockExpired = true,
+                errorMessage = "Batas waktu kunci slot 10 menit telah berakhir. Silakan pilih jadwal ulang."
+            )
+        }
+    }
+
+    fun releaseLock(onDone: () -> Unit = {}) {
+        val lockId = _uiState.value.lockInfo?.lockId
+        viewModelScope.launch {
+            if (!lockId.isNullOrBlank()) {
+                bookingRepository.releaseLock(lockId)
+            }
+            _uiState.update { it.copy(lockInfo = null) }
+            onDone()
+        }
     }
 
     fun confirmOrder(onSuccess: (String) -> Unit) {
         val state = _uiState.value
+        if (state.isLockExpired) {
+            _uiState.update {
+                it.copy(errorMessage = "Kunci slot telah berakhir. Silakan kembali dan pilih jadwal ulang.")
+            }
+            return
+        }
         val provider = state.provider ?: return
         val service = state.service ?: return
         val estimate = state.costEstimate ?: return
@@ -144,7 +186,7 @@ class EstimateViewModel(
             durationMin = state.scheduledDurationMin,
             complexity = state.complexity,
             isUrgent = state.isUrgent,
-            notes = state.notes,
+            notes = state.notes.trim(),
             customerLocation = state.customerLocation,
             customerAddress = state.customerAddress,
             distanceKm = state.distanceKm,
@@ -159,7 +201,8 @@ class EstimateViewModel(
                     _uiState.update {
                         it.copy(
                             isSubmitting = false,
-                            createdBookingId = res.data
+                            createdBookingId = res.data,
+                            lockInfo = null
                         )
                     }
                     onSuccess(res.data)

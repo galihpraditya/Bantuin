@@ -109,4 +109,47 @@ class AuthViewModelTest {
         assertEquals("Dewi Sartika", registeredUser?.fullName)
         assertTrue(viewModel.uiState.value.isSuccess)
     }
+
+    @Test
+    fun signIn_withInvalidEmailFormat_showsValidationError() = runTest {
+        viewModel.onEmailChange("bukan-email")
+        viewModel.onPasswordChange("Demo12345!")
+        var successCalled = false
+
+        viewModel.signIn { successCalled = true }
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        assertTrue(!successCalled)
+        assertEquals("Format email tidak valid", viewModel.uiState.value.errorMessage)
+    }
+
+    @Test
+    fun signUp_withShortPassword_showsValidationError() = runTest {
+        viewModel.onNameChange("Dewi Sartika")
+        viewModel.onEmailChange("dewi@bantuin.test")
+        viewModel.onPasswordChange("12345")
+        viewModel.onPhoneChange("081298765432")
+        var successCalled = false
+
+        viewModel.signUp { successCalled = true }
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        assertTrue(!successCalled)
+        assertEquals("Kata sandi minimal 6 karakter", viewModel.uiState.value.errorMessage)
+    }
+
+    @Test
+    fun signUp_withInvalidIndonesianPhone_showsValidationError() = runTest {
+        viewModel.onNameChange("Dewi Sartika")
+        viewModel.onEmailChange("dewi@bantuin.test")
+        viewModel.onPasswordChange("Rahasia123!")
+        viewModel.onPhoneChange("12345")
+        var successCalled = false
+
+        viewModel.signUp { successCalled = true }
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        assertTrue(!successCalled)
+        assertEquals("Nomor telepon Indonesia tidak valid (contoh: 081234567890)", viewModel.uiState.value.errorMessage)
+    }
 }

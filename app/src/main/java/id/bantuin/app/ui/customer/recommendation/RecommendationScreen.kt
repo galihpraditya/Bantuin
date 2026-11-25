@@ -1,8 +1,6 @@
 package id.bantuin.app.ui.customer.recommendation
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -13,6 +11,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -24,9 +23,9 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
-import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.LocationOn
+import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -42,42 +41,29 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.derivedStateOf
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableDoubleStateOf
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.viewmodel.compose.viewModel
 import id.bantuin.app.core.util.CurrencyUtils
-import id.bantuin.app.data.fake.FakeData
 import id.bantuin.app.domain.model.ProviderCandidate
 import id.bantuin.app.domain.model.RankedProvider
-import id.bantuin.app.domain.usecase.matchmaking.MatchmakingUseCase
+import id.bantuin.app.domain.repository.BantuinRepository
+import id.bantuin.app.ui.common.BantuinViewModelFactory
+import id.bantuin.app.ui.common.EmptyView
+import id.bantuin.app.ui.common.ErrorView
+import id.bantuin.app.ui.common.LoadingView
 import id.bantuin.app.ui.common.ProviderBadgeChip
 import id.bantuin.app.ui.common.RatingDisplay
 import id.bantuin.app.ui.customer.OrderFlowManager
-import id.bantuin.app.ui.theme.BorderSubtle
-import id.bantuin.app.ui.theme.GreenSuccess
-import id.bantuin.app.ui.theme.GreenSuccessContainer
-import id.bantuin.app.ui.theme.NeutralBackground
-import androidx.compose.runtime.collectAsState
-import androidx.lifecycle.viewmodel.compose.viewModel
-import id.bantuin.app.domain.repository.BantuinRepository
-import id.bantuin.app.ui.common.BantuinViewModelFactory
-import id.bantuin.app.ui.theme.NeutralSurface
-import id.bantuin.app.ui.theme.OrangeContainer
-import id.bantuin.app.ui.theme.OrangePrimary
-import id.bantuin.app.ui.theme.RedError
-import id.bantuin.app.ui.theme.TextMuted
-import id.bantuin.app.ui.theme.TextPrimary
-import id.bantuin.app.ui.theme.TextSecondary
+import id.bantuin.app.ui.theme.BantuinTheme
+import java.util.Locale
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -91,8 +77,10 @@ fun RecommendationScreen(
     modifier: Modifier = Modifier
 ) {
     val uiState by viewModel.uiState.collectAsState()
+    val colors = BantuinTheme.colors
 
-    androidx.compose.runtime.LaunchedEffect(categoryId, orderFlow.customerLocation) {
+    LaunchedEffect(categoryId, orderFlow.customerLocation) {
+        orderFlow.selectedCategoryId = categoryId
         viewModel.initialize(categoryId, orderFlow.customerLocation)
     }
 
@@ -108,20 +96,20 @@ fun RecommendationScreen(
                         Text(
                             text = category.name,
                             style = MaterialTheme.typography.titleLarge,
-                            color = TextPrimary
+                            color = colors.textPrimary
                         )
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Icon(
                                 imageVector = Icons.Default.LocationOn,
                                 contentDescription = null,
-                                tint = OrangePrimary,
+                                tint = colors.primary,
                                 modifier = Modifier.size(12.dp)
                             )
                             Spacer(modifier = Modifier.width(3.dp))
                             Text(
-                                text = "Radius 10 km • ${filteredList.size} Siap Booking",
+                                text = "Radius ${uiState.maxDistanceFilter.toInt()} km • ${filteredList.size} Siap Booking",
                                 style = MaterialTheme.typography.bodySmall,
-                                color = TextSecondary
+                                color = colors.textSecondary
                             )
                         }
                     }
@@ -131,120 +119,131 @@ fun RecommendationScreen(
                         Icon(
                             imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                             contentDescription = "Kembali",
-                            tint = TextPrimary
+                            tint = colors.textPrimary
                         )
                     }
                 },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = NeutralBackground)
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = colors.background)
             )
         },
-        containerColor = NeutralBackground,
+        containerColor = colors.background,
         modifier = modifier
     ) { innerPadding ->
-        LazyColumn(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(innerPadding),
-            contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 24.dp),
-            verticalArrangement = Arrangement.spacedBy(14.dp)
-        ) {
-            // 1. Baris Filter Chips
-            item {
-                Row(
+        when {
+            uiState.isLoading && uiState.rawCandidates.isEmpty() -> {
+                LoadingView(
+                    message = "Mencari mitra terbaik...",
+                    modifier = Modifier.padding(innerPadding)
+                )
+            }
+            uiState.errorMessage != null && uiState.rawCandidates.isEmpty() -> {
+                ErrorView(
+                    message = uiState.errorMessage ?: "Gagal memuat rekomendasi mitra.",
+                    onRetry = { viewModel.loadCandidates() },
+                    modifier = Modifier.padding(innerPadding)
+                )
+            }
+            else -> {
+                LazyColumn(
                     modifier = Modifier
-                        .fillMaxWidth()
-                        .horizontalScroll(rememberScrollState()),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        .fillMaxSize()
+                        .padding(innerPadding),
+                    contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 24.dp),
+                    verticalArrangement = Arrangement.spacedBy(14.dp)
                 ) {
-                    FilterChip(
-                        selected = uiState.maxDistanceFilter == 10.0 && uiState.minRatingFilter == 0.0 && !uiState.onlyTrusted,
-                        onClick = {
-                            viewModel.setMaxDistanceFilter(10.0)
-                            viewModel.setMinRatingFilter(0.0)
-                            viewModel.setOnlyTrusted(false)
-                        },
-                        label = { Text("Semua Mitra") },
-                        colors = FilterChipDefaults.filterChipColors(
-                            selectedContainerColor = OrangeContainer,
-                            selectedLabelColor = OrangePrimary
-                        )
-                    )
+                    // 1. Baris Filter Chips
+                    item {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .horizontalScroll(rememberScrollState()),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            val chipColors = FilterChipDefaults.filterChipColors(
+                                selectedContainerColor = colors.primaryContainer,
+                                selectedLabelColor = colors.onPrimaryContainer
+                            )
+                            FilterChip(
+                                selected = uiState.maxDistanceFilter == 10.0 && uiState.minRatingFilter == 0.0 && !uiState.onlyTrusted,
+                                onClick = {
+                                    viewModel.setMaxDistanceFilter(10.0)
+                                    viewModel.setMinRatingFilter(0.0)
+                                    viewModel.setOnlyTrusted(false)
+                                },
+                                label = { Text("Semua Mitra") },
+                                colors = chipColors
+                            )
 
-                    FilterChip(
-                        selected = uiState.maxDistanceFilter == 5.0,
-                        onClick = {
-                            viewModel.setMaxDistanceFilter(if (uiState.maxDistanceFilter == 5.0) 10.0 else 5.0)
-                        },
-                        label = { Text("Jarak ≤ 5km") },
-                        colors = FilterChipDefaults.filterChipColors(
-                            selectedContainerColor = OrangeContainer,
-                            selectedLabelColor = OrangePrimary
-                        )
-                    )
+                            FilterChip(
+                                selected = uiState.maxDistanceFilter == 5.0,
+                                onClick = {
+                                    viewModel.setMaxDistanceFilter(if (uiState.maxDistanceFilter == 5.0) 10.0 else 5.0)
+                                },
+                                label = { Text("Jarak <= 5km") },
+                                colors = chipColors
+                            )
 
-                    FilterChip(
-                        selected = uiState.minRatingFilter == 4.8,
-                        onClick = {
-                            viewModel.setMinRatingFilter(if (uiState.minRatingFilter == 4.8) 0.0 else 4.8)
-                        },
-                        label = { Text("Rating 4.8+") },
-                        colors = FilterChipDefaults.filterChipColors(
-                            selectedContainerColor = OrangeContainer,
-                            selectedLabelColor = OrangePrimary
-                        )
-                    )
+                            FilterChip(
+                                selected = uiState.minRatingFilter == 4.8,
+                                onClick = {
+                                    viewModel.setMinRatingFilter(if (uiState.minRatingFilter == 4.8) 0.0 else 4.8)
+                                },
+                                label = { Text("Rating 4.8+") },
+                                colors = chipColors
+                            )
 
-                    FilterChip(
-                        selected = uiState.onlyTrusted,
-                        onClick = {
-                            viewModel.setOnlyTrusted(!uiState.onlyTrusted)
-                        },
-                        label = { Text("Mitra Terpercaya") },
-                        colors = FilterChipDefaults.filterChipColors(
-                            selectedContainerColor = OrangeContainer,
-                            selectedLabelColor = OrangePrimary
-                        )
-                    )
-                }
-            }
-
-            // 2. Banner Transparansi Algoritma Smart Matchmaking (F1)
-            item {
-                SmartMatchmakingExplainerBanner()
-            }
-
-            // 3. Daftar Kartu Rekomendasi Mitra Terurut
-            if (filteredList.isEmpty()) {
-                item {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(vertical = 32.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(
-                            text = "Tidak ada mitra yang memenuhi kriteria filter saat ini.",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = TextSecondary
-                        )
-                    }
-                }
-            } else {
-                items(filteredList, key = { it.candidate.providerId }) { ranked ->
-                    ProviderRecommendationCard(
-                        ranked = ranked,
-                        onSelect = {
-                            orderFlow.selectedProvider = ranked.candidate
-                            onSelectProvider(ranked.candidate)
+                            FilterChip(
+                                selected = uiState.onlyTrusted,
+                                onClick = { viewModel.setOnlyTrusted(!uiState.onlyTrusted) },
+                                label = { Text("Mitra Terpercaya") },
+                                colors = chipColors
+                            )
                         }
-                    )
-                }
-            }
+                    }
 
-            // 4. Catatan Mitra di Luar Radius 10 km
-            if (matchResult.outOfRange.isNotEmpty()) {
-                item {
-                    OutOfRangeNoticeCard(count = matchResult.outOfRange.size)
+                    // 2. Banner Bobot Pemeringkatan Transparan (F1)
+                    item {
+                        SmartMatchmakingExplainerBanner()
+                    }
+
+                    // 3. Daftar Kartu Rekomendasi Mitra Terurut
+                    if (filteredList.isEmpty()) {
+                        item {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .heightIn(min = 200.dp)
+                            ) {
+                                EmptyView(
+                                    title = "Tidak Ada Mitra yang Sesuai",
+                                    message = "Tidak ada mitra kategori ini yang memenuhi filter atau berada dalam radius 10 km.",
+                                    actionText = "Reset Filter",
+                                    onAction = {
+                                        viewModel.setMaxDistanceFilter(10.0)
+                                        viewModel.setMinRatingFilter(0.0)
+                                        viewModel.setOnlyTrusted(false)
+                                    }
+                                )
+                            }
+                        }
+                    } else {
+                        items(filteredList, key = { it.candidate.providerId }) { ranked ->
+                            ProviderRecommendationCard(
+                                ranked = ranked,
+                                onSelect = {
+                                    orderFlow.selectedProvider = ranked.candidate
+                                    onSelectProvider(ranked.candidate)
+                                }
+                            )
+                        }
+                    }
+
+                    // 4. Catatan Mitra di Luar Radius 10 km
+                    if (matchResult.outOfRange.isNotEmpty()) {
+                        item {
+                            OutOfRangeNoticeCard(count = matchResult.outOfRange.size)
+                        }
+                    }
                 }
             }
         }
@@ -253,11 +252,14 @@ fun RecommendationScreen(
 
 @Composable
 private fun SmartMatchmakingExplainerBanner() {
+    val colors = BantuinTheme.colors
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(14.dp),
-        colors = CardDefaults.cardColors(containerColor = Color(0xFFFFF3E0)),
-        border = CardDefaults.outlinedCardBorder().copy(brush = androidx.compose.ui.graphics.SolidColor(Color(0xFFFFE0B2)))
+        colors = CardDefaults.cardColors(containerColor = colors.warningContainer),
+        border = CardDefaults.outlinedCardBorder().copy(
+            brush = androidx.compose.ui.graphics.SolidColor(colors.borderSubtle)
+        )
     ) {
         Row(
             modifier = Modifier.padding(14.dp),
@@ -267,13 +269,13 @@ private fun SmartMatchmakingExplainerBanner() {
                 modifier = Modifier
                     .size(36.dp)
                     .clip(CircleShape)
-                    .background(OrangePrimary),
+                    .background(colors.primary),
                 contentAlignment = Alignment.Center
             ) {
                 Icon(
-                    imageVector = Icons.Default.AutoAwesome,
+                    imageVector = Icons.Default.Tune,
                     contentDescription = null,
-                    tint = Color.White,
+                    tint = colors.onPrimary,
                     modifier = Modifier.size(18.dp)
                 )
             }
@@ -281,31 +283,15 @@ private fun SmartMatchmakingExplainerBanner() {
             Spacer(modifier = Modifier.width(12.dp))
 
             Column {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(
-                        text = "Smart Matchmaking Aktif",
-                        style = MaterialTheme.typography.labelLarge,
-                        color = Color(0xFFBF360C)
-                    )
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Box(
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(4.dp))
-                            .background(Color(0xFFBF360C))
-                            .padding(horizontal = 4.dp, vertical = 1.dp)
-                    ) {
-                        Text(
-                            text = "AI CORE",
-                            style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.sp),
-                            color = Color.White,
-                            fontWeight = FontWeight.Bold
-                        )
-                    }
-                }
                 Text(
-                    text = "Algoritme mengombinasikan 50% Jarak, 35% Rating, dan 15% Rasio Penyelesaian tugas.",
+                    text = "Pemeringkatan Mitra Otomatis",
+                    style = MaterialTheme.typography.labelLarge,
+                    color = colors.warning
+                )
+                Text(
+                    text = "Skor dihitung dari 50% Jarak, 35% Rating, dan 15% Rasio Penyelesaian.",
                     style = MaterialTheme.typography.bodySmall,
-                    color = Color(0xFFD84315)
+                    color = colors.textSecondary
                 )
             }
         }
@@ -317,16 +303,18 @@ private fun ProviderRecommendationCard(
     ranked: RankedProvider,
     onSelect: () -> Unit
 ) {
+    val colors = BantuinTheme.colors
     val candidate = ranked.candidate
 
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(containerColor = NeutralSurface),
-        border = CardDefaults.outlinedCardBorder().copy(brush = androidx.compose.ui.graphics.SolidColor(BorderSubtle))
+        colors = CardDefaults.cardColors(containerColor = colors.surface),
+        border = CardDefaults.outlinedCardBorder().copy(
+            brush = androidx.compose.ui.graphics.SolidColor(colors.borderSubtle)
+        )
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
-            // Baris Atas: Badge Kepercayaan & Match Score
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -340,13 +328,13 @@ private fun ProviderRecommendationCard(
                 Box(
                     modifier = Modifier
                         .clip(RoundedCornerShape(8.dp))
-                        .background(if (candidate.flagAnomaly) Color(0xFFFFEBEE) else Color(0xFFFFF3E0))
+                        .background(if (candidate.flagAnomaly) colors.errorContainer else colors.primaryContainer)
                         .padding(horizontal = 8.dp, vertical = 4.dp)
                 ) {
                     Text(
-                        text = "Match Score ${ranked.matchScore}%",
+                        text = "Skor ${ranked.matchScore}%",
                         style = MaterialTheme.typography.labelMedium,
-                        color = if (candidate.flagAnomaly) RedError else OrangePrimary,
+                        color = if (candidate.flagAnomaly) colors.error else colors.onPrimaryContainer,
                         fontWeight = FontWeight.Bold
                     )
                 }
@@ -354,19 +342,18 @@ private fun ProviderRecommendationCard(
 
             Spacer(modifier = Modifier.height(12.dp))
 
-            // Info Mitra
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Box(
                     modifier = Modifier
                         .size(50.dp)
                         .clip(CircleShape)
-                        .background(OrangeContainer),
+                        .background(colors.primaryContainer),
                     contentAlignment = Alignment.Center
                 ) {
                     Text(
                         text = candidate.name.take(1),
                         style = MaterialTheme.typography.titleLarge,
-                        color = OrangePrimary
+                        color = colors.onPrimaryContainer
                     )
                 }
 
@@ -376,12 +363,12 @@ private fun ProviderRecommendationCard(
                     Text(
                         text = candidate.name,
                         style = MaterialTheme.typography.titleMedium,
-                        color = TextPrimary
+                        color = colors.textPrimary
                     )
                     Text(
                         text = candidate.bio,
                         style = MaterialTheme.typography.bodySmall,
-                        color = TextSecondary,
+                        color = colors.textSecondary,
                         maxLines = 1
                     )
                     Spacer(modifier = Modifier.height(2.dp))
@@ -394,12 +381,11 @@ private fun ProviderRecommendationCard(
 
             Spacer(modifier = Modifier.height(14.dp))
 
-            // 3 Metrik Cepat (Jarak, Rasio Selesai, Respon)
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
                     .clip(RoundedCornerShape(10.dp))
-                    .background(Color(0xFFF7F6F4))
+                    .background(colors.surfaceSubtle)
                     .padding(vertical = 8.dp, horizontal = 12.dp),
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
@@ -407,12 +393,12 @@ private fun ProviderRecommendationCard(
                     Text(
                         text = "Jarak",
                         style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
-                        color = TextMuted
+                        color = colors.textMuted
                     )
                     Text(
-                        text = String.format(java.util.Locale.US, "%.1f km", ranked.distanceKm),
+                        text = String.format(Locale.US, "%.1f km", ranked.distanceKm),
                         style = MaterialTheme.typography.labelMedium,
-                        color = TextPrimary,
+                        color = colors.textPrimary,
                         fontWeight = FontWeight.Bold
                     )
                 }
@@ -421,12 +407,12 @@ private fun ProviderRecommendationCard(
                     Text(
                         text = "Rasio Selesai",
                         style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
-                        color = TextMuted
+                        color = colors.textMuted
                     )
                     Text(
-                        text = candidate.completionRate?.let { "${(it * 100).toInt()}%" } ?: "100%",
+                        text = candidate.completionRate?.let { "${(it * 100).toInt()}%" } ?: "Baru",
                         style = MaterialTheme.typography.labelMedium,
-                        color = GreenSuccess,
+                        color = colors.success,
                         fontWeight = FontWeight.Bold
                     )
                 }
@@ -435,12 +421,12 @@ private fun ProviderRecommendationCard(
                     Text(
                         text = "Respon",
                         style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
-                        color = TextMuted
+                        color = colors.textMuted
                     )
                     Text(
                         text = candidate.responseTimeText,
                         style = MaterialTheme.typography.labelMedium,
-                        color = TextPrimary,
+                        color = colors.textPrimary,
                         fontWeight = FontWeight.Bold
                     )
                 }
@@ -448,7 +434,6 @@ private fun ProviderRecommendationCard(
 
             Spacer(modifier = Modifier.height(14.dp))
 
-            // Tarif & Tombol Pilih
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -458,21 +443,25 @@ private fun ProviderRecommendationCard(
                     Text(
                         text = "Tarif Dasar Mulai",
                         style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
-                        color = TextMuted
+                        color = colors.textMuted
                     )
                     Text(
                         text = CurrencyUtils.formatRupiah(candidate.minBaseFare ?: 50000),
                         style = MaterialTheme.typography.titleMedium,
-                        color = OrangePrimary,
+                        color = colors.primary,
                         fontWeight = FontWeight.Bold
                     )
                 }
 
                 Button(
                     onClick = onSelect,
-                    colors = ButtonDefaults.buttonColors(containerColor = OrangePrimary),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = colors.primary,
+                        contentColor = colors.onPrimary
+                    ),
                     shape = RoundedCornerShape(10.dp),
-                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 10.dp)
+                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 10.dp),
+                    modifier = Modifier.heightIn(min = 48.dp)
                 ) {
                     Text(
                         text = "Pilih Mitra Ini",
@@ -492,10 +481,14 @@ private fun ProviderRecommendationCard(
 
 @Composable
 private fun OutOfRangeNoticeCard(count: Int) {
+    val colors = BantuinTheme.colors
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(12.dp),
-        colors = CardDefaults.cardColors(containerColor = Color(0xFFF3E5F5))
+        colors = CardDefaults.cardColors(containerColor = colors.infoContainer),
+        border = CardDefaults.outlinedCardBorder().copy(
+            brush = androidx.compose.ui.graphics.SolidColor(colors.borderSubtle)
+        )
     ) {
         Row(
             modifier = Modifier.padding(14.dp),
@@ -504,14 +497,14 @@ private fun OutOfRangeNoticeCard(count: Int) {
             Icon(
                 imageVector = Icons.Default.Info,
                 contentDescription = null,
-                tint = Color(0xFF7B1FA2),
+                tint = colors.info,
                 modifier = Modifier.size(20.dp)
             )
             Spacer(modifier = Modifier.width(10.dp))
             Text(
-                text = "$count mitra lain berada di luar radius 10 km (tidak ditampilkan untuk menjamin kecepatan layanan & garansi tiba tepat waktu).",
+                text = "$count mitra lain berada di luar radius 10 km sehingga tidak ditampilkan untuk menjaga ketepatan waktu kedatangan.",
                 style = MaterialTheme.typography.bodySmall,
-                color = Color(0xFF4A148C)
+                color = colors.info
             )
         }
     }

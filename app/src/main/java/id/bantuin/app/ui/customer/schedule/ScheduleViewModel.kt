@@ -3,6 +3,7 @@ package id.bantuin.app.ui.customer.schedule
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import id.bantuin.app.core.result.AppResult
+import id.bantuin.app.core.util.TimeUtils
 import id.bantuin.app.domain.model.AvailabilityMode
 import id.bantuin.app.domain.model.DayAvailability
 import id.bantuin.app.domain.model.LockInfo
@@ -13,6 +14,8 @@ import id.bantuin.app.domain.model.TimeBlock
 import id.bantuin.app.domain.repository.BookingRepository
 import id.bantuin.app.domain.repository.CatalogRepository
 import id.bantuin.app.domain.usecase.scheduling.SchedulingConflictDetector
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -20,6 +23,8 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import java.time.LocalDate
 import java.time.LocalTime
+import java.time.format.DateTimeFormatter
+import java.util.Locale
 
 data class ScheduleUiState(
     val provider: ProviderCandidate? = null,
@@ -27,12 +32,16 @@ data class ScheduleUiState(
     val distanceKm: Double = 1.8,
     val selectedDateIdx: Int = 0,
     val selectedDate: LocalDate = LocalDate.now(),
+    val monthYearLabel: String = "",
     val dynamicDates: List<Triple<String, String, LocalDate>> = emptyList(),
     val providerAvailability: List<DayAvailability> = emptyList(),
     val existingBlocks: List<TimeBlock> = emptyList(),
+    val availableSlots: List<Pair<Int, String>> = emptyList(),
+    val slotValidMap: Map<Int, Boolean> = emptyMap(),
     val selectedStartMin: Int = 540,
     val slotCheckResult: SlotCheckResult? = null,
     val lockInfo: LockInfo? = null,
+    val isLoading: Boolean = false,
     val isLocking: Boolean = false,
     val errorMessage: String? = null
 )
@@ -46,12 +55,22 @@ class ScheduleViewModel(
     private val _uiState = MutableStateFlow(ScheduleUiState())
     val uiState: StateFlow<ScheduleUiState> = _uiState.asStateFlow()
 
+    private val monthYearFormatter = DateTimeFormatter.ofPattern("MMMM yyyy", Locale.forLanguageTag("id-ID"))
+
     fun initialize(
         provider: ProviderCandidate,
         service: ServiceItem,
         distanceKm: Double,
         initialStartMin: Int = 540
     ) {
+        val currentState = _uiState.value
+        if (currentState.provider?.providerId == provider.providerId &&
+            currentState.service?.id == service.id &&
+            currentState.dynamicDates.isNotEmpty()
+        ) {
+            return
+        }
+
         val today = LocalDate.now()
         val dynamicDates = (0..6).map { i ->
             val d = today.plusDays(i.toLong())
@@ -74,8 +93,10 @@ class ScheduleViewModel(
                 distanceKm = distanceKm,
                 selectedDateIdx = 0,
                 selectedDate = today,
+                monthYearLabel = monthYearFormatter.format(today).replaceFirstChar { ch -> ch.uppercase() },
                 selectedStartMin = initialStartMin,
-                dynamicDates = dynamicDates
+                dynamicDates = dynamicDates,
+                errorMessage = null
             )
         }
         loadAvailabilityAndBlocks(provider.providerId, today)
@@ -88,7 +109,9 @@ class ScheduleViewModel(
             _uiState.update {
                 it.copy(
                     selectedDateIdx = idx,
-                    selectedDate = date
+                    selectedDate = date,
+                    monthYearLabel = monthYearFormatter.format(date).replaceFirstChar { ch -> ch.uppercase() },
+                    errorMessage = null
                 )
             }
             val providerId = state.provider?.providerId ?: return
@@ -96,31 +119,55 @@ class ScheduleViewModel(
         }
     }
 
+    fun refresh() {
+        val state = _uiState.value
+        val providerId = state.provider?.providerId ?: return
+        loadAvailabilityAndBlocks(providerId, state.selectedDate)
+    }
+
     private fun loadAvailabilityAndBlocks(providerId: String, date: LocalDate) {
         viewModelScope.launch {
-            val dateIso = date.toString()
-            val availRes = catalogRepository.availability(providerId)
-            val busyRes = bookingRepository.busyBlocks(providerId, dateIso)
+            _uiState.update { it.copy(isLoading = true, errorMessage = null) }
+            coroutineScope {
+                val dateIso = date.toString()
+                val availDeferred = async { catalogRepository.availability(providerId) }
+                val busyDeferred = async { bookingRepository.busyBlocks(providerId, dateIso) }
 
-            val avail = if (availRes is AppResult.Success) availRes.data else emptyList()
-            val busy = if (busyRes is AppResult.Success) busyRes.data else emptyList()
+                val availRes = availDeferred.await()
+                val busyRes = busyDeferred.await()
 
-            _uiState.update {
-                it.copy(
-                    providerAvailability = avail,
-                    existingBlocks = busy
-                )
+                val err = when {
+                    availRes is AppResult.Error -> availRes.message
+                    busyRes is AppResult.Error -> busyRes.message
+                    else -> null
+                }
+
+                val avail = if (availRes is AppResult.Success) availRes.data else emptyList()
+                val busy = if (busyRes is AppResult.Success) busyRes.data else emptyList()
+
+                _uiState.update {
+                    it.copy(
+                        providerAvailability = avail,
+                        existingBlocks = busy,
+                        isLoading = false,
+                        errorMessage = err
+                    )
+                }
+                recomputeSchedule()
             }
-            recomputeSlotCheck()
         }
     }
 
     fun selectSlot(startMin: Int) {
-        _uiState.update { it.copy(selectedStartMin = startMin) }
-        recomputeSlotCheck()
+        _uiState.update { it.copy(selectedStartMin = startMin, errorMessage = null) }
+        recomputeSchedule()
     }
 
-    private fun recomputeSlotCheck() {
+    fun clearError() {
+        _uiState.update { it.copy(errorMessage = null) }
+    }
+
+    private fun recomputeSchedule() {
         val state = _uiState.value
         val service = state.service ?: return
         val dayOfWeekIso = state.selectedDate.dayOfWeek.value
@@ -131,29 +178,80 @@ class ScheduleViewModel(
             closeMin = 1020
         )
 
+        val slots = when (dayAvail.mode) {
+            AvailabilityMode.OFF -> emptyList()
+            AvailabilityMode.ALWAYS_ON -> {
+                (480..1260 step 60).map { min -> min to TimeUtils.formatMinuteOfDay(min) }
+            }
+            AvailabilityMode.ON -> {
+                val start = dayAvail.openMin ?: 480
+                val end = (dayAvail.closeMin ?: 1020) - service.durationMin
+                if (start <= end) {
+                    (start..end step 30).map { min -> min to TimeUtils.formatMinuteOfDay(min) }
+                } else {
+                    emptyList()
+                }
+            }
+        }
+
         val nowMin = if (state.selectedDateIdx == 0) {
             val now = LocalTime.now()
             now.hour * 60 + now.minute
         } else null
 
+        val validMap = slots.associate { (min, _) ->
+            val check = detector.check(
+                requestedStartMin = min,
+                durationMin = service.durationMin,
+                day = dayAvail,
+                existing = state.existingBlocks,
+                nowMin = nowMin
+            )
+            min to check.valid
+        }
+
+        val effectiveStartMin = if (slots.isNotEmpty() && slots.none { it.first == state.selectedStartMin }) {
+            slots.firstOrNull { validMap[it.first] == true }?.first ?: slots.first().first
+        } else {
+            state.selectedStartMin
+        }
+
         val check = detector.check(
-            requestedStartMin = state.selectedStartMin,
+            requestedStartMin = effectiveStartMin,
             durationMin = service.durationMin,
             day = dayAvail,
             existing = state.existingBlocks,
             nowMin = nowMin
         )
 
-        _uiState.update { it.copy(slotCheckResult = check) }
+        _uiState.update {
+            it.copy(
+                availableSlots = slots,
+                slotValidMap = validMap,
+                selectedStartMin = effectiveStartMin,
+                slotCheckResult = check
+            )
+        }
     }
 
     fun acquireLockAndProceed(onSuccess: (LockInfo) -> Unit) {
         val state = _uiState.value
         val providerId = state.provider?.providerId ?: return
+        val check = state.slotCheckResult
+        if (check?.valid != true) {
+            _uiState.update {
+                it.copy(
+                    errorMessage = check?.reason?.message
+                        ?: "Slot waktu tidak tersedia. Pilih jam lain yang bebas konflik."
+                )
+            }
+            return
+        }
+
         val startMin = state.selectedStartMin
         val durationMin = state.service?.durationMin ?: 60
-
         val dateIso = state.selectedDate.toString()
+
         viewModelScope.launch {
             _uiState.update { it.copy(isLocking = true, errorMessage = null) }
             when (val lockRes = bookingRepository.acquireLock(providerId, dateIso, startMin, startMin + durationMin)) {

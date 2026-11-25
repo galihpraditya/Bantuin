@@ -8,6 +8,8 @@ import id.bantuin.app.domain.model.ReviewItem
 import id.bantuin.app.domain.model.ServiceItem
 import id.bantuin.app.domain.repository.CatalogRepository
 import id.bantuin.app.domain.repository.ReviewRepository
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -36,18 +38,50 @@ class ProviderDetailViewModel(
         }
         viewModelScope.launch {
             _uiState.update { it.copy(isLoading = true, errorMessage = null) }
-            val servicesRes = catalogRepository.servicesOf(providerId)
-            val reviewsRes = reviewRepository.reviewsOf(providerId)
+            coroutineScope {
+                val profileDeferred = if (initialProvider == null) {
+                    async { catalogRepository.providerProfile(providerId) }
+                } else null
+                val servicesDeferred = async { catalogRepository.servicesOf(providerId) }
+                val reviewsDeferred = async { reviewRepository.reviewsOf(providerId) }
 
-            val services = if (servicesRes is AppResult.Success) servicesRes.data else emptyList()
-            val reviews = if (reviewsRes is AppResult.Success) reviewsRes.data else emptyList()
+                val profileRes = profileDeferred?.await()
+                val servicesRes = servicesDeferred.await()
+                val reviewsRes = reviewsDeferred.await()
 
-            _uiState.update {
-                it.copy(
-                    services = services,
-                    reviews = reviews,
-                    isLoading = false
-                )
+                val resolvedProvider = when {
+                    initialProvider != null -> initialProvider
+                    profileRes is AppResult.Success -> profileRes.data
+                    else -> _uiState.value.provider
+                }
+
+                val errorMsg = when {
+                    profileRes is AppResult.Error && resolvedProvider == null -> profileRes.message
+                    servicesRes is AppResult.Error -> servicesRes.message
+                    resolvedProvider == null -> "Profil mitra tidak ditemukan."
+                    else -> null
+                }
+
+                val services = if (servicesRes is AppResult.Success) {
+                    servicesRes.data.filter { it.isActive }
+                } else {
+                    emptyList()
+                }
+                val reviews = if (reviewsRes is AppResult.Success) {
+                    reviewsRes.data
+                } else {
+                    emptyList()
+                }
+
+                _uiState.update {
+                    it.copy(
+                        provider = resolvedProvider,
+                        services = services,
+                        reviews = reviews,
+                        isLoading = false,
+                        errorMessage = errorMsg
+                    )
+                }
             }
         }
     }

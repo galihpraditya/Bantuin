@@ -12,6 +12,8 @@ import id.bantuin.app.domain.model.RankedProvider
 import id.bantuin.app.domain.model.ServiceCategory
 import id.bantuin.app.domain.repository.CatalogRepository
 import id.bantuin.app.domain.usecase.matchmaking.MatchmakingUseCase
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -20,7 +22,7 @@ import kotlinx.coroutines.launch
 
 data class RecommendationUiState(
     val categoryId: Int = 1,
-    val category: ServiceCategory = FakeData.categories[0],
+    val category: ServiceCategory = ServiceCategory(1, "Kategori Jasa", "build", 60, "Layanan teknisi dan bantuan rumah"),
     val customerLocation: GeoPoint = FakeData.MALANG_CENTER,
     val maxDistanceFilter: Double = 10.0,
     val minRatingFilter: Double = 0.0,
@@ -40,12 +42,19 @@ class RecommendationViewModel(
     private val _uiState = MutableStateFlow(RecommendationUiState())
     val uiState: StateFlow<RecommendationUiState> = _uiState.asStateFlow()
 
+    private var loadedCategoryId: Int? = null
+    private var loadedLocation: GeoPoint? = null
+
     fun initialize(categoryId: Int, customerLocation: GeoPoint) {
-        val cat = FakeData.categories.find { it.id == categoryId } ?: FakeData.categories[1]
+        if (loadedCategoryId == categoryId &&
+            loadedLocation == customerLocation &&
+            _uiState.value.rawCandidates.isNotEmpty()
+        ) {
+            return
+        }
         _uiState.update {
             it.copy(
                 categoryId = categoryId,
-                category = cat,
                 customerLocation = customerLocation
             )
         }
@@ -58,20 +67,39 @@ class RecommendationViewModel(
     ) {
         viewModelScope.launch {
             _uiState.update { it.copy(isLoading = true, errorMessage = null) }
-            when (val res = catalogRepository.candidates(categoryId)) {
-                is AppResult.Success -> {
-                    recomputeRankings(
-                        candidates = res.data,
-                        location = customerLocation,
-                        maxDistance = _uiState.value.maxDistanceFilter,
-                        minRating = _uiState.value.minRatingFilter,
-                        onlyTrusted = _uiState.value.onlyTrusted
-                    )
+            coroutineScope {
+                val catsDeferred = async { catalogRepository.categories() }
+                val candDeferred = async { catalogRepository.candidates(categoryId) }
+
+                val catsRes = catsDeferred.await()
+                val resolvedCategory = (catsRes as? AppResult.Success)?.data
+                    ?.find { it.id == categoryId }
+                    ?: _uiState.value.category
+
+                when (val res = candDeferred.await()) {
+                    is AppResult.Success -> {
+                        loadedCategoryId = categoryId
+                        loadedLocation = customerLocation
+                        recomputeRankings(
+                            category = resolvedCategory,
+                            candidates = res.data,
+                            location = customerLocation,
+                            maxDistance = _uiState.value.maxDistanceFilter,
+                            minRating = _uiState.value.minRatingFilter,
+                            onlyTrusted = _uiState.value.onlyTrusted
+                        )
+                    }
+                    is AppResult.Error -> {
+                        _uiState.update {
+                            it.copy(
+                                category = resolvedCategory,
+                                isLoading = false,
+                                errorMessage = res.message
+                            )
+                        }
+                    }
+                    is AppResult.Loading -> {}
                 }
-                is AppResult.Error -> {
-                    _uiState.update { it.copy(isLoading = false, errorMessage = res.message) }
-                }
-                is AppResult.Loading -> {}
             }
         }
     }
@@ -92,6 +120,7 @@ class RecommendationViewModel(
     }
 
     private fun recomputeRankings(
+        category: ServiceCategory,
         candidates: List<ProviderCandidate>,
         location: GeoPoint,
         maxDistance: Double,
@@ -107,6 +136,7 @@ class RecommendationViewModel(
         }
         _uiState.update {
             it.copy(
+                category = category,
                 rawCandidates = candidates,
                 matchResult = matchResult,
                 filteredList = filtered,

@@ -2,6 +2,8 @@ package id.bantuin.app.ui.common
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
+import id.bantuin.app.core.theme.InMemoryThemeStore
+import id.bantuin.app.core.theme.ThemePreferenceStore
 import id.bantuin.app.domain.repository.BantuinRepository
 import id.bantuin.app.ui.auth.AuthViewModel
 import id.bantuin.app.ui.customer.estimate.EstimateViewModel
@@ -21,7 +23,8 @@ import id.bantuin.app.ui.provider.profile.ProviderProfileEditViewModel
 import id.bantuin.app.ui.provider.services.ProviderServicesViewModel
 
 class BantuinViewModelFactory(
-    private val repository: BantuinRepository
+    private val repository: BantuinRepository,
+    private val themeStore: ThemePreferenceStore = InMemoryThemeStore()
 ) : ViewModelProvider.Factory {
 
     @Suppress("UNCHECKED_CAST")
@@ -46,7 +49,7 @@ class BantuinViewModelFactory(
             modelClass.isAssignableFrom(CustomerNotificationsViewModel::class.java) ->
                 CustomerNotificationsViewModel(repository) as T
             modelClass.isAssignableFrom(CustomerProfileViewModel::class.java) ->
-                CustomerProfileViewModel(repository) as T
+                CustomerProfileViewModel(repository, themeStore) as T
             modelClass.isAssignableFrom(ProviderHomeViewModel::class.java) ->
                 ProviderHomeViewModel(repository, repository, repository) as T
             modelClass.isAssignableFrom(ProviderOrdersViewModel::class.java) ->

@@ -1,8 +1,11 @@
 package id.bantuin.app.viewmodel
 
 import id.bantuin.app.core.session.InMemorySessionStore
+import id.bantuin.app.core.theme.InMemoryThemeStore
+import id.bantuin.app.core.theme.ThemeMode
 import id.bantuin.app.data.fake.FakeData
 import id.bantuin.app.data.repository.FakeBantuinRepository
+import id.bantuin.app.domain.model.BookingStatus
 import id.bantuin.app.domain.model.Complexity
 import id.bantuin.app.domain.model.GeoPoint
 import id.bantuin.app.domain.repository.UserProfile
@@ -11,7 +14,9 @@ import id.bantuin.app.ui.customer.home.CustomerHomeViewModel
 import id.bantuin.app.ui.customer.notifications.CustomerNotificationsViewModel
 import id.bantuin.app.ui.customer.notifications.NotificationType
 import id.bantuin.app.ui.customer.orderdetail.OrderDetailViewModel
+import id.bantuin.app.ui.customer.orders.CustomerOrdersViewModel
 import id.bantuin.app.ui.customer.profile.CustomerProfileViewModel
+import id.bantuin.app.ui.customer.providerdetail.ProviderDetailViewModel
 import id.bantuin.app.ui.customer.recommendation.RecommendationViewModel
 import id.bantuin.app.ui.customer.schedule.ScheduleViewModel
 import kotlinx.coroutines.Dispatchers
@@ -264,5 +269,129 @@ class CustomerViewModelsTest {
         assertTrue(state.notifications.any { it.type == NotificationType.SYSTEM_INFO })
         assertTrue(state.notifications.any { it.id == "sys_notif_garansi" })
         assertTrue(state.notifications.any { it.id == "sys_notif_welcome" })
+    }
+
+    @Test
+    fun customerHomeViewModel_updatesSearchQueryAndNearbyProviders() = runTest {
+        val vm = CustomerHomeViewModel(repository, repository)
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        assertTrue(vm.uiState.value.nearbyProviders.isNotEmpty())
+        assertEquals("Lokasi default (ketuk untuk atur)", vm.uiState.value.locationSourceLabel)
+
+        vm.onSearchQueryChange("Listrik")
+        assertEquals("Listrik", vm.uiState.value.searchQuery)
+        assertTrue(vm.uiState.value.filteredCategories.any { it.name.contains("Listrik", ignoreCase = true) })
+
+        vm.updateLocation("Jl. Veteran Malang", GeoPoint(-7.9553, 112.6130), fromGps = true)
+        testDispatcher.scheduler.advanceUntilIdle()
+        assertEquals("Terdeteksi GPS akurat", vm.uiState.value.locationSourceLabel)
+    }
+
+    @Test
+    fun providerDetailViewModel_fetchesProviderProfileWhenInitialProviderIsNull() = runTest {
+        val vm = ProviderDetailViewModel(repository, repository)
+        vm.loadProviderDetail(providerId = "p02", initialProvider = null)
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        assertNotNull(vm.uiState.value.provider)
+        assertEquals("p02", vm.uiState.value.provider?.providerId)
+        assertTrue(vm.uiState.value.services.isNotEmpty())
+        assertTrue(vm.uiState.value.services.all { it.providerId == "p02" })
+    }
+
+    @Test
+    fun estimateViewModel_releasesLockWhenRequestedAndHandlesExpiry() = runTest {
+        val lock = (repository.acquireLock("p01", "2026-11-22", 840, 930) as id.bantuin.app.core.result.AppResult.Success).data
+        val vm = EstimateViewModel(repository)
+        vm.initialize(
+            categoryId = 2,
+            provider = FakeData.providers.first(),
+            service = FakeData.services.first(),
+            customerLocation = FakeData.MALANG_CENTER,
+            customerAddress = "Jl. Ijen",
+            scheduledDateIso = "2026-11-22",
+            scheduledStartMin = 840,
+            scheduledDurationMin = 90,
+            lockInfo = lock,
+            distanceKm = 1.5
+        )
+
+        vm.onLockExpired()
+        assertTrue(vm.uiState.value.isLockExpired)
+        assertNotNull(vm.uiState.value.errorMessage)
+
+        vm.releaseLock()
+        testDispatcher.scheduler.advanceUntilIdle()
+        assertEquals(null, vm.uiState.value.lockInfo)
+    }
+
+    @Test
+    fun orderDetailViewModel_loadsTimelineEventsAndRejectsIllegalCompletionAndLongReview() = runTest {
+        val vm = OrderDetailViewModel(repository, repository)
+        vm.observeBooking("b01")
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        assertTrue(vm.uiState.value.events.isNotEmpty())
+
+        // Pelanggan tidak boleh menyelesaikan pesanan sendiri
+        vm.updateStatus(BookingStatus.SELESAI)
+        testDispatcher.scheduler.advanceUntilIdle()
+        assertEquals(
+            "Hanya mitra yang dapat menyelesaikan atau memperbarui status pengerjaan.",
+            vm.uiState.value.errorMessage
+        )
+
+        // Komentar melebihi 300 karakter harus ditolak sebelum submit
+        vm.setReviewComment("a".repeat(301))
+        var reviewSubmitted = false
+        vm.submitReview { reviewSubmitted = true }
+        testDispatcher.scheduler.advanceUntilIdle()
+        assertTrue(!reviewSubmitted)
+        assertEquals("Komentar ulasan maksimal 300 karakter.", vm.uiState.value.errorMessage)
+    }
+
+    @Test
+    fun customerOrdersViewModel_observesBookingsAndRunsExpirePending() = runTest {
+        val vm = CustomerOrdersViewModel(repository)
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        assertTrue(vm.uiState.value.orders.isNotEmpty())
+        assertTrue(vm.uiState.value.hasSyncedPendingExpiry)
+    }
+
+    @Test
+    fun customerProfileViewModel_updatesThemeModeAndEnablesProviderRole() = runTest {
+        val sessionStore = InMemorySessionStore(
+            initialRole = "customer",
+            initialUser = UserProfile(
+                id = "user_customer_only",
+                fullName = "Dimas Arya",
+                email = "pelanggan2@bantuin.test",
+                phone = "081234567891",
+                roles = setOf("customer")
+            )
+        )
+        val customerOnlyRepo = FakeBantuinRepository(sessionStore = sessionStore)
+        val themeStore = InMemoryThemeStore()
+        val vm = CustomerProfileViewModel(customerOnlyRepo, themeStore)
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        assertEquals(ThemeMode.SYSTEM, vm.uiState.value.themeMode)
+        vm.setThemeMode(ThemeMode.DARK)
+        testDispatcher.scheduler.advanceUntilIdle()
+        assertEquals(ThemeMode.DARK, vm.uiState.value.themeMode)
+
+        var enabled = false
+        vm.activateProviderMode(
+            address = "Jl. Soekarno Hatta No. 12, Malang",
+            location = FakeData.MALANG_CENTER,
+            bio = "Teknisi listrik rumahan"
+        ) { enabled = true }
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        assertTrue(enabled)
+        assertTrue(sessionStore.currentUserValue?.roles?.contains("provider") == true)
+        assertEquals("provider", sessionStore.activeRoleValue)
     }
 }

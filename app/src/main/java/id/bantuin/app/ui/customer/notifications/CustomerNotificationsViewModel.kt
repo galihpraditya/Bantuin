@@ -2,13 +2,14 @@ package id.bantuin.app.ui.customer.notifications
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import id.bantuin.app.core.result.AppResult
 import id.bantuin.app.domain.model.BookingItem
 import id.bantuin.app.domain.model.BookingStatus
 import id.bantuin.app.domain.repository.BookingRepository
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
@@ -26,30 +27,40 @@ class CustomerNotificationsViewModel(
     private val _uiState = MutableStateFlow(CustomerNotificationsUiState())
     val uiState: StateFlow<CustomerNotificationsUiState> = _uiState.asStateFlow()
 
+    private var collectJob: Job? = null
+
     init {
         loadNotifications()
     }
 
     fun loadNotifications() {
-        viewModelScope.launch {
+        collectJob?.cancel()
+        collectJob = viewModelScope.launch {
             _uiState.update { it.copy(isLoading = true, errorMessage = null) }
-            bookingRepository.observeCustomerBookings().collect { bookings ->
-                val notifList = mapBookingsToNotifications(bookings)
-                val hasActive = bookings.any {
-                    it.status in listOf(
-                        BookingStatus.PENDING,
-                        BookingStatus.DIKONFIRMASI,
-                        BookingStatus.DALAM_PENGERJAAN
-                    )
+            bookingRepository.expirePending()
+            bookingRepository.observeCustomerBookings()
+                .catch { e ->
+                    _uiState.update {
+                        it.copy(isLoading = false, errorMessage = e.message ?: "Gagal memuat notifikasi.")
+                    }
                 }
-                _uiState.update {
-                    it.copy(
-                        notifications = notifList,
-                        hasActiveOrder = hasActive,
-                        isLoading = false
-                    )
+                .collect { bookings ->
+                    val notifList = mapBookingsToNotifications(bookings)
+                    val hasActive = bookings.any {
+                        it.status in listOf(
+                            BookingStatus.PENDING,
+                            BookingStatus.DIKONFIRMASI,
+                            BookingStatus.DALAM_PENGERJAAN
+                        )
+                    }
+                    _uiState.update {
+                        it.copy(
+                            notifications = notifList,
+                            hasActiveOrder = hasActive,
+                            isLoading = false
+                        )
+                    }
                 }
-            }
         }
     }
 
@@ -89,7 +100,7 @@ class CustomerNotificationsViewModel(
                     id = "notif_done_${booking.id}",
                     title = "Pesanan Telah Selesai",
                     message = if (booking.review != null) {
-                        "Layanan ${booking.serviceName} selesai dikerjakan. Terima kasih atas ulasan yang Anda berikan!"
+                        "Layanan ${booking.serviceName} selesai dikerjakan. Terima kasih atas ulasan yang Anda berikan."
                     } else {
                         "Layanan ${booking.serviceName} selesai dikerjakan. Berikan ulasan untuk membantu reputasi mitra."
                     },
@@ -102,7 +113,7 @@ class CustomerNotificationsViewModel(
                     id = "notif_rejected_${booking.id}",
                     title = "Pesanan Ditolak Mitra",
                     message = "Mitra ${booking.providerName} berhalangan menerima pesanan ${booking.serviceName}. Silakan pilih mitra lain.",
-                    timeFormatted = "${booking.scheduledDate}",
+                    timeFormatted = booking.scheduledDate,
                     type = NotificationType.ORDER_CANCELLED,
                     bookingId = booking.id,
                     timestampMillis = booking.createdAt.toEpochMilliseconds() + 60_000L
@@ -111,7 +122,7 @@ class CustomerNotificationsViewModel(
                     id = "notif_expired_${booking.id}",
                     title = "Pesanan Kedaluwarsa",
                     message = "Batas waktu respon konfirmasi 15 menit telah habis untuk pesanan ${booking.serviceName}.",
-                    timeFormatted = "${booking.scheduledDate}",
+                    timeFormatted = booking.scheduledDate,
                     type = NotificationType.ORDER_CANCELLED,
                     bookingId = booking.id,
                     timestampMillis = booking.createdAt.toEpochMilliseconds() + 60_000L
@@ -121,7 +132,7 @@ class CustomerNotificationsViewModel(
                     id = "notif_cancelled_${booking.id}",
                     title = "Pesanan Dibatalkan",
                     message = "Pesanan ${booking.serviceName} telah dibatalkan.",
-                    timeFormatted = "${booking.scheduledDate}",
+                    timeFormatted = booking.scheduledDate,
                     type = NotificationType.ORDER_CANCELLED,
                     bookingId = booking.id,
                     timestampMillis = booking.createdAt.toEpochMilliseconds() + 60_000L
@@ -138,8 +149,8 @@ class CustomerNotificationsViewModel(
         return listOf(
             CustomerNotificationItem(
                 id = "sys_notif_garansi",
-                title = "Garansi Pengerjaan 48 Jam",
-                message = "Setiap pesanan di Bantuin dilindungi garansi 48 jam. Jika masalah serupa berulang, mitra kami akan menanganinya tanpa biaya tambahan.",
+                title = "Garansi Pengerjaan 7 Hari",
+                message = "Setiap pesanan di Bantuin dilindungi garansi 7 hari. Jika masalah serupa berulang, mitra kami akan menanganinya tanpa biaya tambahan.",
                 timeFormatted = "Info Sistem",
                 type = NotificationType.SYSTEM_INFO,
                 bookingId = null,

@@ -136,9 +136,18 @@ fun BantuinNavGraph(
                 CustomerHomeScreen(
                     orderFlow = orderFlow,
                     repository = repository,
+                    hasUnreadNotifications = hasActiveCustomerOrders,
                     onCategoryClick = { catId ->
                         orderFlow.selectedCategoryId = catId
                         navController.navigate(Routes.recommendation(catId))
+                    },
+                    onProviderClick = { providerId ->
+                        navController.navigate(Routes.providerDetail(providerId))
+                    },
+                    onNotificationsClick = {
+                        navController.navigate(Routes.CUSTOMER_NOTIFICATIONS) {
+                            launchSingleTop = true
+                        }
                     },
                     onSwitchToProvider = {
                         navController.navigate(Routes.PROVIDER_HOME) {
@@ -179,7 +188,7 @@ fun BantuinNavGraph(
                 route = Routes.PROVIDER_DETAIL,
                 arguments = listOf(navArgument("providerId") { type = NavType.StringType })
             ) { backStackEntry ->
-                val providerId = backStackEntry.arguments?.getString("providerId") ?: "p01"
+                val providerId = backStackEntry.arguments?.getString("providerId").orEmpty()
                 ProviderDetailScreen(
                     providerId = providerId,
                     orderFlow = orderFlow,
@@ -220,7 +229,7 @@ fun BantuinNavGraph(
                 route = Routes.ORDER_TRACKING,
                 arguments = listOf(navArgument("bookingId") { type = NavType.StringType })
             ) { backStackEntry ->
-                val bookingId = backStackEntry.arguments?.getString("bookingId") ?: "b01"
+                val bookingId = backStackEntry.arguments?.getString("bookingId").orEmpty()
                 OrderDetailScreen(
                     bookingId = bookingId,
                     repository = repository,
@@ -262,6 +271,7 @@ fun BantuinNavGraph(
             composable(Routes.CUSTOMER_PROFILE) {
                 CustomerProfileScreen(
                     repository = repository,
+                    themeStore = themeStore,
                     onSwitchRole = {
                         navController.navigate(Routes.PROVIDER_HOME) {
                             popUpTo(Routes.CUSTOMER_HOME) { inclusive = true }
