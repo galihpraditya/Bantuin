@@ -1,7 +1,9 @@
 package id.bantuin.app.repository
 
+import id.bantuin.app.core.config.BantuinConfig
 import id.bantuin.app.core.result.AppResult
 import id.bantuin.app.core.session.InMemorySessionStore
+import id.bantuin.app.core.util.TimeUtils
 import id.bantuin.app.data.remote.SupabaseClientProvider
 import id.bantuin.app.data.repository.SupabaseBantuinRepository
 import kotlinx.coroutines.Dispatchers
@@ -81,5 +83,20 @@ class SupabaseBantuinRepositoryTest {
     fun mapSupabaseError_mapsNetworkTimeoutCleanly() {
         val res = supabaseRepo.mapSupabaseError(RuntimeException("Socket timeout while connecting"), "Gagal")
         assertTrue(res.message.contains("Koneksi", ignoreCase = true))
+    }
+
+    @Test
+    fun timeUtils_andMidnightBlockParsing_handle1440RolloverCorrectly() {
+        val endMidnightIso = TimeUtils.toIsoString("2026-11-25", 1440)
+        assertEquals("2026-11-26T00:00:00+07:00", endMidnightIso)
+        assertEquals(
+            1440,
+            supabaseRepo.parseIsoToWibMinutesOnDate("2026-11-25T17:00:00Z", "2026-11-25")
+        )
+        assertEquals(
+            0,
+            supabaseRepo.parseIsoToWibMinutesOnDate("2026-11-24T17:00:00Z", "2026-11-25")
+        )
+        assertEquals(30, BantuinConfig.TRAVEL_BUFFER_MIN)
     }
 }

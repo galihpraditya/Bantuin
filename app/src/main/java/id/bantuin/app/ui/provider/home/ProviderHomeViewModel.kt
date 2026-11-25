@@ -127,7 +127,7 @@ class ProviderHomeViewModel(
         val today = TimeUtils.todayIso()
         val pending = orders.count { it.status == BookingStatus.PENDING }
         val todayOrActive = orders.count {
-            it.scheduledDate == today ||
+            it.scheduledDateIso == today ||
                 it.status in setOf(BookingStatus.DIKONFIRMASI, BookingStatus.DALAM_PENGERJAAN)
         }
         _uiState.update {

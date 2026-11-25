@@ -281,4 +281,19 @@ class ProviderViewModelsTest {
         assertTrue(vm.uiState.value.recalculatedRecently)
         assertTrue(vm.uiState.value.lastSyncLabel.isNotBlank())
     }
+
+    @Test
+    fun providerProfileEditViewModel_preservesUnsavedEditsAcrossReload() = runTest {
+        val mitraRepo = mitraRepository("p01", "Budi Santoso, S.T.")
+        val vm = ProviderProfileEditViewModel(mitraRepo, mitraRepo)
+        vm.loadProfile("p01")
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        vm.onBioChange("Edit sementara sebelum rotasi")
+        // Simulasikan LaunchedEffect(Unit) terpanggil ulang saat rotasi
+        vm.loadProfile("p01")
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        assertEquals("Edit sementara sebelum rotasi", vm.uiState.value.bio)
+    }
 }

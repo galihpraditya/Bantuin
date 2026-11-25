@@ -17,6 +17,7 @@ import io.github.jan.supabase.auth.exception.AuthRestException
 import io.github.jan.supabase.auth.providers.builtin.Email
 import io.github.jan.supabase.auth.user.UserInfo
 import io.github.jan.supabase.postgrest.postgrest
+import io.github.jan.supabase.postgrest.query.Columns
 import io.github.jan.supabase.postgrest.query.Order
 import io.github.jan.supabase.postgrest.rpc
 import io.github.jan.supabase.realtime.PostgresAction
@@ -240,6 +241,18 @@ class SupabaseBantuinRepository(
                 }
                 .decodeList<AvailabilityDto>()
 
+            val reviewCountMap = runCatching {
+                client.postgrest["reviews"]
+                    .select(columns = Columns.list("provider_id")) {
+                        filter {
+                            isIn("provider_id", providerIds)
+                        }
+                    }
+                    .decodeList<ReviewProviderRefDto>()
+                    .groupingBy { it.providerId }
+                    .eachCount()
+            }.getOrNull()
+
             val candidates = ppDtoList.mapNotNull { pp ->
                 val profile = profilesDto.find { it.id == pp.userId } ?: return@mapNotNull null
                 val userAvail = availDtoList.filter { it.providerId == pp.userId }
@@ -248,7 +261,12 @@ class SupabaseBantuinRepository(
 
                 val pServices = servicesDto.filter { it.providerId == pp.userId }
                 val minFare = pServices.minOfOrNull { it.baseFare }
-                mapProviderCandidate(pp, profile, minFare)
+                mapProviderCandidate(
+                    pp = pp,
+                    profile = profile,
+                    minFare = minFare,
+                    reviewCount = reviewCountMap?.get(pp.userId)
+                )
             }
             AppResult.Success(candidates)
         } catch (e: Exception) {
@@ -279,7 +297,23 @@ class SupabaseBantuinRepository(
                 }
                 .decodeList<ServiceDto>()
 
-            AppResult.Success(mapProviderCandidate(pp, profile, services.minOfOrNull { it.baseFare }))
+            val reviewCount = runCatching {
+                client.postgrest["reviews"]
+                    .select(columns = Columns.list("provider_id")) {
+                        filter { eq("provider_id", providerId) }
+                    }
+                    .decodeList<ReviewProviderRefDto>()
+                    .size
+            }.getOrNull()
+
+            AppResult.Success(
+                mapProviderCandidate(
+                    pp = pp,
+                    profile = profile,
+                    minFare = services.minOfOrNull { it.baseFare },
+                    reviewCount = reviewCount
+                )
+            )
         } catch (e: Exception) {
             mapSupabaseError(e, "Gagal memuat profil mitra")
         }
@@ -470,8 +504,8 @@ class SupabaseBantuinRepository(
 
     override suspend fun busyBlocks(providerId: String, dateIso: String): AppResult<List<TimeBlock>> = withContext(ioDispatcher) {
         try {
-            val fromIso = "${dateIso}T00:00:00+07:00"
-            val toIso = "${dateIso}T23:59:59+07:00"
+            val fromIso = TimeUtils.toIsoString(dateIso, 0)
+            val toIso = TimeUtils.toIsoString(dateIso, 1440)
 
             val result = client.postgrest.rpc(
                 function = "get_busy_blocks",
@@ -482,10 +516,10 @@ class SupabaseBantuinRepository(
                 )
             ).decodeList<BusyBlockDto>()
 
-            val blocks = result.map { dto ->
-                val startMin = parseIsoToWibMinutes(dto.startAt)
-                val endMin = parseIsoToWibMinutes(dto.endAt)
-                TimeBlock(startMin, endMin)
+            val blocks = result.mapNotNull { dto ->
+                val startMin = parseIsoToWibMinutesOnDate(dto.startAt, dateIso)
+                val endMin = parseIsoToWibMinutesOnDate(dto.endAt, dateIso)
+                if (endMin > startMin) TimeBlock(startMin, endMin) else null
             }
             AppResult.Success(blocks)
         } catch (e: Exception) {
@@ -780,13 +814,10 @@ class SupabaseBantuinRepository(
                 .decodeList<ReviewDto>()
             val ratings = reviewsDto.map { it.rating }
 
-            val bookingsDto = client.postgrest["bookings"]
-                .select {
-                    filter {
-                        eq("provider_id", providerId)
-                    }
-                }
-                .decodeList<BookingDto>()
+            val bookingsDto = client.postgrest.rpc(
+                "get_provider_trust_bookings",
+                TrustBookingsRpcParams(providerId = providerId, cutoffIso = cutoffIso)
+            ).decodeList<TrustBookingDto>()
 
             val recentBookings = bookingsDto.filter { b ->
                 val refIso = b.finishedAt ?: b.createdAt ?: b.startAt
@@ -1060,7 +1091,9 @@ class SupabaseBantuinRepository(
             val startInstant = parseInstantOrNull(dto.startAt)
             val endInstant = parseInstantOrNull(dto.endAt)
             val startMin = startInstant?.let { TimeUtils.toWibMinutesOfDay(it) } ?: 480
-            val endMin = endInstant?.let { TimeUtils.toWibMinutesOfDay(it) } ?: (startMin + 60)
+            val endMin = serviceDto?.durationMin?.let { startMin + it }
+            ?: endInstant?.let { TimeUtils.toWibMinutesOfDay(it) }
+            ?: (startMin + 60)
             val status = try {
                 BookingStatus.valueOf(dto.status)
             } catch (_: Exception) {
@@ -1075,6 +1108,7 @@ class SupabaseBantuinRepository(
                 providerName = providerProfile?.fullName ?: "Mitra Bantuin",
                 serviceName = serviceDto?.name ?: "Layanan Bantuin",
                 scheduledDate = startInstant?.let { TimeUtils.formatInstantToDate(it) } ?: dto.startAt.take(10),
+                scheduledDateIso = startInstant?.let { TimeUtils.toWibDateIso(it) } ?: dto.startAt.take(10),
                 scheduledTime = String.format(
                     Locale.US,
                     "%02d:%02d - %02d:%02d WIB",
@@ -1114,7 +1148,8 @@ class SupabaseBantuinRepository(
     private fun mapProviderCandidate(
         pp: ProviderProfileDto,
         profile: ProfileDto,
-        minFare: Int?
+        minFare: Int?,
+        reviewCount: Int? = null
     ): ProviderCandidate {
         return ProviderCandidate(
             providerId = pp.userId,
@@ -1124,7 +1159,7 @@ class SupabaseBantuinRepository(
             address = pp.address ?: "Malang, Jawa Timur",
             bio = pp.bio ?: "Mitra jasa Bantuin",
             ratingAvg = pp.ratingAvg,
-            reviewCount = pp.txCount30d,
+            reviewCount = reviewCount ?: pp.txCount30d,
             completionRate = pp.completionRate,
             flagAnomaly = pp.flagAnomaly,
             badge = when (pp.badge) {
@@ -1240,6 +1275,15 @@ class SupabaseBantuinRepository(
         } catch (_: Exception) {
             null
         }
+    }
+
+    internal fun parseIsoToWibMinutesOnDate(iso: String, dateIso: String): Int {
+        return runCatching {
+            val instant = Instant.parse(iso)
+            val dayStart = Instant.parse(TimeUtils.toIsoString(dateIso, 0))
+            val diffMin = ((instant.epochSeconds - dayStart.epochSeconds) / 60L).toInt()
+            diffMin.coerceIn(0, 1440)
+        }.getOrDefault(0)
     }
 
     private fun parseIsoToWibMinutes(isoString: String): Int {

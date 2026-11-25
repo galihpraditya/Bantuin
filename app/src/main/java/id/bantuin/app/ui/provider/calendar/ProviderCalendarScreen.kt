@@ -290,10 +290,16 @@ fun ProviderCalendarScreen(
                                             val m = (day.openMin ?: 480) % 60
                                             mutableStateOf(String.format(Locale.US, "%02d:%02d", h, m))
                                         }
+                                        var openFormatInvalid by remember(day.dayOfWeek, day.openMin) {
+                                            mutableStateOf(false)
+                                        }
                                         var closeInput by remember(day.dayOfWeek, day.closeMin) {
                                             val h = (day.closeMin ?: 1020) / 60
                                             val m = (day.closeMin ?: 1020) % 60
                                             mutableStateOf(String.format(Locale.US, "%02d:%02d", h, m))
+                                        }
+                                        var closeFormatInvalid by remember(day.dayOfWeek, day.closeMin) {
+                                            mutableStateOf(false)
                                         }
 
                                         OutlinedTextField(
@@ -301,11 +307,16 @@ fun ProviderCalendarScreen(
                                             onValueChange = { newVal ->
                                                 openInput = newVal
                                                 val total = parseTimeToMin(newVal)
+                                                openFormatInvalid = newVal.isNotBlank() && total == null
                                                 if (total != null) {
                                                     viewModel.updateHourFieldUnchecked(day.dayOfWeek, openMin = total, closeMin = null)
                                                 }
                                             },
                                             label = { Text("Jam Buka (JJ:MM)") },
+                                            isError = openFormatInvalid,
+                                            supportingText = if (openFormatInvalid) {
+                                                { Text("Format JJ:MM, mis. 08:00") }
+                                            } else null,
                                             singleLine = true,
                                             modifier = Modifier.weight(1f)
                                         )
@@ -314,11 +325,16 @@ fun ProviderCalendarScreen(
                                             onValueChange = { newVal ->
                                                 closeInput = newVal
                                                 val total = parseTimeToMin(newVal)
+                                                closeFormatInvalid = newVal.isNotBlank() && total == null
                                                 if (total != null) {
                                                     viewModel.updateHourFieldUnchecked(day.dayOfWeek, openMin = null, closeMin = total)
                                                 }
                                             },
                                             label = { Text("Jam Tutup (JJ:MM)") },
+                                            isError = closeFormatInvalid,
+                                            supportingText = if (closeFormatInvalid) {
+                                                { Text("Format JJ:MM, mis. 17:00") }
+                                            } else null,
                                             singleLine = true,
                                             modifier = Modifier.weight(1f)
                                         )

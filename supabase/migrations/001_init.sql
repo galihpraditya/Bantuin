@@ -433,7 +433,39 @@ begin
 end $$;
 
 -- Hak Akses Eksekusi RPC
+-- 8. Ambil booking untuk kalkulasi trust score mitra tanpa membocorkan PII pelanggan
+create or replace function public.get_provider_trust_bookings(
+  p_provider uuid,
+  p_cutoff timestamptz
+) returns table(
+  status text,
+  start_at timestamptz,
+  started_at timestamptz,
+  finished_at timestamptz,
+  created_at timestamptz
+)
+language sql
+security definer
+set search_path = public
+stable as $$
+  select b.status, b.start_at, b.started_at, b.finished_at, b.created_at
+    from public.bookings b
+   where b.provider_id = p_provider
+     and b.created_at >= p_cutoff;
+$$;
+
+revoke execute on function public.get_busy_blocks(uuid, timestamptz, timestamptz) from public, anon;
+revoke execute on function public.get_provider_trust_bookings(uuid, timestamptz) from public, anon;
+revoke execute on function public.acquire_slot_lock(uuid, timestamptz, timestamptz) from public, anon;
+revoke execute on function public.release_slot_lock() from public, anon;
+revoke execute on function public.expire_pending_bookings() from public, anon;
+revoke execute on function public.update_booking_status(uuid, text) from public, anon;
+revoke execute on function public.create_booking(uuid, uuid, text, boolean, numeric, int, int, boolean, int, double precision, double precision, text) from public, anon;
+revoke execute on function public.apply_provider_metrics(uuid, numeric, numeric, numeric, numeric, numeric, int, boolean, text, numeric) from public, anon;
+revoke execute on function public.enable_provider_role(text, text, double precision, double precision) from public, anon;
+
 grant execute on function public.get_busy_blocks(uuid, timestamptz, timestamptz) to authenticated;
+grant execute on function public.get_provider_trust_bookings(uuid, timestamptz) to authenticated;
 grant execute on function public.acquire_slot_lock(uuid, timestamptz, timestamptz) to authenticated;
 grant execute on function public.release_slot_lock() to authenticated;
 grant execute on function public.expire_pending_bookings() to authenticated;

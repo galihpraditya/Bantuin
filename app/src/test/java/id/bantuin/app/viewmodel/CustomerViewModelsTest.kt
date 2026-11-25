@@ -199,11 +199,30 @@ class CustomerViewModelsTest {
             lockAcquired = true
             assertNotNull(lockInfo.lockId)
             assertEquals(vm.uiState.value.selectedDate.toString(), lockInfo.dateIso)
+            // Wajib menyimpan end + 30 menit TRAVEL_BUFFER_MIN
+            assertEquals(840 + service.durationMin + id.bantuin.app.core.config.BantuinConfig.TRAVEL_BUFFER_MIN, lockInfo.endMin)
         }
         testDispatcher.scheduler.advanceUntilIdle()
 
         assertTrue(lockAcquired)
         assertNotNull(vm.uiState.value.lockInfo)
+    }
+
+    @Test
+    fun scheduleViewModel_alwaysOnIncludesNightAnd30MinGridSlots() = runTest {
+        val vm = ScheduleViewModel(repository, repository)
+        val alwaysOnProvider = FakeData.providers.first { it.providerId == "p09" }
+        val shortService = FakeData.services.first().copy(providerId = "p09", durationMin = 30)
+
+        vm.initialize(provider = alwaysOnProvider, service = shortService, distanceKm = 1.0)
+        vm.selectDate(1) // besok
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        // Slot 23:00 (1380 + 30 + 30 = 1440) dan 05:30 (330) harus muncul pada grid 30 menit 24 jam
+        val slotMins = vm.uiState.value.availableSlots.map { it.first }
+        assertTrue(slotMins.contains(1380))
+        assertTrue(slotMins.contains(330))
+        assertTrue(slotMins.contains(30))
     }
 
     @Test
@@ -393,5 +412,41 @@ class CustomerViewModelsTest {
         assertTrue(enabled)
         assertTrue(sessionStore.currentUserValue?.roles?.contains("provider") == true)
         assertEquals("provider", sessionStore.activeRoleValue)
+    }
+
+    @Test
+    fun estimateViewModel_marksExpiredWhenCreateBookingFailsWithLockExpired() = runTest {
+        val fakeLock = id.bantuin.app.domain.model.LockInfo(
+            lockId = "expired_lock_id",
+            providerId = "p01",
+            startMin = 540,
+            endMin = 660,
+            expiresAtMillis = System.currentTimeMillis() - 10_000L,
+            dateIso = "2026-11-22"
+        )
+        // Buat FakeRepository khusus yang menolak lock kedaluwarsa meski tidak ada di map
+        val repoWithExpiredCheck = object : id.bantuin.app.domain.repository.BookingRepository by repository {
+            override suspend fun createBooking(draft: id.bantuin.app.domain.model.OrderDraft): id.bantuin.app.core.result.AppResult<String> {
+                return id.bantuin.app.core.result.AppResult.Error("Waktu penahanan slot habis, pilih jadwal lagi")
+            }
+        }
+        val vm = EstimateViewModel(repoWithExpiredCheck)
+        vm.initialize(
+            categoryId = 2,
+            provider = FakeData.providers.first(),
+            service = FakeData.services.first(),
+            customerLocation = FakeData.MALANG_CENTER,
+            customerAddress = "Jl. Ijen",
+            scheduledDateIso = "2026-11-22",
+            scheduledStartMin = 540,
+            scheduledDurationMin = 90,
+            lockInfo = fakeLock,
+            distanceKm = 1.5
+        )
+
+        vm.confirmOrder {}
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        assertTrue(vm.uiState.value.isLockExpired)
     }
 }

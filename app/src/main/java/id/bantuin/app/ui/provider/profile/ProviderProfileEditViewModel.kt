@@ -35,7 +35,10 @@ class ProviderProfileEditViewModel(
     private val _uiState = MutableStateFlow(ProviderProfileEditUiState())
     val uiState: StateFlow<ProviderProfileEditUiState> = _uiState.asStateFlow()
 
-    fun loadProfile(providerId: String? = null) {
+    private var loadedProviderId: String? = null
+    private var hasUnsavedEdits: Boolean = false
+
+    fun loadProfile(providerId: String? = null, forceRefresh: Boolean = false) {
         viewModelScope.launch {
             val user = authRepository.currentUser().firstOrNull()
             val resolvedId = providerId?.takeIf { it.isNotBlank() } ?: user?.id
@@ -49,6 +52,11 @@ class ProviderProfileEditViewModel(
                 }
                 return@launch
             }
+
+            if (!forceRefresh && (hasUnsavedEdits || loadedProviderId == resolvedId)) {
+                return@launch
+            }
+            loadedProviderId = resolvedId
 
             _uiState.update {
                 it.copy(
@@ -85,11 +93,30 @@ class ProviderProfileEditViewModel(
         }
     }
 
-    fun onNameChange(name: String) = _uiState.update { it.copy(name = name, isSaved = false, errorMessage = null) }
-    fun onBioChange(bio: String) = _uiState.update { it.copy(bio = bio, isSaved = false, errorMessage = null) }
-    fun onPhoneChange(phone: String) = _uiState.update { it.copy(phone = phone, isSaved = false, errorMessage = null) }
-    fun onAddressChange(address: String) = _uiState.update { it.copy(address = address, isSaved = false, errorMessage = null) }
-    fun onLocationChange(location: GeoPoint) = _uiState.update { it.copy(location = location, isSaved = false, errorMessage = null) }
+    fun onNameChange(name: String) {
+        hasUnsavedEdits = true
+        _uiState.update { it.copy(name = name, isSaved = false, errorMessage = null) }
+    }
+
+    fun onBioChange(bio: String) {
+        hasUnsavedEdits = true
+        _uiState.update { it.copy(bio = bio, isSaved = false, errorMessage = null) }
+    }
+
+    fun onPhoneChange(phone: String) {
+        hasUnsavedEdits = true
+        _uiState.update { it.copy(phone = phone, isSaved = false, errorMessage = null) }
+    }
+
+    fun onAddressChange(address: String) {
+        hasUnsavedEdits = true
+        _uiState.update { it.copy(address = address, isSaved = false, errorMessage = null) }
+    }
+
+    fun onLocationChange(location: GeoPoint) {
+        hasUnsavedEdits = true
+        _uiState.update { it.copy(location = location, isSaved = false, errorMessage = null) }
+    }
     fun setDetectingGps(detecting: Boolean) = _uiState.update { it.copy(isDetectingGps = detecting, errorMessage = null) }
     fun setGpsError(message: String?) = _uiState.update { it.copy(isDetectingGps = false, errorMessage = message) }
 
@@ -125,6 +152,7 @@ class ProviderProfileEditViewModel(
             )
             when (res) {
                 is AppResult.Success -> {
+                    hasUnsavedEdits = false
                     _uiState.update { it.copy(isSaving = false, isSaved = true) }
                 }
                 is AppResult.Error -> {

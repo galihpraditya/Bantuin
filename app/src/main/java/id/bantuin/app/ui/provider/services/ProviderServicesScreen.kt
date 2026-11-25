@@ -45,6 +45,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -350,12 +351,12 @@ private fun UpsertServiceDialog(
         ?: availableCats.firstOrNull { it.id == initialCatId }?.defaultDurationMin
         ?: 60
 
-    var name by remember { mutableStateOf(existing?.name ?: "") }
-    var description by remember { mutableStateOf(existing?.description ?: "") }
-    var selectedCategory by remember { mutableIntStateOf(initialCatId) }
-    var baseFareText by remember { mutableStateOf(existing?.baseFare?.toString() ?: "75000") }
-    var durationText by remember { mutableStateOf(initialDuration.toString()) }
-    var durationEditedManually by remember { mutableStateOf(existing != null) }
+    var name by rememberSaveable(existing?.id) { mutableStateOf(existing?.name ?: "") }
+    var description by rememberSaveable(existing?.id) { mutableStateOf(existing?.description ?: "") }
+    var selectedCategory by rememberSaveable(existing?.id) { mutableIntStateOf(initialCatId) }
+    var baseFareText by rememberSaveable(existing?.id) { mutableStateOf(existing?.baseFare?.toString() ?: "75000") }
+    var durationText by rememberSaveable(existing?.id) { mutableStateOf(initialDuration.toString()) }
+    var durationEditedManually by rememberSaveable(existing?.id) { mutableStateOf(existing != null) }
 
     AlertDialog(
         onDismissRequest = onDismiss,

@@ -57,9 +57,11 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableDoubleStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -338,7 +340,7 @@ private fun CustomerHeaderSection(
                 Box(
                     modifier = Modifier
                         .weight(1f)
-                        .heightIn(min = 40.dp)
+                        .heightIn(min = 48.dp)
                         .clip(RoundedCornerShape(20.dp))
                         .background(colors.primary)
                         .padding(vertical = 8.dp),
@@ -354,7 +356,7 @@ private fun CustomerHeaderSection(
                 Box(
                     modifier = Modifier
                         .weight(1f)
-                        .heightIn(min = 40.dp)
+                        .heightIn(min = 48.dp)
                         .clip(RoundedCornerShape(20.dp))
                         .clickable { onSwitchRole() }
                         .padding(vertical = 8.dp),
@@ -583,7 +585,7 @@ private fun EmergencyHeroCard(
                 Text(
                     text = if (readyProviderCount > 0) "$readyProviderCount Mitra Terjangkau" else "Cari Mitra Siaga",
                     style = MaterialTheme.typography.labelSmall,
-                    color = colors.primaryLight
+                    color = Color(0xFFFFCC80)
                 )
             }
         }
@@ -933,7 +935,7 @@ private fun LocationPickerDialog(
     isDetectingGps: Boolean,
     gpsError: String?,
     onGpsDetectStart: () -> Unit,
-    onGpsError: (String) -> Unit,
+    onGpsError: (String?) -> Unit,
     onDismiss: () -> Unit,
     onLocationConfirmed: (String, GeoPoint, Boolean) -> Unit
 ) {
@@ -950,19 +952,22 @@ private fun LocationPickerDialog(
         )
     }
 
-    var textInput by remember { mutableStateOf(currentAddress) }
-    var selectedLocation by remember { mutableStateOf(location) }
-    var fromGps by remember { mutableStateOf(false) }
+    var textInput by rememberSaveable { mutableStateOf(currentAddress) }
+    var selectedLat by rememberSaveable { mutableDoubleStateOf(location.lat) }
+    var selectedLng by rememberSaveable { mutableDoubleStateOf(location.lng) }
+    val selectedLocation = GeoPoint(selectedLat, selectedLng)
+    var fromGps by rememberSaveable { mutableStateOf(false) }
 
     fun fetchHardwareGps() {
         onGpsDetectStart()
         scope.launch {
             val detected = LocationHelper.getCurrentLocation(context)
             if (detected != null) {
-                selectedLocation = detected.point
+                selectedLat = detected.point.lat
+                selectedLng = detected.point.lng
                 textInput = detected.address ?: LocationHelper.formatCoordinateFallback(detected.point)
                 fromGps = true
-                onGpsError("")
+                onGpsError(null)
             } else {
                 onGpsError("Lokasi GPS tidak tersedia. Ketuk peta atau pilih area cepat di bawah.")
             }
@@ -1055,7 +1060,8 @@ private fun LocationPickerDialog(
                             abs(selectedLocation.lng - point.lng) < 0.001
                         Button(
                             onClick = {
-                                selectedLocation = point
+                                selectedLat = point.lat
+                                selectedLng = point.lng
                                 textInput = addr
                                 fromGps = false
                             },
@@ -1095,7 +1101,8 @@ private fun LocationPickerDialog(
                         zoomLevel = 14.5,
                         isInteractive = true,
                         onLocationSelected = { tappedPoint ->
-                            selectedLocation = tappedPoint
+                            selectedLat = tappedPoint.lat
+                            selectedLng = tappedPoint.lng
                             fromGps = false
                             scope.launch {
                                 textInput = LocationHelper.reverseGeocode(context, tappedPoint.lat, tappedPoint.lng)

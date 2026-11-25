@@ -2,6 +2,7 @@ package id.bantuin.app.ui.customer.schedule
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import id.bantuin.app.core.config.BantuinConfig
 import id.bantuin.app.core.result.AppResult
 import id.bantuin.app.core.util.TimeUtils
 import id.bantuin.app.domain.model.AvailabilityMode
@@ -23,6 +24,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import java.time.LocalDate
 import java.time.LocalTime
+import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.util.Locale
 
@@ -31,7 +33,7 @@ data class ScheduleUiState(
     val service: ServiceItem? = null,
     val distanceKm: Double = 1.8,
     val selectedDateIdx: Int = 0,
-    val selectedDate: LocalDate = LocalDate.now(),
+    val selectedDate: LocalDate = LocalDate.now(ZoneId.of(BantuinConfig.TIMEZONE_ID)),
     val monthYearLabel: String = "",
     val dynamicDates: List<Triple<String, String, LocalDate>> = emptyList(),
     val providerAvailability: List<DayAvailability> = emptyList(),
@@ -55,6 +57,7 @@ class ScheduleViewModel(
     private val _uiState = MutableStateFlow(ScheduleUiState())
     val uiState: StateFlow<ScheduleUiState> = _uiState.asStateFlow()
 
+    private val wibZone = ZoneId.of(BantuinConfig.TIMEZONE_ID)
     private val monthYearFormatter = DateTimeFormatter.ofPattern("MMMM yyyy", Locale.forLanguageTag("id-ID"))
 
     fun initialize(
@@ -71,7 +74,7 @@ class ScheduleViewModel(
             return
         }
 
-        val today = LocalDate.now()
+        val today = LocalDate.now(wibZone)
         val dynamicDates = (0..6).map { i ->
             val d = today.plusDays(i.toLong())
             val dayName = when (d.dayOfWeek.value) {
@@ -181,7 +184,9 @@ class ScheduleViewModel(
         val slots = when (dayAvail.mode) {
             AvailabilityMode.OFF -> emptyList()
             AvailabilityMode.ALWAYS_ON -> {
-                (480..1260 step 60).map { min -> min to TimeUtils.formatMinuteOfDay(min) }
+                (0 until 1440 step BantuinConfig.SLOT_GRID_MIN)
+                    .filter { it + service.durationMin + BantuinConfig.TRAVEL_BUFFER_MIN <= 1440 }
+                    .map { min -> min to TimeUtils.formatMinuteOfDay(min) }
             }
             AvailabilityMode.ON -> {
                 val start = dayAvail.openMin ?: 480
@@ -195,7 +200,7 @@ class ScheduleViewModel(
         }
 
         val nowMin = if (state.selectedDateIdx == 0) {
-            val now = LocalTime.now()
+            val now = LocalTime.now(wibZone)
             now.hour * 60 + now.minute
         } else null
 
@@ -250,16 +255,22 @@ class ScheduleViewModel(
 
         val startMin = state.selectedStartMin
         val durationMin = state.service?.durationMin ?: 60
+        val lockEndMin = startMin + durationMin + BantuinConfig.TRAVEL_BUFFER_MIN
         val dateIso = state.selectedDate.toString()
 
         viewModelScope.launch {
             _uiState.update { it.copy(isLocking = true, errorMessage = null) }
-            when (val lockRes = bookingRepository.acquireLock(providerId, dateIso, startMin, startMin + durationMin)) {
+            when (val lockRes = bookingRepository.acquireLock(providerId, dateIso, startMin, lockEndMin)) {
                 is AppResult.Success -> {
                     _uiState.update { it.copy(isLocking = false, lockInfo = lockRes.data) }
                     onSuccess(lockRes.data)
                 }
                 is AppResult.Error -> {
+                    val busyRes = bookingRepository.busyBlocks(providerId, dateIso)
+                    if (busyRes is AppResult.Success) {
+                        _uiState.update { it.copy(existingBlocks = busyRes.data) }
+                        recomputeSchedule()
+                    }
                     _uiState.update { it.copy(isLocking = false, errorMessage = lockRes.message) }
                 }
                 is AppResult.Loading -> {}

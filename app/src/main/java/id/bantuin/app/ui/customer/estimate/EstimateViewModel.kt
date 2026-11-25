@@ -22,7 +22,7 @@ data class EstimateUiState(
     val categoryId: Int = 2,
     val provider: ProviderCandidate? = null,
     val service: ServiceItem? = null,
-    val customerLocation: GeoPoint = GeoPoint(-7.9797, 112.6304),
+    val customerLocation: GeoPoint = id.bantuin.app.core.config.BantuinConfig.MALANG_CENTER,
     val customerAddress: String = "",
     val scheduledDateIso: String = "",
     val scheduledStartMin: Int = 540,
@@ -46,6 +46,8 @@ class EstimateViewModel(
 
     private val _uiState = MutableStateFlow(EstimateUiState())
     val uiState: StateFlow<EstimateUiState> = _uiState.asStateFlow()
+
+    private var isReleasingLock = false
 
     fun initialize(
         categoryId: Int,
@@ -155,12 +157,18 @@ class EstimateViewModel(
     }
 
     fun releaseLock(onDone: () -> Unit = {}) {
+        if (isReleasingLock) return
+        isReleasingLock = true
         val lockId = _uiState.value.lockInfo?.lockId
+        _uiState.update { it.copy(lockInfo = null) }
         viewModelScope.launch {
-            if (!lockId.isNullOrBlank()) {
-                bookingRepository.releaseLock(lockId)
+            try {
+                if (!lockId.isNullOrBlank()) {
+                    bookingRepository.releaseLock(lockId)
+                }
+            } finally {
+                isReleasingLock = false
             }
-            _uiState.update { it.copy(lockInfo = null) }
             onDone()
         }
     }
@@ -208,9 +216,13 @@ class EstimateViewModel(
                     onSuccess(res.data)
                 }
                 is AppResult.Error -> {
+                    val isExpiredOrTaken = res.message.contains("penahanan slot habis", ignoreCase = true) ||
+                        res.message.contains("LOCK_EXPIRED", ignoreCase = true) ||
+                        res.message.contains("baru saja diambil", ignoreCase = true)
                     _uiState.update {
                         it.copy(
                             isSubmitting = false,
+                            isLockExpired = it.isLockExpired || isExpiredOrTaken,
                             errorMessage = res.message
                         )
                     }

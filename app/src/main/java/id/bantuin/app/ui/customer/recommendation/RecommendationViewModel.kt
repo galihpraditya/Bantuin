@@ -2,8 +2,8 @@ package id.bantuin.app.ui.customer.recommendation
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import id.bantuin.app.core.config.BantuinConfig
 import id.bantuin.app.core.result.AppResult
-import id.bantuin.app.data.fake.FakeData
 import id.bantuin.app.domain.model.GeoPoint
 import id.bantuin.app.domain.model.MatchResult
 import id.bantuin.app.domain.model.ProviderBadge
@@ -23,7 +23,7 @@ import kotlinx.coroutines.launch
 data class RecommendationUiState(
     val categoryId: Int = 1,
     val category: ServiceCategory = ServiceCategory(1, "Kategori Jasa", "build", 60, "Layanan teknisi dan bantuan rumah"),
-    val customerLocation: GeoPoint = FakeData.MALANG_CENTER,
+    val customerLocation: GeoPoint = BantuinConfig.MALANG_CENTER,
     val maxDistanceFilter: Double = 10.0,
     val minRatingFilter: Double = 0.0,
     val onlyTrusted: Boolean = false,

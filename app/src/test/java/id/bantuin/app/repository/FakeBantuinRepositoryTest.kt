@@ -125,22 +125,45 @@ class FakeBantuinRepositoryTest {
 
     @Test
     fun acquireLock_recordsSelectedDateIso_andEventsTrackStatusTransitions() = runBlocking {
-        val customerRepo = FakeBantuinRepository(
-            sessionStore = InMemorySessionStore(
-                initialRole = "customer",
-                initialUser = UserProfile(
-                    id = "user_demo_rani",
-                    fullName = "Rani Wijaya",
-                    email = "pelanggan1@bantuin.test",
-                    phone = "081234567890",
-                    roles = setOf("customer")
-                )
+        // Pelanggan lain harus melihat blok [480, 600) termasuk buffer 30 menit saat lock masih aktif
+        val sessionStore = InMemorySessionStore(
+            initialRole = "customer",
+            initialUser = UserProfile(
+                id = "user_demo_rani",
+                fullName = "Rani Wijaya",
+                email = "pelanggan1@bantuin.test",
+                phone = "081234567890",
+                roles = setOf("customer")
             )
         )
-        val lockRes = customerRepo.acquireLock("p01", "2026-11-28", 480, 570)
+        val sharedRepo = FakeBantuinRepository(sessionStore = sessionStore)
+        val lockRes = sharedRepo.acquireLock("p01", "2026-11-28", 480, 600)
         assertTrue(lockRes is AppResult.Success)
         val lock = (lockRes as AppResult.Success).data
         assertEquals("2026-11-28", lock.dateIso)
+        assertEquals(600, lock.endMin)
+
+        sessionStore.saveSession(
+            UserProfile(
+                id = "user_demo_dimas",
+                fullName = "Dimas Arya",
+                email = "pelanggan2@bantuin.test",
+                phone = "081234567891",
+                roles = setOf("customer")
+            )
+        )
+        val busyForOtherUser = (sharedRepo.busyBlocks("p01", "2026-11-28") as AppResult.Success).data
+        assertTrue(busyForOtherUser.any { it.startMin == 480 && it.endMin == 600 })
+
+        sessionStore.saveSession(
+            UserProfile(
+                id = "user_demo_rani",
+                fullName = "Rani Wijaya",
+                email = "pelanggan1@bantuin.test",
+                phone = "081234567890",
+                roles = setOf("customer")
+            )
+        )
 
         val draft = OrderDraft(
             categoryId = 2,
@@ -156,14 +179,14 @@ class FakeBantuinRepositoryTest {
             distanceKm = 1.8,
             lockInfo = lock
         )
-        val bookingId = (customerRepo.createBooking(draft) as AppResult.Success).data
-        val busyAfterBooking = (customerRepo.busyBlocks("p01", "2026-11-28") as AppResult.Success).data
+        val bookingId = (sharedRepo.createBooking(draft) as AppResult.Success).data
+        val busyAfterBooking = (sharedRepo.busyBlocks("p01", "2026-11-28") as AppResult.Success).data
         assertTrue(busyAfterBooking.any { it.startMin == 480 && it.endMin == 600 })
-        customerRepo.updateStatus(bookingId, BookingStatus.DIKONFIRMASI)
-        customerRepo.updateStatus(bookingId, BookingStatus.DALAM_PENGERJAAN)
-        customerRepo.updateStatus(bookingId, BookingStatus.SELESAI)
+        sharedRepo.updateStatus(bookingId, BookingStatus.DIKONFIRMASI)
+        sharedRepo.updateStatus(bookingId, BookingStatus.DALAM_PENGERJAAN)
+        sharedRepo.updateStatus(bookingId, BookingStatus.SELESAI)
 
-        val eventsRes = customerRepo.events(bookingId) as AppResult.Success
+        val eventsRes = sharedRepo.events(bookingId) as AppResult.Success
         assertEquals(
             listOf(
                 BookingStatus.PENDING,

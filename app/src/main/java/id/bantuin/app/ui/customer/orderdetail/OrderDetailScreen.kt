@@ -685,7 +685,7 @@ private fun ReviewSectionCard(
                     val isSelected = selectedTags.contains(tag)
                     Box(
                         modifier = Modifier
-                            .heightIn(min = 36.dp)
+                            .heightIn(min = 48.dp)
                             .clip(RoundedCornerShape(16.dp))
                             .background(if (isSelected) colors.primaryContainer else colors.surfaceSubtle)
                             .clickable(enabled = !isSubmitted) { onToggleTag(tag) }

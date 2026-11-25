@@ -100,8 +100,8 @@ class AuthViewModel(
             _uiState.update { it.copy(errorMessage = "Format email tidak valid") }
             return
         }
-        if (password.length < 6) {
-            _uiState.update { it.copy(errorMessage = "Kata sandi minimal 6 karakter") }
+        if (password.length < 8) {
+            _uiState.update { it.copy(errorMessage = "Kata sandi minimal 8 karakter") }
             return
         }
         if (normalizedPhone.isNotBlank() && !INDONESIA_PHONE_REGEX.matches(normalizedPhone)) {

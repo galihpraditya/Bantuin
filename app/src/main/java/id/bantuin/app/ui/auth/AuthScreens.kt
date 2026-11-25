@@ -309,7 +309,7 @@ fun RegisterScreen(
         OutlinedTextField(
             value = uiState.password,
             onValueChange = { viewModel.onPasswordChange(it) },
-            label = { Text("Kata Sandi (Min. 6 karakter)") },
+            label = { Text("Kata Sandi (Min. 8 karakter)") },
             visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(),
             trailingIcon = {
                 IconButton(onClick = { passwordVisible = !passwordVisible }) {
@@ -323,6 +323,9 @@ fun RegisterScreen(
             keyboardOptions = KeyboardOptions(
                 keyboardType = KeyboardType.Password,
                 imeAction = ImeAction.Done
+            ),
+            keyboardActions = KeyboardActions(
+                onDone = { viewModel.signUp { user -> onRegisterSuccess(user) } }
             ),
             modifier = Modifier.fillMaxWidth(),
             singleLine = true

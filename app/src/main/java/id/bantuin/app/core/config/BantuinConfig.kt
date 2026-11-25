@@ -43,4 +43,5 @@ object BantuinConfig {
     const val TRUST_MIN_THRESHOLD = 60.0
     const val CANCEL_RATE_MAX_PCT = 20.0
     const val LATE_TOLERANCE_MIN = 15
+    val MALANG_CENTER = id.bantuin.app.domain.model.GeoPoint(-7.9797, 112.6304)
 }

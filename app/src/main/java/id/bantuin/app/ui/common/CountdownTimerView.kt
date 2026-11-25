@@ -36,22 +36,21 @@ fun CountdownTimerView(
     val colors = BantuinTheme.colors
     val latestOnExpired by rememberUpdatedState(onExpired)
     var remainingSeconds by remember(targetEpochMillis) {
-        mutableLongStateOf((targetEpochMillis - System.currentTimeMillis()).coerceAtLeast(0) / 1000)
+        mutableLongStateOf(remainingCeilSeconds(targetEpochMillis))
     }
 
     LaunchedEffect(targetEpochMillis) {
-        if (remainingSeconds <= 0) {
-            latestOnExpired()
-            return@LaunchedEffect
-        }
-        while (remainingSeconds > 0) {
-            delay(1000)
-            val left = (targetEpochMillis - System.currentTimeMillis()).coerceAtLeast(0) / 1000
-            remainingSeconds = left
-            if (left <= 0) {
-                latestOnExpired()
+        while (true) {
+            val now = System.currentTimeMillis()
+            remainingSeconds = remainingCeilSeconds(targetEpochMillis)
+            if (now >= targetEpochMillis + 500L) {
+                repeat(3) { attempt ->
+                    latestOnExpired()
+                    if (attempt < 2) delay(2000L)
+                }
                 break
             }
+            delay(250L)
         }
     }
 
@@ -75,4 +74,9 @@ fun CountdownTimerView(
             color = colors.error
         )
     }
+}
+
+private fun remainingCeilSeconds(targetEpochMillis: Long): Long {
+    val diff = targetEpochMillis - System.currentTimeMillis()
+    return if (diff <= 0L) 0L else (diff + 999L) / 1000L
 }

@@ -127,7 +127,7 @@ class AuthViewModelTest {
     fun signUp_withShortPassword_showsValidationError() = runTest {
         viewModel.onNameChange("Dewi Sartika")
         viewModel.onEmailChange("dewi@bantuin.test")
-        viewModel.onPasswordChange("12345")
+        viewModel.onPasswordChange("1234567")
         viewModel.onPhoneChange("081298765432")
         var successCalled = false
 
@@ -135,7 +135,7 @@ class AuthViewModelTest {
         testDispatcher.scheduler.advanceUntilIdle()
 
         assertTrue(!successCalled)
-        assertEquals("Kata sandi minimal 6 karakter", viewModel.uiState.value.errorMessage)
+        assertEquals("Kata sandi minimal 8 karakter", viewModel.uiState.value.errorMessage)
     }
 
     @Test

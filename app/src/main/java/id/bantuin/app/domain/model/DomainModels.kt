@@ -198,6 +198,7 @@ data class BookingItem(
     val serviceName: String,
     val scheduledDate: String,
     val scheduledTime: String,
+    val scheduledDateIso: String = scheduledDate,
     val totalCost: Int,
     val status: BookingStatus,
     val address: String,

@@ -12,7 +12,7 @@ import id.bantuin.app.domain.model.ServiceItem
 import id.bantuin.app.domain.repository.UserProfile
 
 object FakeData {
-    val MALANG_CENTER = GeoPoint(-7.9797, 112.6304)
+    val MALANG_CENTER: GeoPoint get() = id.bantuin.app.core.config.BantuinConfig.MALANG_CENTER
 
     val categories = listOf(
         ServiceCategory(1, "Teknisi Listrik", "bolt", 60, "Korslet, saklar, panel & MCB"),

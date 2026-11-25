@@ -2,8 +2,8 @@ package id.bantuin.app.ui.customer.home
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import id.bantuin.app.core.config.BantuinConfig
 import id.bantuin.app.core.result.AppResult
-import id.bantuin.app.data.fake.FakeData
 import id.bantuin.app.domain.model.GeoPoint
 import id.bantuin.app.domain.model.ProviderCandidate
 import id.bantuin.app.domain.model.RankedProvider
@@ -25,7 +25,7 @@ import kotlinx.coroutines.launch
 data class CustomerHomeUiState(
     val user: UserProfile? = null,
     val customerAddress: String = "Jl. Ijen No. 25, Klojen, Kota Malang",
-    val customerLocation: GeoPoint = FakeData.MALANG_CENTER,
+    val customerLocation: GeoPoint = BantuinConfig.MALANG_CENTER,
     val locationSourceLabel: String = "Lokasi default (ketuk untuk atur)",
     val isLocationFromGps: Boolean = false,
     val isDetectingGps: Boolean = false,

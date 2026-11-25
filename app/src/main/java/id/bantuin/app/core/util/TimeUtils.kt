@@ -56,6 +56,11 @@ object TimeUtils {
         return ldt.hour * 60 + ldt.minute
     }
 
+    fun toWibDateIso(instant: Instant): String {
+        val ldt = instant.toLocalDateTime(WIB_ZONE)
+        return String.format(Locale.US, "%04d-%02d-%02d", ldt.year, ldt.monthNumber, ldt.dayOfMonth)
+    }
+
     fun todayIso(): String {
         val now = kotlinx.datetime.Clock.System.now()
         val ldt = now.toLocalDateTime(WIB_ZONE)
@@ -63,8 +68,15 @@ object TimeUtils {
     }
 
     fun toIsoString(dateIso: String, minuteOfDay: Int): String {
-        val hours = minuteOfDay / 60
-        val minutes = minuteOfDay % 60
-        return String.format(Locale.US, "%sT%02d:%02d:00+07:00", dateIso, hours, minutes)
+        val dayOffset = Math.floorDiv(minuteOfDay, 1440)
+        val minuteInDay = Math.floorMod(minuteOfDay, 1440)
+        val targetDate = if (dayOffset == 0) {
+            dateIso
+        } else {
+            java.time.LocalDate.parse(dateIso).plusDays(dayOffset.toLong()).toString()
+        }
+        val hours = minuteInDay / 60
+        val minutes = minuteInDay % 60
+        return String.format(Locale.US, "%sT%02d:%02d:00+07:00", targetDate, hours, minutes)
     }
 }

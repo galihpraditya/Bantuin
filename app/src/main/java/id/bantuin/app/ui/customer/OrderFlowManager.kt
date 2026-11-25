@@ -3,8 +3,8 @@ package id.bantuin.app.ui.customer
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import id.bantuin.app.core.config.BantuinConfig
 import id.bantuin.app.core.util.TimeUtils
-import id.bantuin.app.data.fake.FakeData
 import id.bantuin.app.domain.model.Complexity
 import id.bantuin.app.domain.model.CostEstimate
 import id.bantuin.app.domain.model.LockInfo
@@ -16,7 +16,7 @@ import id.bantuin.app.domain.model.ServiceItem
  * Shared state untuk alur pemesanan pelanggan (Screen 1 -> Screen 2 -> Screen 2b -> Screen 3 -> Screen 4 -> Screen 5).
  */
 class OrderFlowManager {
-    var customerLocation by mutableStateOf(FakeData.MALANG_CENTER)
+    var customerLocation by mutableStateOf(BantuinConfig.MALANG_CENTER)
     var customerAddress by mutableStateOf("Jl. Ijen No. 25, Klojen, Kota Malang")
     var selectedCategoryId by mutableStateOf(2) // Default AC & Elektronik
     var selectedProvider by mutableStateOf<ProviderCandidate?>(null)
@@ -59,5 +59,15 @@ class OrderFlowManager {
         orderNotes = ""
         currentEstimate = null
         currentLock = null
+    }
+
+    fun resetAll() {
+        customerLocation = BantuinConfig.MALANG_CENTER
+        customerAddress = "Jl. Ijen No. 25, Klojen, Kota Malang"
+        selectedCategoryId = 2
+        selectedDateIso = TimeUtils.todayIso()
+        selectedStartMin = 870
+        selectedDurationMin = 90
+        reset()
     }
 }

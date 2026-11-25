@@ -563,6 +563,8 @@ fun ScheduleScreen(
                 item {
                     ConflictAlertCard(
                         slotCheckResult = slotCheckResult,
+                        selectedStartMin = uiState.selectedStartMin,
+                        durationMin = uiState.service?.durationMin ?: 60,
                         existingBlocks = uiState.existingBlocks,
                         onSelectAlternative = { altMin -> viewModel.selectSlot(altMin) }
                     )
@@ -675,13 +677,17 @@ private fun TimeSlotItem(
 @Composable
 private fun ConflictAlertCard(
     slotCheckResult: SlotCheckResult,
+    selectedStartMin: Int = 0,
+    durationMin: Int = 60,
     existingBlocks: List<TimeBlock>,
     onSelectAlternative: (Int) -> Unit
 ) {
     val colors = BantuinTheme.colors
     val reasonDetail = when (slotCheckResult.reason) {
         ConflictReason.OVERLAP -> {
-            val block = existingBlocks.firstOrNull()
+            val requestedEnd = selectedStartMin + durationMin + id.bantuin.app.core.config.BantuinConfig.TRAVEL_BUFFER_MIN
+            val block = existingBlocks.firstOrNull { it.startMin < requestedEnd && selectedStartMin < it.endMin }
+                ?: existingBlocks.firstOrNull()
             if (block != null) {
                 "Slot beririsan dengan jadwal sibuk (${TimeUtils.formatMinuteOfDay(block.startMin, false)} - ${TimeUtils.formatMinuteOfDay(block.endMin)} termasuk buffer perjalanan)."
             } else {

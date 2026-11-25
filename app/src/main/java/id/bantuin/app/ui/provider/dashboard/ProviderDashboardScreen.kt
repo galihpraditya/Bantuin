@@ -111,6 +111,34 @@ fun ProviderDashboardScreen(
         contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 24.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
+        if (!uiState.errorMessage.isNullOrBlank()) {
+            item {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp),
+                    colors = CardDefaults.cardColors(containerColor = colors.errorContainer)
+                ) {
+                    Row(
+                        modifier = Modifier.padding(12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Warning,
+                            contentDescription = null,
+                            tint = colors.error,
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = uiState.errorMessage ?: "",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = colors.error
+                        )
+                    }
+                }
+            }
+        }
+
         // 1. Ringkasan Akun & Pengalih Peran
         item {
             Card(
@@ -330,6 +358,15 @@ fun ProviderDashboardScreen(
                         }
                     }
 
+                    if (!isAnomaly && (activeResult?.txCount ?: 0) < BantuinConfig.MIN_TX_FOR_EVALUATION) {
+                        Spacer(modifier = Modifier.height(10.dp))
+                        Text(
+                            text = "Skor awal 70 digunakan untuk Mitra Baru hingga mencapai minimal ${BantuinConfig.MIN_TX_FOR_EVALUATION} transaksi selesai.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = colors.textMuted
+                        )
+                    }
+
                     Spacer(modifier = Modifier.height(16.dp))
 
                     Box(
@@ -456,6 +493,7 @@ fun ProviderDashboardScreen(
                     } else {
                         val activePrimary = if (isAnomaly) colors.error else colors.primary
                         val mutedBar = colors.borderSubtle
+                        val dotCenterColor = colors.surface
 
                         Box(
                             modifier = Modifier
@@ -466,16 +504,40 @@ fun ProviderDashboardScreen(
                                 val count = snapshots.size.coerceAtLeast(1)
                                 val barWidth = (28.dp.toPx()).coerceAtMost((size.width / (count * 2f)))
                                 val spacing = (size.width - (barWidth * count)) / (count + 1)
-                                snapshots.forEachIndexed { idx, snap ->
+                                val points = snapshots.mapIndexed { idx, snap ->
                                     val x = spacing + idx * (barWidth + spacing)
                                     val barHeight = ((snap.trustScore.toFloat() / 100f).coerceIn(0.05f, 1f)) * (size.height - 12.dp.toPx())
                                     val y = size.height - barHeight
                                     val isLast = idx == snapshots.lastIndex
                                     drawRoundRect(
-                                        color = if (isLast) activePrimary else mutedBar,
+                                        color = if (isLast) activePrimary.copy(alpha = 0.25f) else mutedBar,
                                         topLeft = Offset(x, y),
                                         size = Size(barWidth, barHeight),
                                         cornerRadius = CornerRadius(6.dp.toPx(), 6.dp.toPx())
+                                    )
+                                    Offset(x + barWidth / 2f, y.coerceIn(6.dp.toPx(), size.height - 6.dp.toPx()))
+                                }
+                                for (i in 0 until points.lastIndex) {
+                                    drawLine(
+                                        color = activePrimary,
+                                        start = points[i],
+                                        end = points[i + 1],
+                                        strokeWidth = 2.5.dp.toPx(),
+                                        cap = StrokeCap.Round
+                                    )
+                                }
+                                points.forEachIndexed { idx, pt ->
+                                    val isLast = idx == points.lastIndex
+                                    drawCircle(
+                                        color = if (isLast) activePrimary else dotCenterColor,
+                                        radius = 4.dp.toPx(),
+                                        center = pt
+                                    )
+                                    drawCircle(
+                                        color = activePrimary,
+                                        radius = 4.dp.toPx(),
+                                        center = pt,
+                                        style = Stroke(width = 2.dp.toPx())
                                     )
                                 }
                             }

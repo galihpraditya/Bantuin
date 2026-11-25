@@ -45,6 +45,8 @@ class OrderDetailViewModel(
         _uiState.update { it.copy(bookingId = bookingId, isLoading = true, errorMessage = null) }
         observeJob = viewModelScope.launch {
             bookingRepository.expirePending()
+            bookingRepository.myBookingsCustomer()
+            bookingRepository.myBookingsProvider()
             bookingRepository.observeBooking(bookingId)
                 .catch { e ->
                     _uiState.update {

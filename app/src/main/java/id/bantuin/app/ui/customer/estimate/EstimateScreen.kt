@@ -50,7 +50,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -86,7 +88,11 @@ fun EstimateScreen(
     val provider = orderFlow.selectedProvider
     val service = orderFlow.selectedService
 
+    var isNavigatingBack by remember { mutableStateOf(false) }
+
     fun handleBack() {
+        if (isNavigatingBack) return
+        isNavigatingBack = true
         viewModel.releaseLock {
             orderFlow.currentLock = null
             onNavigateBack()

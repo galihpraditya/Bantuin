@@ -42,6 +42,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -49,10 +50,10 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import id.bantuin.app.core.config.BantuinConfig
 import id.bantuin.app.core.theme.InMemoryThemeStore
 import id.bantuin.app.core.theme.ThemeMode
 import id.bantuin.app.core.theme.ThemePreferenceStore
-import id.bantuin.app.data.fake.FakeData
 import id.bantuin.app.domain.repository.BantuinRepository
 import id.bantuin.app.ui.common.BantuinTopAppBar
 import id.bantuin.app.ui.common.BantuinViewModelFactory
@@ -72,7 +73,7 @@ fun CustomerProfileScreen(
     val colors = BantuinTheme.colors
     val user = uiState.user
     val hasProviderRole = user?.roles?.contains("provider") == true
-    var showUpgradeDialog by remember { mutableStateOf(false) }
+    var showUpgradeDialog by rememberSaveable { mutableStateOf(false) }
 
     Column(
         modifier = modifier
@@ -273,14 +274,29 @@ fun CustomerProfileScreen(
     }
 
     if (showUpgradeDialog) {
-        var addressInput by remember { mutableStateOf("Malang, Jawa Timur") }
-        var bioInput by remember { mutableStateOf("") }
+        var addressInput by rememberSaveable { mutableStateOf("Malang, Jawa Timur") }
+        var bioInput by rememberSaveable { mutableStateOf("") }
 
         AlertDialog(
             onDismissRequest = { showUpgradeDialog = false },
             title = { Text("Aktifkan Profil Mitra Kerja") },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    if (!uiState.errorMessage.isNullOrBlank()) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(colors.errorContainer)
+                                .padding(horizontal = 10.dp, vertical = 8.dp)
+                        ) {
+                            Text(
+                                text = uiState.errorMessage ?: "",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = colors.error
+                            )
+                        }
+                    }
                     Text(
                         text = "Lengkapi alamat basis layanan dan ringkasan keahlian untuk mulai menerima pesanan sebagai mitra.",
                         style = MaterialTheme.typography.bodySmall,
@@ -307,7 +323,7 @@ fun CustomerProfileScreen(
                     onClick = {
                         viewModel.activateProviderMode(
                             address = addressInput,
-                            location = FakeData.MALANG_CENTER,
+                            location = BantuinConfig.MALANG_CENTER,
                             bio = bioInput,
                             onSuccess = {
                                 showUpgradeDialog = false

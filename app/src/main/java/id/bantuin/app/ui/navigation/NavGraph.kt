@@ -155,6 +155,7 @@ fun BantuinNavGraph(
                         }
                     },
                     onSwitchToProviderUnauthorized = {
+                        orderFlow.resetAll()
                         navController.navigate(Routes.LOGIN) {
                             popUpTo(0) { inclusive = true }
                         }
@@ -278,11 +279,13 @@ fun BantuinNavGraph(
                         }
                     },
                     onSwitchRoleUnauthorized = {
+                        orderFlow.resetAll()
                         navController.navigate(Routes.LOGIN) {
                             popUpTo(0) { inclusive = true }
                         }
                     },
                     onSignOut = {
+                        orderFlow.resetAll()
                         navController.navigate(Routes.LOGIN) {
                             popUpTo(0) { inclusive = true }
                         }
@@ -301,6 +304,7 @@ fun BantuinNavGraph(
                         }
                     },
                     onSwitchToCustomerUnauthorized = {
+                        orderFlow.resetAll()
                         navController.navigate(Routes.LOGIN) {
                             popUpTo(0) { inclusive = true }
                         }
@@ -329,11 +333,13 @@ fun BantuinNavGraph(
                         }
                     },
                     onSwitchToCustomerUnauthorized = {
+                        orderFlow.resetAll()
                         navController.navigate(Routes.LOGIN) {
                             popUpTo(0) { inclusive = true }
                         }
                     },
                     onSignOut = {
+                        orderFlow.resetAll()
                         navController.navigate(Routes.LOGIN) {
                             popUpTo(0) { inclusive = true }
                         }

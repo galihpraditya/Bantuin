@@ -239,9 +239,8 @@ class FakeBantuinRepository(
         val nowMs = System.currentTimeMillis()
         activeLocks.entries.removeIf { it.value.second.expiresAtMillis <= nowMs || it.value.first == currentUserId }
 
-        val endWithBuffer = endMin + BantuinConfig.TRAVEL_BUFFER_MIN
         val busy = (busyBlocks(providerId, dateIso) as? AppResult.Success)?.data.orEmpty()
-        if (busy.any { it.startMin < endWithBuffer && startMin < it.endMin }) {
+        if (busy.any { it.startMin < endMin && startMin < it.endMin }) {
             return AppResult.Error("Slot baru saja diambil, pilih jam lain")
         }
 
@@ -280,7 +279,7 @@ class FakeBantuinRepository(
 
         val now = Clock.System.now()
         val bookingId = "bti_" + UUID.randomUUID().toString().take(8)
-        val endWithBuffer = draft.startMin + draft.durationMin + BantuinConfig.TRAVEL_BUFFER_MIN
+        val endWithBuffer = draft.lockInfo?.endMin ?: (draft.startMin + draft.durationMin + BantuinConfig.TRAVEL_BUFFER_MIN)
         val newBooking = BookingItem(
             id = bookingId,
             customerId = customerId,
