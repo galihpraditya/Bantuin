@@ -1,7 +1,9 @@
 package id.bantuin.app.ui.customer.providerdetail
 
+import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -41,6 +43,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -51,6 +54,7 @@ import id.bantuin.app.core.util.CurrencyUtils
 import id.bantuin.app.core.util.TimeUtils
 import id.bantuin.app.domain.model.ServiceItem
 import id.bantuin.app.domain.repository.BantuinRepository
+import id.bantuin.app.ui.common.BantuinServiceIcon
 import id.bantuin.app.ui.common.BantuinViewModelFactory
 import id.bantuin.app.ui.common.EmptyView
 import id.bantuin.app.ui.common.ErrorView
@@ -59,6 +63,7 @@ import id.bantuin.app.ui.common.ProviderBadgeChip
 import id.bantuin.app.ui.common.RatingDisplay
 import id.bantuin.app.ui.customer.OrderFlowManager
 import id.bantuin.app.ui.theme.BantuinTheme
+import id.bantuin.app.ui.theme.bantuinPressScale
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -240,11 +245,16 @@ fun ProviderDetailScreen(
                         }
                     } else {
                         items(uiState.services, key = { it.id }) { service ->
+                            val serviceInteraction = remember { MutableInteractionSource() }
                             Card(
                                 modifier = Modifier
                                     .fillMaxWidth()
+                                    .bantuinPressScale(serviceInteraction, targetScale = 0.97f)
                                     .clip(RoundedCornerShape(14.dp))
-                                    .clickable {
+                                    .clickable(
+                                        interactionSource = serviceInteraction,
+                                        indication = LocalIndication.current
+                                    ) {
                                         orderFlow.selectedProvider = provider
                                         orderFlow.selectedService = service
                                         orderFlow.selectedDurationMin = service.durationMin
@@ -259,13 +269,19 @@ fun ProviderDetailScreen(
                                 Column(modifier = Modifier.padding(14.dp)) {
                                     Row(
                                         modifier = Modifier.fillMaxWidth(),
-                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        horizontalArrangement = Arrangement.spacedBy(10.dp),
                                         verticalAlignment = Alignment.CenterVertically
                                     ) {
+                                        BantuinServiceIcon(
+                                            categoryId = service.categoryId,
+                                            size = 38.dp,
+                                            cornerRadius = 12.dp
+                                        )
                                         Text(
                                             text = service.name,
                                             style = MaterialTheme.typography.titleSmall,
-                                            color = colors.textPrimary
+                                            color = colors.textPrimary,
+                                            modifier = Modifier.weight(1f)
                                         )
                                         Text(
                                             text = CurrencyUtils.formatRupiah(service.baseFare),

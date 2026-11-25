@@ -2,6 +2,7 @@ package id.bantuin.app.ui.customer.recommendation
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -44,6 +45,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -55,6 +57,7 @@ import id.bantuin.app.core.util.CurrencyUtils
 import id.bantuin.app.domain.model.ProviderCandidate
 import id.bantuin.app.domain.model.RankedProvider
 import id.bantuin.app.domain.repository.BantuinRepository
+import id.bantuin.app.ui.common.BantuinServiceIcon
 import id.bantuin.app.ui.common.BantuinViewModelFactory
 import id.bantuin.app.ui.common.EmptyView
 import id.bantuin.app.ui.common.ErrorView
@@ -63,6 +66,7 @@ import id.bantuin.app.ui.common.ProviderBadgeChip
 import id.bantuin.app.ui.common.RatingDisplay
 import id.bantuin.app.ui.customer.OrderFlowManager
 import id.bantuin.app.ui.theme.BantuinTheme
+import id.bantuin.app.ui.theme.bantuinPressScale
 import java.util.Locale
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -92,25 +96,35 @@ fun RecommendationScreen(
         topBar = {
             TopAppBar(
                 title = {
-                    Column {
-                        Text(
-                            text = category.name,
-                            style = MaterialTheme.typography.titleLarge,
-                            color = colors.textPrimary
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        BantuinServiceIcon(
+                            categoryId = categoryId,
+                            size = 38.dp,
+                            cornerRadius = 12.dp
                         )
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(
-                                imageVector = Icons.Default.LocationOn,
-                                contentDescription = null,
-                                tint = colors.primary,
-                                modifier = Modifier.size(12.dp)
-                            )
-                            Spacer(modifier = Modifier.width(3.dp))
+                        Column {
                             Text(
-                                text = "Radius ${uiState.maxDistanceFilter.toInt()} km • ${filteredList.size} Siap Booking",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = colors.textSecondary
+                                text = category.name,
+                                style = MaterialTheme.typography.titleLarge,
+                                color = colors.textPrimary
                             )
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(
+                                    imageVector = Icons.Default.LocationOn,
+                                    contentDescription = null,
+                                    tint = colors.primary,
+                                    modifier = Modifier.size(12.dp)
+                                )
+                                Spacer(modifier = Modifier.width(3.dp))
+                                Text(
+                                    text = "Radius ${uiState.maxDistanceFilter.toInt()} km • ${filteredList.size} Siap Booking",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = colors.textSecondary
+                                )
+                            }
                         }
                     }
                 },
@@ -453,15 +467,19 @@ private fun ProviderRecommendationCard(
                     )
                 }
 
+                val selectInteraction = remember { MutableInteractionSource() }
                 Button(
                     onClick = onSelect,
+                    interactionSource = selectInteraction,
                     colors = ButtonDefaults.buttonColors(
                         containerColor = colors.primary,
                         contentColor = colors.onPrimary
                     ),
                     shape = RoundedCornerShape(10.dp),
                     contentPadding = PaddingValues(horizontal = 16.dp, vertical = 10.dp),
-                    modifier = Modifier.heightIn(min = 48.dp)
+                    modifier = Modifier
+                        .heightIn(min = 48.dp)
+                        .bantuinPressScale(selectInteraction, targetScale = 0.95f)
                 ) {
                     Text(
                         text = "Pilih Mitra Ini",

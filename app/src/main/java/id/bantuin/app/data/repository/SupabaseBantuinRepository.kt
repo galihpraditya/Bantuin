@@ -1593,7 +1593,7 @@ class SupabaseBantuinRepository(
         3 -> "Atap bocor, kran air, cat dinding"
         4 -> "Deep clean kamar mandi & kos"
         5 -> "Pindahan kos, perabot & lemari"
-        6 -> "Matematika, sains, bahasa & les"
+        6 -> "Saluran mampet, pompa air & tandon"
         else -> "Layanan jasa profesional"
     }
 

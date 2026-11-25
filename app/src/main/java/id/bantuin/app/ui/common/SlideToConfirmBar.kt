@@ -40,7 +40,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.disabled
 import androidx.compose.ui.semantics.onClick
@@ -64,6 +66,7 @@ fun SlideToConfirmBar(
 ) {
     val colors = BantuinTheme.colors
     val density = LocalDensity.current
+    val haptic = LocalHapticFeedback.current
     val scope = rememberCoroutineScope()
 
     val trackHeight = 60.dp
@@ -72,13 +75,16 @@ fun SlideToConfirmBar(
 
     val dragOffsetPx = remember { Animatable(0f) }
     var triggered by remember { mutableStateOf(false) }
+    var thresholdHapticFired by remember { mutableStateOf(false) }
 
     LaunchedEffect(enabled, isLoading) {
         if (!enabled) {
             triggered = false
+            thresholdHapticFired = false
             dragOffsetPx.snapTo(0f)
         } else if (!isLoading && triggered) {
             triggered = false
+            thresholdHapticFired = false
             dragOffsetPx.animateTo(0f, spring(stiffness = Spring.StiffnessMediumLow))
         }
     }
@@ -170,12 +176,20 @@ fun SlideToConfirmBar(
                             scope.launch {
                                 val next = (dragOffsetPx.value + delta).coerceIn(0f, maxDragPx)
                                 dragOffsetPx.snapTo(next)
+                                val nextRatio = next / maxDragPx
+                                if (nextRatio >= 0.85f && !thresholdHapticFired) {
+                                    thresholdHapticFired = true
+                                    haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                } else if (nextRatio < 0.80f) {
+                                    thresholdHapticFired = false
+                                }
                             }
                         },
                         onDragStopped = {
                             val ratio = dragOffsetPx.value / maxDragPx
                             if (ratio >= 0.85f && !triggered) {
                                 triggered = true
+                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                                 scope.launch {
                                     dragOffsetPx.animateTo(
                                         maxDragPx,
@@ -184,6 +198,7 @@ fun SlideToConfirmBar(
                                 }
                                 onConfirmed()
                             } else {
+                                thresholdHapticFired = false
                                 scope.launch {
                                     dragOffsetPx.animateTo(
                                         0f,

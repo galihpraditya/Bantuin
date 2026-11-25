@@ -1,5 +1,6 @@
 package id.bantuin.app.ui.provider.orders
 
+import androidx.compose.animation.core.Animatable
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -45,6 +46,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -59,7 +61,9 @@ import id.bantuin.app.ui.common.EmptyView
 import id.bantuin.app.ui.common.ErrorView
 import id.bantuin.app.ui.common.LoadingView
 import id.bantuin.app.ui.common.SlideToConfirmBar
+import id.bantuin.app.ui.theme.BantuinMotion
 import id.bantuin.app.ui.theme.BantuinTheme
+import id.bantuin.app.ui.theme.rememberReducedMotion
 
 @Composable
 fun CompleteOrderConfirmScreen(
@@ -339,6 +343,15 @@ fun CompleteOrderConfirmScreen(
 
                     // 4. SlideToConfirmBar atau Status Selesai
                     if (uiState.isCompleted) {
+                        val reducedMotion = rememberReducedMotion()
+                        val popScale = androidx.compose.runtime.remember {
+                            Animatable(if (reducedMotion) 1f else 0.55f)
+                        }
+                        LaunchedEffect(uiState.isCompleted) {
+                            if (!reducedMotion) {
+                                popScale.animateTo(1f, BantuinMotion.bouncySpring())
+                            }
+                        }
                         Card(
                             modifier = Modifier.fillMaxWidth(),
                             shape = RoundedCornerShape(14.dp),
@@ -354,6 +367,10 @@ fun CompleteOrderConfirmScreen(
                                 Box(
                                     modifier = Modifier
                                         .size(44.dp)
+                                        .graphicsLayer {
+                                            scaleX = popScale.value
+                                            scaleY = popScale.value
+                                        }
                                         .clip(CircleShape)
                                         .background(colors.success),
                                     contentAlignment = Alignment.Center

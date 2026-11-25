@@ -1,7 +1,20 @@
 package id.bantuin.app.ui.provider.home
 
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.animateIntAsState
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.snap
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -42,11 +55,13 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -64,6 +79,8 @@ import id.bantuin.app.ui.common.BantuinViewModelFactory
 import id.bantuin.app.ui.common.LoadingView
 import id.bantuin.app.ui.navigation.Routes
 import id.bantuin.app.ui.theme.BantuinTheme
+import id.bantuin.app.ui.theme.bantuinPressScale
+import id.bantuin.app.ui.theme.rememberReducedMotion
 import java.util.Locale
 
 @Composable
@@ -156,11 +173,7 @@ fun ProviderHomeScreen(
                             )
                         }
                         Spacer(modifier = Modifier.width(8.dp))
-                        BadgeContainer(
-                            text = if (isAccepting) "Terima Pesanan" else "Sedang Istirahat",
-                            color = if (isAccepting) colors.success else colors.warning,
-                            backgroundColor = if (isAccepting) colors.successContainer else colors.warningContainer
-                        )
+                        AnimatedProviderStatusPill(isAccepting = isAccepting)
                     }
 
                     HorizontalDivider(color = colors.borderSubtle)
@@ -224,68 +237,84 @@ fun ProviderHomeScreen(
                     modifier = Modifier.padding(16.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Column(modifier = Modifier.weight(1f)) {
+                        val reducedMotion = rememberReducedMotion()
+                        val animatedAvailable by animateIntAsState(
+                            targetValue = uiState.availableBalance,
+                            animationSpec = if (reducedMotion) snap() else tween(450),
+                            label = "availableBalanceAnim"
+                        )
+                        val animatedTotalRevenue by animateIntAsState(
+                            targetValue = uiState.totalCombinedRevenue,
+                            animationSpec = if (reducedMotion) snap() else tween(450),
+                            label = "totalRevenueAnim"
+                        )
+                        val withdrawInteraction = remember { MutableInteractionSource() }
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = "Saldo Siap Cair (QRIS)",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = colors.textSecondary
+                                )
+                                Spacer(modifier = Modifier.height(4.dp))
+                                Text(
+                                    text = CurrencyUtils.formatRupiah(animatedAvailable),
+                                    style = MaterialTheme.typography.headlineMedium.copy(
+                                        fontFeatureSettings = "tnum"
+                                    ),
+                                    color = colors.primary,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+
+                            Button(
+                                onClick = { onNavigateToRoute(Routes.PROVIDER_WITHDRAW) },
+                                interactionSource = withdrawInteraction,
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = colors.primary,
+                                    contentColor = colors.onPrimary
+                                ),
+                                shape = RoundedCornerShape(10.dp),
+                                modifier = Modifier
+                                    .heightIn(min = 48.dp)
+                                    .bantuinPressScale(withdrawInteraction, targetScale = 0.95f)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.AccountBalanceWallet,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text("Tarik Dana", style = MaterialTheme.typography.labelLarge)
+                            }
+                        }
+
+                        HorizontalDivider(color = colors.borderSubtle)
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
                             Text(
-                                text = "Saldo Siap Cair (QRIS)",
-                                style = MaterialTheme.typography.labelMedium,
+                                text = "Total Pendapatan Keseluruhan",
+                                style = MaterialTheme.typography.bodySmall,
                                 color = colors.textSecondary
                             )
-                            Spacer(modifier = Modifier.height(4.dp))
                             Text(
-                                text = CurrencyUtils.formatRupiah(uiState.availableBalance),
-                                style = MaterialTheme.typography.headlineMedium.copy(
+                                text = CurrencyUtils.formatRupiah(animatedTotalRevenue),
+                                style = MaterialTheme.typography.labelLarge.copy(
                                     fontFeatureSettings = "tnum"
                                 ),
-                                color = colors.primary,
+                                color = colors.textPrimary,
                                 fontWeight = FontWeight.Bold
                             )
                         }
-
-                        Button(
-                            onClick = { onNavigateToRoute(Routes.PROVIDER_WITHDRAW) },
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = colors.primary,
-                                contentColor = colors.onPrimary
-                            ),
-                            shape = RoundedCornerShape(10.dp),
-                            modifier = Modifier.heightIn(min = 48.dp)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.AccountBalanceWallet,
-                                contentDescription = null,
-                                modifier = Modifier.size(16.dp)
-                            )
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text("Tarik Dana", style = MaterialTheme.typography.labelLarge)
-                        }
-                    }
-
-                    HorizontalDivider(color = colors.borderSubtle)
-
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            text = "Total Pendapatan Keseluruhan",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = colors.textSecondary
-                        )
-                        Text(
-                            text = CurrencyUtils.formatRupiah(uiState.totalCombinedRevenue),
-                            style = MaterialTheme.typography.labelLarge.copy(
-                                fontFeatureSettings = "tnum"
-                            ),
-                            color = colors.textPrimary,
-                            fontWeight = FontWeight.Bold
-                        )
-                    }
                 }
             }
         }
@@ -386,6 +415,65 @@ fun ProviderHomeScreen(
 }
 
 @Composable
+private fun AnimatedProviderStatusPill(isAccepting: Boolean) {
+    val colors = BantuinTheme.colors
+    val reducedMotion = rememberReducedMotion()
+    AnimatedContent(
+        targetState = isAccepting,
+        transitionSpec = {
+            if (reducedMotion) {
+                fadeIn(snap()) togetherWith fadeOut(snap())
+            } else {
+                fadeIn(tween(200)) togetherWith fadeOut(tween(150))
+            }
+        },
+        label = "providerStatusPill"
+    ) { active ->
+        val fg = if (active) colors.success else colors.warning
+        val bg = if (active) colors.successContainer else colors.warningContainer
+        Row(
+            modifier = Modifier
+                .clip(RoundedCornerShape(12.dp))
+                .background(bg)
+                .padding(horizontal = 10.dp, vertical = 5.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            if (active) {
+                val dotScale = if (reducedMotion) {
+                    1f
+                } else {
+                    val inf = rememberInfiniteTransition(label = "statusDot")
+                    val anim by inf.animateFloat(
+                        initialValue = 0.85f,
+                        targetValue = 1.25f,
+                        animationSpec = infiniteRepeatable(tween(850), RepeatMode.Reverse),
+                        label = "dotScale"
+                    )
+                    anim
+                }
+                Box(
+                    modifier = Modifier
+                        .size(8.dp)
+                        .graphicsLayer {
+                            scaleX = dotScale
+                            scaleY = dotScale
+                        }
+                        .clip(CircleShape)
+                        .background(fg)
+                )
+            }
+            Text(
+                text = if (active) "Terima Pesanan" else "Sedang Istirahat",
+                style = MaterialTheme.typography.labelSmall,
+                color = fg,
+                fontWeight = FontWeight.Bold
+            )
+        }
+    }
+}
+
+@Composable
 private fun HomeStatTile(
     title: String,
     count: String,
@@ -395,10 +483,16 @@ private fun HomeStatTile(
     modifier: Modifier = Modifier
 ) {
     val colors = BantuinTheme.colors
+    val interactionSource = remember { MutableInteractionSource() }
     Card(
         modifier = modifier
+            .bantuinPressScale(interactionSource, targetScale = 0.95f)
             .clip(RoundedCornerShape(14.dp))
-            .clickable(onClick = onClick),
+            .clickable(
+                interactionSource = interactionSource,
+                indication = LocalIndication.current,
+                onClick = onClick
+            ),
         shape = RoundedCornerShape(14.dp),
         colors = CardDefaults.cardColors(containerColor = colors.surface),
         border = CardDefaults.outlinedCardBorder().copy(brush = SolidColor(colors.borderSubtle))
@@ -591,12 +685,18 @@ private fun OperationalShortcutItem(
     onClick: () -> Unit
 ) {
     val colors = BantuinTheme.colors
+    val interactionSource = remember { MutableInteractionSource() }
     Card(
         modifier = Modifier
             .fillMaxWidth()
             .heightIn(min = 64.dp)
+            .bantuinPressScale(interactionSource, targetScale = 0.97f)
             .clip(RoundedCornerShape(14.dp))
-            .clickable(onClick = onClick),
+            .clickable(
+                interactionSource = interactionSource,
+                indication = LocalIndication.current,
+                onClick = onClick
+            ),
         shape = RoundedCornerShape(14.dp),
         colors = CardDefaults.cardColors(containerColor = colors.surface),
         border = CardDefaults.outlinedCardBorder().copy(brush = SolidColor(colors.borderSubtle))

@@ -20,7 +20,7 @@ object FakeData {
         ServiceCategory(3, "Tukang Bangunan", "construction", 180, "Atap bocor, kran air, cat dinding"),
         ServiceCategory(4, "Jasa Kebersihan", "cleaning_services", 120, "Deep clean kamar mandi & kos"),
         ServiceCategory(5, "Angkut Barang", "local_shipping", 120, "Pindahan kos, perabot & lemari"),
-        ServiceCategory(6, "Pengajar Privat", "school", 90, "Kalkulus, Fisika Dasar, TOEFL & Ngaji")
+        ServiceCategory(6, "Pipa & Pompa Air", "plumbing", 90, "Saluran mampet, pompa air & tandon")
     )
 
     // 15 Mitra Demo dengan variasi lengkap sesuai PRD Bagian 13
@@ -217,20 +217,20 @@ object FakeData {
             minBaseFare = 100000,
             responseTimeText = "~15 mnt"
         ),
-        // 13. Privat: Anisa Les Privat (Terpercaya)
+        // 13. Pipa & Pompa Air: Hendra Sanjaya (Terpercaya)
         ProviderCandidate(
             providerId = "p13",
-            name = "Anisa Rahmawati, S.Si.",
+            name = "Hendra Sanjaya",
             avatarUrl = null,
             location = GeoPoint(-7.9720, 112.6350), // ~1.1 km
             address = "Jl. Bandung No. 8, Klojen, Malang",
-            bio = "Tutor Sains & Matematika, alumni UB berprestasi.",
+            bio = "Ahli instalasi pipa, perbaikan pompa air & kuras tandon bersih.",
             ratingAvg = 5.0,
             reviewCount = 35,
             completionRate = 1.0,
             flagAnomaly = false,
             badge = ProviderBadge.TRUSTED,
-            minBaseFare = 60000,
+            minBaseFare = 65000,
             responseTimeText = "< 10 mnt"
         ),
         // 14. Mitra Luar Radius (11 km - out of range)
@@ -354,7 +354,7 @@ object FakeData {
         ServiceItem("s09", "p09", 3, "Darurat Bocor Atap Kos", "Penambalan genteng dan talang darurat", 90000, 180),
         ServiceItem("s10", "p10", 4, "Deep Clean Kamar Mandi Kos", "Pembersihan kerak keramik, kloset & dinding kamar mandi", 50000, 120),
         ServiceItem("s11", "p12", 5, "Angkut Pindahan Kos", "Pick-up dan bantuan angkat barang kos hingga sampai tujuan", 100000, 120),
-        ServiceItem("s12", "p13", 6, "Bimbingan Belajar Privat (90 mnt)", "Bimbingan satu lawan satu mata kuliah / pelajaran sekolah", 60000, 90),
+        ServiceItem("s12", "p13", 6, "Servis Pompa Air & Saluran Pipa", "Perbaikan pompa air mati, pipa bocor, dan saluran mampet", 65000, 90),
         ServiceItem("s13", "p05", 1, "Perbaikan Kelistrikan Rumah", "Perbaikan saklar rusak dan pengecekan jalur", 40000, 60),
         ServiceItem("s14", "p06", 1, "Instalasi Listrik Kos", "Pemasangan jalur lampu dan fiting", 45000, 60),
         ServiceItem("s15", "p07", 1, "Perbaikan Lampu & Fitting", "Ganti instalasi fiting dan lampu kos", 40000, 45),

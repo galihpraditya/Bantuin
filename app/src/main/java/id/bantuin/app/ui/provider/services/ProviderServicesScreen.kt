@@ -343,7 +343,7 @@ private fun UpsertServiceDialog(
             ServiceCategory(3, "Pipa & Sanitasi", "plumbing", 75, ""),
             ServiceCategory(4, "Kebersihan Kos", "cleaning", 120, ""),
             ServiceCategory(5, "Angkut & Pindahan", "moving", 150, ""),
-            ServiceCategory(6, "Les Privat", "tutor", 90, "")
+            ServiceCategory(6, "Pipa & Pompa Air", "plumbing", 90, "")
         )
     }
     val initialCatId = existing?.categoryId ?: availableCats.first().id

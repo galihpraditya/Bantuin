@@ -14,7 +14,7 @@ values
   (3, 'Tukang Bangunan', 'construction', 180),
   (4, 'Jasa Kebersihan', 'cleaning_services', 120),
   (5, 'Angkut Barang', 'local_shipping', 120),
-  (6, 'Pengajar Privat', 'school', 90)
+  (6, 'Pipa & Pompa Air', 'plumbing', 90)
 on conflict (id) do update set
   name = excluded.name,
   icon = excluded.icon,
@@ -43,7 +43,7 @@ values
   ('00000000-0000-0000-0000-000000000010', '00000000-0000-0000-0000-000000000010', 'authenticated', 'authenticated', 'mitra10@bantuin.test', crypt('Demo12345!', gen_salt('bf')), now(), '{"provider":"email","providers":["email"]}', '{"full_name":"Bu Siti Deep Clean","phone":"081200000010","roles":["provider"]}', now(), now()),
   ('00000000-0000-0000-0000-000000000011', '00000000-0000-0000-0000-000000000011', 'authenticated', 'authenticated', 'mitra11@bantuin.test', crypt('Demo12345!', gen_salt('bf')), now(), '{"provider":"email","providers":["email"]}', '{"full_name":"Klin Kos Ceria","phone":"081200000011","roles":["provider"]}', now(), now()),
   ('00000000-0000-0000-0000-000000000012', '00000000-0000-0000-0000-000000000012', 'authenticated', 'authenticated', 'mitra12@bantuin.test', crypt('Demo12345!', gen_salt('bf')), now(), '{"provider":"email","providers":["email"]}', '{"full_name":"Dimas Pick-up Angkut","phone":"081200000012","roles":["provider"]}', now(), now()),
-  ('00000000-0000-0000-0000-000000000013', '00000000-0000-0000-0000-000000000013', 'authenticated', 'authenticated', 'mitra13@bantuin.test', crypt('Demo12345!', gen_salt('bf')), now(), '{"provider":"email","providers":["email"]}', '{"full_name":"Anisa Rahmawati, S.Si.","phone":"081200000013","roles":["provider"]}', now(), now()),
+  ('00000000-0000-0000-0000-000000000013', '00000000-0000-0000-0000-000000000013', 'authenticated', 'authenticated', 'mitra13@bantuin.test', crypt('Demo12345!', gen_salt('bf')), now(), '{"provider":"email","providers":["email"]}', '{"full_name":"Hendra Sanjaya","phone":"081200000013","roles":["provider"]}', now(), now()),
   ('00000000-0000-0000-0000-000000000014', '00000000-0000-0000-0000-000000000014', 'authenticated', 'authenticated', 'mitra14@bantuin.test', crypt('Demo12345!', gen_salt('bf')), now(), '{"provider":"email","providers":["email"]}', '{"full_name":"Teknisi Kepanjen Mandiri","phone":"081200000014","roles":["provider"]}', now(), now()),
   ('00000000-0000-0000-0000-000000000015', '00000000-0000-0000-0000-000000000015', 'authenticated', 'authenticated', 'mitra15@bantuin.test', crypt('Demo12345!', gen_salt('bf')), now(), '{"provider":"email","providers":["email"]}', '{"full_name":"Bambang Libur Service","phone":"081200000015","roles":["provider"]}', now(), now())
 on conflict (id) do nothing;
@@ -104,7 +104,7 @@ values
   ('00000000-0000-0000-0000-000000000010', 'Bu Siti Deep Clean', '081200000010', array['provider']),
   ('00000000-0000-0000-0000-000000000011', 'Klin Kos Ceria', '081200000011', array['provider']),
   ('00000000-0000-0000-0000-000000000012', 'Dimas Pick-up Angkut', '081200000012', array['provider']),
-  ('00000000-0000-0000-0000-000000000013', 'Anisa Rahmawati, S.Si.', '081200000013', array['provider']),
+  ('00000000-0000-0000-0000-000000000013', 'Hendra Sanjaya', '081200000013', array['provider']),
   ('00000000-0000-0000-0000-000000000014', 'Teknisi Kepanjen Mandiri', '081200000014', array['provider']),
   ('00000000-0000-0000-0000-000000000015', 'Bambang Libur Service', '081200000015', array['provider'])
 on conflict (id) do update set
@@ -142,8 +142,8 @@ values
   ('00000000-0000-0000-0000-000000000011', 'Jasa kebersihan higienis untuk kos mahasiswa.', 'Jl. Semeru No. 3, Klojen, Malang', -7.9780, 112.6280, false, null, null, null, 0.00, 70.00, 1, false, 'NEW', now()),
   -- 12. Dimas Pick-up Angkut (Angkut - Terpercaya)
   ('00000000-0000-0000-0000-000000000012', 'Armada bersih, terpal aman, bantu angkat barang sampai kamar.', 'Jl. Tlogomas No. 15, Malang', -7.9400, 112.6200, false, 4.80, 0.9500, 93.00, 2.50, 87.00, 42, false, 'TRUSTED', now()),
-  -- 13. Anisa Rahmawati, S.Si. (Privat - Terpercaya)
-  ('00000000-0000-0000-0000-000000000013', 'Tutor Sains & Matematika, alumni UB berprestasi.', 'Jl. Bandung No. 8, Klojen, Malang', -7.9720, 112.6350, false, 5.00, 1.0000, 99.00, 0.00, 96.00, 35, false, 'TRUSTED', now()),
+  -- 13. Hendra Sanjaya (Pipa & Pompa Air - Terpercaya)
+  ('00000000-0000-0000-0000-000000000013', 'Ahli instalasi pipa, perbaikan pompa air & kuras tandon bersih.', 'Jl. Bandung No. 8, Klojen, Malang', -7.9720, 112.6350, false, 5.00, 1.0000, 99.00, 0.00, 96.00, 35, false, 'TRUSTED', now()),
   -- 14. Teknisi Kepanjen Mandiri (Luar Radius 17 km)
   ('00000000-0000-0000-0000-000000000014', 'Layanan spesialis wilayah Malang Selatan.', 'Jl. Panji No. 80, Kepanjen, Malang', -8.1300, 112.5700, false, 4.70, 0.9500, 91.00, 2.00, 82.00, 18, false, 'TRUSTED', now()),
   -- 15. Bambang Libur Service (Semua Hari OFF)
@@ -194,8 +194,8 @@ values
   ('10000000-0000-0000-0000-000000000014', '00000000-0000-0000-0000-000000000011', 4, 'Pembersihan Kamar Kos', 'Sapu, pel, lap perabot kamar kos', 45000, 90, true),
   -- Dimas (p12) - Angkut
   ('10000000-0000-0000-0000-000000000015', '00000000-0000-0000-0000-000000000012', 5, 'Angkut Pindahan Kos', 'Pick-up dan bantuan angkat barang kos hingga sampai tujuan', 100000, 120, true),
-  -- Anisa (p13) - Privat
-  ('10000000-0000-0000-0000-000000000016', '00000000-0000-0000-0000-000000000013', 6, 'Bimbingan Belajar Privat (90 mnt)', 'Bimbingan satu lawan satu mata kuliah / pelajaran sekolah', 60000, 90, true),
+  -- Hendra (p13) - Pipa & Pompa Air
+  ('10000000-0000-0000-0000-000000000016', '00000000-0000-0000-0000-000000000013', 6, 'Servis Pompa Air & Saluran Pipa', 'Perbaikan pompa air mati, pipa bocor, dan saluran mampet', 65000, 90, true),
   -- Teknisi Kepanjen (p14)
   ('10000000-0000-0000-0000-000000000017', '00000000-0000-0000-0000-000000000014', 1, 'Servis Listrik Wilayah Selatan', 'Perbaikan kelistrikan Kepanjen dan sekitarnya', 70000, 90, true),
   -- Bambang (p15)

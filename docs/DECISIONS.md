@@ -73,3 +73,13 @@ Dokumen ini mencatat keputusan arsitektur dan implementasi proyek **Bantuin** ya
 - **Konteks**: Koordinasi pelanggan dan mitra sebelumnya hanya mengandalkan panggilan telepon (`ACTION_DIAL`), dan penyelesaian pesanan oleh mitra rawan tertekan tidak sengaja.
 - **Keputusan**: Menyediakan `ChatListScreen` dan `ChatRoomScreen` berbasis `ChatRepository` (dengan tabel `booking_messages` + Realtime pada cloud dan state flow lokal pada mode demo), serta layar khusus `CompleteOrderConfirmScreen` yang mewajibkan verifikasi status lunas (untuk `QRIS`) atau centang penerimaan uang tunai (untuk `CASH`) sebelum `SlideToConfirmBar` (threshold geser `>= 0.85f` plus tombol aksesibilitas non-drag) dapat menyelesaikan pesanan ke `SELESAI`.
 - **Alasan**: Memudahkan koordinasi dan riwayat komunikasi per pesanan langsung di dalam aplikasi sekaligus mencegah perubahan status selesai maupun pencatatan saldo secara tidak sengaja.
+
+## 13. Peningkatan Visual Berbasis Compose Canvas, Sistem Gerak & Kategori Pipa/Pompa Air
+
+- **Konteks**: Antarmuka awal memakai ikon Material monokrom berbingkai kotak seragam dan transisi navigasi bawaan, serta kategori 6 masih berisi layanan non-pertukangan (`Pengajar Privat`).
+- **Keputusan**:
+  - Mengganti ikon layanan standar dengan komponen Compose `Canvas` + `Path` multi-warna (`BantuinServiceIcons.kt`) dan ilustrasi vektor kustom (`BantuinIllustrations.kt`) untuk hero beranda, banner darurat, jaminan garansi 7 hari, serta state kosong/galat (`StateViews.kt`).
+  - Menstandarkan sistem gerak asimetris, press-scale spring (`bantuinPressScale`), animasi saldo/status mitra, garis pindai QRIS + pop-in lunas, serta umpan balik haptik pada `SlideToConfirmBar` melalui `Motion.kt` dengan dukungan aksesibilitas `rememberReducedMotion()` (`Settings.Global.ANIMATOR_DURATION_SCALE`).
+  - Mengubah struktur beranda pelanggan (`CustomerHomeScreen.kt`) ke gaya layanan cepat (header oranye melengkung hangat dengan kontras WCAG AA, kartu lokasi & aksi cepat mengambang, grid layanan 3 kolom terbuka ber-tag sudut, serta bar pelacak pesanan aktif mengambang).
+  - Mengganti kategori 6 menjadi `Pipa & Pompa Air` (ikon `plumbing`, mitra `p13` Hendra Sanjaya, layanan `s12`) pada `FakeData.kt`, `SupabaseBantuinRepository.kt`, `ProviderServicesScreen.kt`, dan `supabase/seed.sql` tanpa mengubah perilaku algoritma inti F1 sampai F4.
+- **Alasan**: Memperkuat identitas visual layanan rumah tangga secara konsisten di Mode Terang dan Mode Gelap tanpa menambah ketergantungan aset bitmap eksternal maupun menurunkan performa rendering.

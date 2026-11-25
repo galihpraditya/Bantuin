@@ -72,12 +72,7 @@ fun ErrorView(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center
         ) {
-            Icon(
-                imageVector = Icons.Outlined.ErrorOutline,
-                contentDescription = null,
-                tint = colors.error,
-                modifier = Modifier.size(48.dp)
-            )
+            ErrorStateIllustration()
             Spacer(modifier = Modifier.height(12.dp))
             Text(
                 text = "Terjadi Kendala",
@@ -126,12 +121,16 @@ fun EmptyView(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center
         ) {
-            Icon(
-                imageVector = icon,
-                contentDescription = null,
-                tint = colors.textMuted,
-                modifier = Modifier.size(52.dp)
-            )
+            if (icon == Icons.Outlined.Inbox) {
+                EmptyStateIllustration()
+            } else {
+                Icon(
+                    imageVector = icon,
+                    contentDescription = null,
+                    tint = colors.textMuted,
+                    modifier = Modifier.size(52.dp)
+                )
+            }
             Spacer(modifier = Modifier.height(12.dp))
             Text(
                 text = title,

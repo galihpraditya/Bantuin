@@ -1,5 +1,14 @@
 package id.bantuin.app.ui.navigation
 
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.Composable
@@ -15,6 +24,8 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import androidx.lifecycle.viewmodel.compose.viewModel
+import id.bantuin.app.ui.theme.BantuinMotion
+import id.bantuin.app.ui.theme.rememberReducedMotion
 import id.bantuin.app.core.settings.InMemorySettingsStore
 import id.bantuin.app.core.settings.SettingsPreferenceStore
 import id.bantuin.app.core.theme.InMemoryThemeStore
@@ -86,6 +97,15 @@ fun BantuinNavGraph(
 
     val navBottomBarRoutes = bottomBarRoutes()
     val showBottomBar = currentRoute in navBottomBarRoutes
+    val reducedMotion = rememberReducedMotion()
+    val modalRoutes = remember {
+        setOf(
+            Routes.QRIS_PAYMENT,
+            Routes.COMPLETE_ORDER,
+            Routes.PROVIDER_WITHDRAW,
+            Routes.SETTINGS
+        )
+    }
 
     Scaffold(
         bottomBar = {
@@ -111,6 +131,76 @@ fun BantuinNavGraph(
         NavHost(
             navController = navController,
             startDestination = startDestination,
+            enterTransition = {
+                if (reducedMotion) {
+                    EnterTransition.None
+                } else {
+                    val from = initialState.destination.route
+                    val to = targetState.destination.route
+                    when {
+                        from in navBottomBarRoutes && to in navBottomBarRoutes ->
+                            fadeIn(tween(BantuinMotion.TAB_FADE_IN_MS))
+                        to in modalRoutes ->
+                            slideInVertically(tween(BantuinMotion.ENTER_MS)) { it / 5 } +
+                                fadeIn(tween(BantuinMotion.ENTER_MS))
+                        else ->
+                            slideInHorizontally(tween(BantuinMotion.ENTER_MS)) { it / 5 } +
+                                fadeIn(tween(BantuinMotion.ENTER_MS))
+                    }
+                }
+            },
+            exitTransition = {
+                if (reducedMotion) {
+                    ExitTransition.None
+                } else {
+                    val from = initialState.destination.route
+                    val to = targetState.destination.route
+                    when {
+                        from in navBottomBarRoutes && to in navBottomBarRoutes ->
+                            fadeOut(tween(BantuinMotion.TAB_FADE_OUT_MS))
+                        to in modalRoutes ->
+                            fadeOut(tween(BantuinMotion.EXIT_MS))
+                        else ->
+                            slideOutHorizontally(tween(BantuinMotion.EXIT_MS)) { -it / 6 } +
+                                fadeOut(tween(BantuinMotion.EXIT_MS))
+                    }
+                }
+            },
+            popEnterTransition = {
+                if (reducedMotion) {
+                    EnterTransition.None
+                } else {
+                    val from = initialState.destination.route
+                    val to = targetState.destination.route
+                    when {
+                        from in navBottomBarRoutes && to in navBottomBarRoutes ->
+                            fadeIn(tween(BantuinMotion.TAB_FADE_IN_MS))
+                        from in modalRoutes ->
+                            fadeIn(tween(BantuinMotion.ENTER_MS))
+                        else ->
+                            slideInHorizontally(tween(BantuinMotion.ENTER_MS)) { -it / 6 } +
+                                fadeIn(tween(BantuinMotion.ENTER_MS))
+                    }
+                }
+            },
+            popExitTransition = {
+                if (reducedMotion) {
+                    ExitTransition.None
+                } else {
+                    val from = initialState.destination.route
+                    val to = targetState.destination.route
+                    when {
+                        from in navBottomBarRoutes && to in navBottomBarRoutes ->
+                            fadeOut(tween(BantuinMotion.TAB_FADE_OUT_MS))
+                        from in modalRoutes ->
+                            slideOutVertically(tween(BantuinMotion.EXIT_MS)) { it / 5 } +
+                                fadeOut(tween(BantuinMotion.EXIT_MS))
+                        else ->
+                            slideOutHorizontally(tween(BantuinMotion.EXIT_MS)) { it / 5 } +
+                                fadeOut(tween(BantuinMotion.EXIT_MS))
+                    }
+                }
+            },
             modifier = Modifier.padding(innerPadding)
         ) {
             // Auth Routes

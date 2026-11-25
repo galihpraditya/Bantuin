@@ -1,5 +1,18 @@
 package id.bantuin.app.ui.payment
 
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.snap
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -47,6 +60,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
@@ -63,7 +77,9 @@ import id.bantuin.app.ui.common.BantuinViewModelFactory
 import id.bantuin.app.ui.common.EmptyView
 import id.bantuin.app.ui.common.ErrorView
 import id.bantuin.app.ui.common.LoadingView
+import id.bantuin.app.ui.theme.BantuinMotion
 import id.bantuin.app.ui.theme.BantuinTheme
+import id.bantuin.app.ui.theme.rememberReducedMotion
 
 @Composable
 fun QrisPaymentScreen(
@@ -219,72 +235,119 @@ fun QrisPaymentScreen(
                                 )
                             }
 
-                            if (uiState.isPaid) {
-                                Box(
-                                    modifier = Modifier
-                                        .size(180.dp)
-                                        .clip(RoundedCornerShape(16.dp))
-                                        .background(colors.successContainer),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Column(
-                                        horizontalAlignment = Alignment.CenterHorizontally,
-                                        verticalArrangement = Arrangement.spacedBy(8.dp),
-                                        modifier = Modifier.padding(16.dp)
+                            val reducedMotion = rememberReducedMotion()
+                            AnimatedContent(
+                                targetState = uiState.isPaid,
+                                transitionSpec = {
+                                    if (reducedMotion) {
+                                        fadeIn(snap()) togetherWith fadeOut(snap())
+                                    } else {
+                                        (scaleIn(initialScale = 0.88f, animationSpec = BantuinMotion.bouncySpring()) + fadeIn(tween(240)))
+                                            .togetherWith(fadeOut(tween(150)))
+                                    }
+                                },
+                                label = "qrisPaidState"
+                            ) { paid ->
+                                if (paid) {
+                                    val checkPop = remember { Animatable(if (reducedMotion) 1f else 0.5f) }
+                                    LaunchedEffect(paid) {
+                                        if (!reducedMotion) {
+                                            checkPop.animateTo(1f, BantuinMotion.bouncySpring())
+                                        }
+                                    }
+                                    Box(
+                                        modifier = Modifier
+                                            .size(200.dp)
+                                            .clip(RoundedCornerShape(16.dp))
+                                            .background(colors.successContainer),
+                                        contentAlignment = Alignment.Center
                                     ) {
-                                        Box(
-                                            modifier = Modifier
-                                                .size(56.dp)
-                                                .clip(CircleShape)
-                                                .background(colors.success),
-                                            contentAlignment = Alignment.Center
+                                        Column(
+                                            horizontalAlignment = Alignment.CenterHorizontally,
+                                            verticalArrangement = Arrangement.spacedBy(8.dp),
+                                            modifier = Modifier.padding(16.dp)
                                         ) {
-                                            Icon(
-                                                imageVector = Icons.Default.CheckCircle,
-                                                contentDescription = "Pembayaran Lunas",
-                                                tint = if (colors.isDark) colors.background else Color.White,
-                                                modifier = Modifier.size(32.dp)
+                                            Box(
+                                                modifier = Modifier
+                                                    .size(56.dp)
+                                                    .graphicsLayer {
+                                                        scaleX = checkPop.value
+                                                        scaleY = checkPop.value
+                                                    }
+                                                    .clip(CircleShape)
+                                                    .background(colors.success),
+                                                contentAlignment = Alignment.Center
+                                            ) {
+                                                Icon(
+                                                    imageVector = Icons.Default.CheckCircle,
+                                                    contentDescription = "Pembayaran Lunas",
+                                                    tint = if (colors.isDark) colors.background else Color.White,
+                                                    modifier = Modifier.size(32.dp)
+                                                )
+                                            }
+                                            Text(
+                                                text = "Pembayaran Diterima",
+                                                style = MaterialTheme.typography.titleSmall,
+                                                color = colors.success,
+                                                fontWeight = FontWeight.Bold,
+                                                textAlign = TextAlign.Center
+                                            )
+                                            Text(
+                                                text = "Dana ditahan aman hingga layanan selesai.",
+                                                style = MaterialTheme.typography.bodySmall,
+                                                color = colors.textSecondary,
+                                                textAlign = TextAlign.Center
                                             )
                                         }
+                                    }
+                                } else {
+                                    Column(
+                                        horizontalAlignment = Alignment.CenterHorizontally,
+                                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                                    ) {
+                                        val scanProgress = if (reducedMotion) {
+                                            null
+                                        } else {
+                                            val inf = rememberInfiniteTransition(label = "qrSweep")
+                                            val anim by inf.animateFloat(
+                                                initialValue = 0.08f,
+                                                targetValue = 0.92f,
+                                                animationSpec = infiniteRepeatable(
+                                                    animation = tween(1800, easing = LinearEasing),
+                                                    repeatMode = RepeatMode.Reverse
+                                                ),
+                                                label = "sweepY"
+                                            )
+                                            anim
+                                        }
+
+                                        Box(
+                                            modifier = Modifier
+                                                .clip(RoundedCornerShape(16.dp))
+                                                .background(Color.White)
+                                                .border(1.dp, Color(0xFFE2E8F0), RoundedCornerShape(16.dp))
+                                                .padding(16.dp),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            DeterministicQrCanvas(
+                                                seed = "${booking.id}|${booking.totalCost}",
+                                                scanSweepFraction = scanProgress,
+                                                accentColor = colors.primary,
+                                                modifier = Modifier
+                                                    .size(200.dp)
+                                                    .semantics {
+                                                        contentDescription = "Kode QRIS untuk pesanan ${booking.id}"
+                                                    }
+                                            )
+                                        }
+
                                         Text(
-                                            text = "Pembayaran Diterima",
-                                            style = MaterialTheme.typography.titleSmall,
-                                            color = colors.success,
-                                            fontWeight = FontWeight.Bold,
-                                            textAlign = TextAlign.Center
-                                        )
-                                        Text(
-                                            text = "Dana ditahan aman hingga layanan selesai.",
-                                            style = MaterialTheme.typography.bodySmall,
-                                            color = colors.textSecondary,
-                                            textAlign = TextAlign.Center
+                                            text = "NMID: ID1026000${booking.id.hashCode().ushr(1) % 1000000}",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = colors.textMuted
                                         )
                                     }
                                 }
-                            } else {
-                                Box(
-                                    modifier = Modifier
-                                        .clip(RoundedCornerShape(16.dp))
-                                        .background(Color.White)
-                                        .border(1.dp, Color(0xFFE2E8F0), RoundedCornerShape(16.dp))
-                                        .padding(16.dp),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    DeterministicQrCanvas(
-                                        seed = "${booking.id}|${booking.totalCost}",
-                                        modifier = Modifier
-                                            .size(200.dp)
-                                            .semantics {
-                                                contentDescription = "Kode QRIS untuk pesanan ${booking.id}"
-                                            }
-                                    )
-                                }
-
-                                Text(
-                                    text = "NMID: ID1026000${booking.id.hashCode().ushr(1) % 1000000}",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = colors.textMuted
-                                )
                             }
 
                             Row(
@@ -386,6 +449,8 @@ fun QrisPaymentScreen(
 @Composable
 private fun DeterministicQrCanvas(
     seed: String,
+    scanSweepFraction: Float? = null,
+    accentColor: Color = Color(0xFFC43E00),
     modifier: Modifier = Modifier
 ) {
     val matrix = remember(seed) { buildQrMatrix(seed, size = 21) }
@@ -404,6 +469,21 @@ private fun DeterministicQrCanvas(
                     )
                 }
             }
+        }
+
+        if (scanSweepFraction != null) {
+            val y = size.height * scanSweepFraction
+            drawRect(
+                color = accentColor.copy(alpha = 0.22f),
+                topLeft = Offset(0f, (y - 6.dp.toPx()).coerceAtLeast(0f)),
+                size = Size(size.width, 12.dp.toPx())
+            )
+            drawLine(
+                color = accentColor.copy(alpha = 0.80f),
+                start = Offset(0f, y),
+                end = Offset(size.width, y),
+                strokeWidth = 2.dp.toPx()
+            )
         }
     }
 }
