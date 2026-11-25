@@ -313,9 +313,6 @@ fun BantuinNavGraph(
                     onProviderClick = { providerId ->
                         navigateSingleTop(Routes.providerDetail(providerId))
                     },
-                    onChatClick = {
-                        navigateToTab(Routes.CHAT_LIST)
-                    },
                     onNotificationsClick = {
                         navigateSingleTop(Routes.CUSTOMER_NOTIFICATIONS)
                     },
@@ -477,6 +474,12 @@ fun BantuinNavGraph(
                     repository = repository,
                     onOpenSettings = {
                         navigateSingleTop(Routes.SETTINGS)
+                    },
+                    onOpenOrders = {
+                        navigateToTab(Routes.CUSTOMER_ORDERS)
+                    },
+                    onOpenNotifications = {
+                        navigateSingleTop(Routes.CUSTOMER_NOTIFICATIONS)
                     }
                 )
             }

@@ -18,12 +18,19 @@ import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
+enum class WeeklyScheduleTemplate(val label: String, val description: String) {
+    WEEKDAYS_OFFICE("Sen–Jum 08–17", "Hari kerja 08:00–17:00, akhir pekan libur"),
+    EVERY_DAY_EXTENDED("Setiap Hari 08–20", "Buka setiap hari pukul 08:00–20:00"),
+    ALWAYS_ON_24_7("Siaga 24 Jam", "Terima pesanan darurat setiap hari")
+}
+
 data class ProviderCalendarUiState(
     val providerId: String = "",
     val availabilities: List<DayAvailability> = emptyList(),
     val upcomingBookings: List<BookingItem> = emptyList(),
     val upcomingBookingsLoaded: Boolean = false,
     val selectedDayOfWeek: Int = 1,
+    val hasUnsavedChanges: Boolean = false,
     val isLoading: Boolean = false,
     val isSaving: Boolean = false,
     val saveSuccess: Boolean = false,
@@ -70,6 +77,7 @@ class ProviderCalendarViewModel(
                     _uiState.update {
                         it.copy(
                             availabilities = completeWeek,
+                            hasUnsavedChanges = false,
                             isLoading = false
                         )
                     }
@@ -128,7 +136,7 @@ class ProviderCalendarViewModel(
     }
 
     fun selectDay(dayOfWeek: Int) {
-        _uiState.update { it.copy(selectedDayOfWeek = dayOfWeek, saveSuccess = false) }
+        _uiState.update { it.copy(selectedDayOfWeek = dayOfWeek.coerceIn(1, 7), saveSuccess = false) }
     }
 
     fun updateDayMode(dayOfWeek: Int, mode: AvailabilityMode) {
@@ -141,7 +149,14 @@ class ProviderCalendarViewModel(
                 )
             } else item
         }
-        _uiState.update { it.copy(availabilities = list, saveSuccess = false, errorMessage = null) }
+        _uiState.update {
+            it.copy(
+                availabilities = list,
+                hasUnsavedChanges = true,
+                saveSuccess = false,
+                errorMessage = null
+            )
+        }
     }
 
     fun updateOperatingHours(dayOfWeek: Int, openMin: Int, closeMin: Int) {
@@ -154,7 +169,14 @@ class ProviderCalendarViewModel(
                 item.copy(openMin = openMin, closeMin = closeMin)
             } else item
         }
-        _uiState.update { it.copy(availabilities = list, errorMessage = null, saveSuccess = false) }
+        _uiState.update {
+            it.copy(
+                availabilities = list,
+                hasUnsavedChanges = true,
+                errorMessage = null,
+                saveSuccess = false
+            )
+        }
     }
 
     fun updateHourFieldUnchecked(dayOfWeek: Int, openMin: Int?, closeMin: Int?) {
@@ -166,7 +188,76 @@ class ProviderCalendarViewModel(
                 )
             } else item
         }
-        _uiState.update { it.copy(availabilities = list, errorMessage = null, saveSuccess = false) }
+        _uiState.update {
+            it.copy(
+                availabilities = list,
+                hasUnsavedChanges = true,
+                errorMessage = null,
+                saveSuccess = false
+            )
+        }
+    }
+
+    fun applyWeeklyTemplate(template: WeeklyScheduleTemplate) {
+        val updated = (1..7).map { dow ->
+            when (template) {
+                WeeklyScheduleTemplate.WEEKDAYS_OFFICE -> {
+                    if (dow <= 5) {
+                        DayAvailability(dow, AvailabilityMode.ON, 480, 1020)
+                    } else {
+                        DayAvailability(dow, AvailabilityMode.OFF, null, null)
+                    }
+                }
+                WeeklyScheduleTemplate.EVERY_DAY_EXTENDED -> {
+                    DayAvailability(dow, AvailabilityMode.ON, 480, 1200)
+                }
+                WeeklyScheduleTemplate.ALWAYS_ON_24_7 -> {
+                    DayAvailability(dow, AvailabilityMode.ALWAYS_ON, null, null)
+                }
+            }
+        }
+        _uiState.update {
+            it.copy(
+                availabilities = updated,
+                hasUnsavedChanges = true,
+                saveSuccess = false,
+                errorMessage = null
+            )
+        }
+    }
+
+    fun copyDayToWeekdays(sourceDayOfWeek: Int) {
+        val source = _uiState.value.availabilities.find { it.dayOfWeek == sourceDayOfWeek } ?: return
+        val updated = _uiState.value.availabilities.map { item ->
+            if (item.dayOfWeek in 1..5) {
+                source.copy(dayOfWeek = item.dayOfWeek)
+            } else {
+                item
+            }
+        }
+        _uiState.update {
+            it.copy(
+                availabilities = updated,
+                hasUnsavedChanges = true,
+                saveSuccess = false,
+                errorMessage = null
+            )
+        }
+    }
+
+    fun copyDayToAllDays(sourceDayOfWeek: Int) {
+        val source = _uiState.value.availabilities.find { it.dayOfWeek == sourceDayOfWeek } ?: return
+        val updated = _uiState.value.availabilities.map { item ->
+            source.copy(dayOfWeek = item.dayOfWeek)
+        }
+        _uiState.update {
+            it.copy(
+                availabilities = updated,
+                hasUnsavedChanges = true,
+                saveSuccess = false,
+                errorMessage = null
+            )
+        }
     }
 
     fun saveChanges() {
@@ -193,7 +284,14 @@ class ProviderCalendarViewModel(
             _uiState.update { it.copy(isSaving = true, errorMessage = null, saveSuccess = false) }
             when (val res = catalogRepository.saveAvailability(providerId, days)) {
                 is AppResult.Success -> {
-                    _uiState.update { it.copy(isSaving = false, saveSuccess = true, availabilities = days) }
+                    _uiState.update {
+                        it.copy(
+                            isSaving = false,
+                            saveSuccess = true,
+                            hasUnsavedChanges = false,
+                            availabilities = days
+                        )
+                    }
                 }
                 is AppResult.Error -> {
                     _uiState.update { it.copy(isSaving = false, errorMessage = res.message) }

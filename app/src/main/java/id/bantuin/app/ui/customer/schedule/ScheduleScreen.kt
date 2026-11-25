@@ -529,28 +529,47 @@ fun ScheduleScreen(
                         }
                     }
                 } else {
-                    val chunkedSlots = slots.chunked(2)
-                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                        chunkedSlots.forEach { pair ->
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.spacedBy(10.dp)
-                            ) {
-                                pair.forEach { (min, label) ->
-                                    val isSelected = selectedStartMin == min
-                                    val isValid = uiState.slotValidMap[min] ?: true
+                    val morningSlots = slots.filter { it.first < 720 }
+                    val afternoonSlots = slots.filter { it.first in 720..990 }
+                    val eveningSlots = slots.filter { it.first > 990 }
+                    val groups = listOf(
+                        "Pagi" to morningSlots,
+                        "Siang" to afternoonSlots,
+                        "Sore & Malam" to eveningSlots
+                    ).filter { it.second.isNotEmpty() }
 
-                                    TimeSlotItem(
-                                        timeLabel = label,
-                                        finishLabel = "Selesai ${TimeUtils.formatMinuteOfDay(min + service.durationMin)}",
-                                        isSelected = isSelected,
-                                        isConflict = !isValid,
-                                        onClick = { viewModel.selectSlot(min) },
-                                        modifier = Modifier.weight(1f)
-                                    )
-                                }
-                                if (pair.size == 1) {
-                                    Spacer(modifier = Modifier.weight(1f))
+                    Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                        groups.forEach { (groupTitle, groupSlots) ->
+                            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Text(
+                                    text = "$groupTitle (${groupSlots.size} slot)",
+                                    style = MaterialTheme.typography.labelLarge,
+                                    color = colors.textSecondary,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                                val chunkedSlots = groupSlots.chunked(2)
+                                chunkedSlots.forEach { pair ->
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                    ) {
+                                        pair.forEach { (min, label) ->
+                                            val isSelected = selectedStartMin == min
+                                            val isValid = uiState.slotValidMap[min] ?: true
+
+                                            TimeSlotItem(
+                                                timeLabel = label,
+                                                finishLabel = "Selesai ${TimeUtils.formatMinuteOfDay(min + service.durationMin)}",
+                                                isSelected = isSelected,
+                                                isConflict = !isValid,
+                                                onClick = { viewModel.selectSlot(min) },
+                                                modifier = Modifier.weight(1f)
+                                            )
+                                        }
+                                        if (pair.size == 1) {
+                                            Spacer(modifier = Modifier.weight(1f))
+                                        }
+                                    }
                                 }
                             }
                         }

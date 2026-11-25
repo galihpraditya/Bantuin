@@ -4,7 +4,9 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import id.bantuin.app.core.config.BantuinConfig
 import id.bantuin.app.core.result.AppResult
+import id.bantuin.app.domain.model.BookingStatus
 import id.bantuin.app.domain.model.GeoPoint
+import id.bantuin.app.domain.model.PaymentStatus
 import id.bantuin.app.domain.repository.AuthRepository
 import id.bantuin.app.domain.repository.BookingRepository
 import id.bantuin.app.domain.repository.UserProfile
@@ -22,6 +24,9 @@ data class CustomerProfileUiState(
     val locationInput: GeoPoint = BantuinConfig.MALANG_CENTER,
     val activeCount: Int = 0,
     val completedCount: Int = 0,
+    val pendingActionCount: Int = 0,
+    val totalSpend: Int = 0,
+    val isEditSheetOpen: Boolean = false,
     val isLoading: Boolean = true,
     val isSaving: Boolean = false,
     val isSaved: Boolean = false,
@@ -65,9 +70,52 @@ class CustomerProfileViewModel(
         viewModelScope.launch {
             bookingRepository.observeCustomerBookings().collect { bookings ->
                 val active = bookings.count { it.status.isActive }
-                val completed = bookings.count { it.status.name == "SELESAI" }
-                _uiState.update { it.copy(activeCount = active, completedCount = completed) }
+                val completedBookings = bookings.filter { it.status == BookingStatus.SELESAI }
+                val completed = completedBookings.size
+                val pendingAction = bookings.count {
+                    it.paymentStatus == PaymentStatus.WAITING_PAYMENT ||
+                        (it.status == BookingStatus.SELESAI && it.review == null)
+                }
+                val totalSpend = completedBookings.sumOf { it.totalCost }
+                _uiState.update {
+                    it.copy(
+                        activeCount = active,
+                        completedCount = completed,
+                        pendingActionCount = pendingAction,
+                        totalSpend = totalSpend
+                    )
+                }
             }
+        }
+    }
+
+    fun openEditSheet() {
+        val user = _uiState.value.user
+        hasUnsavedEdits = false
+        _uiState.update { state ->
+            state.copy(
+                nameInput = user?.fullName ?: state.nameInput,
+                phoneInput = user?.phone ?: state.phoneInput,
+                addressInput = user?.defaultAddress ?: state.addressInput,
+                locationInput = user?.defaultLocation ?: state.locationInput,
+                isEditSheetOpen = true,
+                errorMessage = null
+            )
+        }
+    }
+
+    fun closeEditSheet() {
+        val user = _uiState.value.user
+        hasUnsavedEdits = false
+        _uiState.update { state ->
+            state.copy(
+                nameInput = user?.fullName ?: state.nameInput,
+                phoneInput = user?.phone ?: state.phoneInput,
+                addressInput = user?.defaultAddress ?: state.addressInput,
+                locationInput = user?.defaultLocation ?: state.locationInput,
+                isEditSheetOpen = false,
+                errorMessage = null
+            )
         }
     }
 
@@ -99,6 +147,11 @@ class CustomerProfileViewModel(
                 errorMessage = null
             )
         }
+    }
+
+    fun savePickedLocationImmediately(address: String, location: GeoPoint) {
+        onLocationPicked(address, location)
+        saveCustomerProfile()
     }
 
     fun setLocationPickerVisible(visible: Boolean) {
@@ -157,6 +210,7 @@ class CustomerProfileViewModel(
                             phoneInput = res.data.phone,
                             addressInput = res.data.defaultAddress ?: trimmedAddress,
                             locationInput = res.data.defaultLocation ?: state.locationInput,
+                            isEditSheetOpen = false,
                             isSaving = false,
                             isSaved = true
                         )

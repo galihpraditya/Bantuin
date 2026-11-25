@@ -11,7 +11,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.filled.FiberNew
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -67,24 +66,9 @@ fun ProviderBadgeChip(
                 modifier = modifier
             )
         }
-        ProviderBadge.NEW -> {
-            BadgeContainer(
-                text = "Mitra Baru",
-                color = colors.neutralBadge,
-                backgroundColor = colors.neutralBadgeContainer,
-                icon = {
-                    Icon(
-                        imageVector = Icons.Default.FiberNew,
-                        contentDescription = null,
-                        tint = colors.neutralBadge,
-                        modifier = Modifier.size(14.dp)
-                    )
-                },
-                modifier = modifier
-            )
-        }
+        ProviderBadge.NEW,
         ProviderBadge.NONE -> {
-            // Mitra reguler tidak menampilkan badge khusus
+            // Hanya tampilkan badge jika Mitra Terpercaya atau Anomali Akun
         }
     }
 }

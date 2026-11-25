@@ -11,6 +11,7 @@ import id.bantuin.app.domain.model.*
 import id.bantuin.app.domain.repository.BantuinRepository
 import id.bantuin.app.domain.repository.UserProfile
 import id.bantuin.app.domain.usecase.trust.RecalculateProviderMetricsUseCase
+import id.bantuin.app.domain.usecase.wallet.BuildWalletTransactionsUseCase
 import id.bantuin.app.domain.usecase.wallet.CalculateProviderRevenueUseCase
 import io.github.jan.supabase.SupabaseClient
 import io.github.jan.supabase.auth.auth
@@ -67,6 +68,7 @@ class SupabaseBantuinRepository(
         RecalculateProviderMetricsUseCase(this)
     }
     private val calculateRevenueUseCase = CalculateProviderRevenueUseCase()
+    private val buildWalletTransactionsUseCase = BuildWalletTransactionsUseCase()
 
     private val realtimeScope = CoroutineScope(SupervisorJob() + ioDispatcher)
     private val customerBookingsFlow = MutableStateFlow<List<BookingItem>>(emptyList())
@@ -1318,6 +1320,24 @@ class SupabaseBantuinRepository(
         }
         return payoutsFlow.map { map ->
             map[providerId].orEmpty().sortedByDescending { it.createdAt }
+        }
+    }
+
+    override fun observeWalletTransactions(providerId: String): Flow<List<WalletTransaction>> {
+        if (!payoutsFlow.value.containsKey(providerId) && SupabaseClientProvider.isConfigured) {
+            realtimeScope.launch {
+                refreshPayoutHistory(providerId)
+            }
+        }
+        if (providerBookingsFlow.value.none { it.providerId == providerId } && SupabaseClientProvider.isConfigured) {
+            realtimeScope.launch {
+                myBookingsProvider()
+            }
+        }
+        return combine(providerBookingsFlow, payoutsFlow) { bookings, payoutsMap ->
+            val providerBookings = bookings.filter { it.providerId == providerId }
+            val providerPayouts = payoutsMap[providerId].orEmpty()
+            buildWalletTransactionsUseCase(providerBookings, providerPayouts)
         }
     }
 

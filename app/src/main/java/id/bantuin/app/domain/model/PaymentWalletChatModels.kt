@@ -71,3 +71,23 @@ data class ProviderRevenueAnalytics(
     val completedQrisCount: Int = 0,
     val completedCashCount: Int = 0
 )
+
+enum class WalletTransactionType(val label: String) {
+    CREDIT("Saldo Masuk"),
+    DEBIT("Penarikan Saldo")
+}
+
+data class WalletTransaction(
+    val id: String,
+    val type: WalletTransactionType,
+    val title: String,
+    val subtitle: String,
+    val amount: Int,
+    val adminFee: Int = 0,
+    val netAmount: Int = amount,
+    val channelName: String? = null,
+    val channelType: PayoutChannelType? = null,
+    val payoutStatus: PayoutStatus? = null,
+    val statusLabel: String,
+    val createdAt: Instant
+)

@@ -4,9 +4,12 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import id.bantuin.app.core.config.BantuinConfig
 import id.bantuin.app.core.result.AppResult
+import id.bantuin.app.core.util.CurrencyUtils
 import id.bantuin.app.domain.model.PayoutChannelType
 import id.bantuin.app.domain.model.PayoutRequest
 import id.bantuin.app.domain.model.ProviderRevenueAnalytics
+import id.bantuin.app.domain.model.WalletTransaction
+import id.bantuin.app.domain.model.WalletTransactionType
 import id.bantuin.app.domain.repository.AuthRepository
 import id.bantuin.app.domain.repository.WalletRepository
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -21,11 +24,26 @@ import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
+enum class WalletHistoryFilter(val label: String) {
+    ALL("Semua"),
+    CREDIT("Saldo Masuk (+)"),
+    DEBIT("Penarikan (-)")
+}
+
+private data class WalletSnapshot(
+    val providerId: String,
+    val analytics: ProviderRevenueAnalytics,
+    val payouts: List<PayoutRequest>,
+    val transactions: List<WalletTransaction>
+)
+
 data class ProviderWithdrawUiState(
     val providerId: String = "",
     val availableBalance: Int = 0,
     val revenueAnalytics: ProviderRevenueAnalytics = ProviderRevenueAnalytics(),
     val payouts: List<PayoutRequest> = emptyList(),
+    val walletTransactions: List<WalletTransaction> = emptyList(),
+    val historyFilter: WalletHistoryFilter = WalletHistoryFilter.ALL,
     val channelType: PayoutChannelType = PayoutChannelType.BANK,
     val channelName: String = "BCA",
     val accountNumber: String = "",
@@ -43,6 +61,13 @@ data class ProviderWithdrawUiState(
 
     val estimatedNetAmount: Int
         get() = (parsedAmount - adminFee).coerceAtLeast(0)
+
+    val filteredTransactions: List<WalletTransaction>
+        get() = when (historyFilter) {
+            WalletHistoryFilter.ALL -> walletTransactions
+            WalletHistoryFilter.CREDIT -> walletTransactions.filter { it.type == WalletTransactionType.CREDIT }
+            WalletHistoryFilter.DEBIT -> walletTransactions.filter { it.type == WalletTransactionType.DEBIT }
+        }
 }
 
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -68,7 +93,14 @@ class ProviderWithdrawViewModel(
                 .flatMapLatest { user ->
                     val providerId = user?.id.orEmpty()
                     if (providerId.isBlank()) {
-                        flowOf(Triple("", ProviderRevenueAnalytics(), emptyList<PayoutRequest>()))
+                        flowOf(
+                            WalletSnapshot(
+                                providerId = "",
+                                analytics = ProviderRevenueAnalytics(),
+                                payouts = emptyList(),
+                                transactions = emptyList()
+                            )
+                        )
                     } else {
                         _uiState.update { state ->
                             state.copy(
@@ -78,9 +110,15 @@ class ProviderWithdrawViewModel(
                         }
                         combine(
                             walletRepository.observeProviderRevenue(providerId),
-                            walletRepository.observePayoutHistory(providerId)
-                        ) { analytics, payouts ->
-                            Triple(providerId, analytics, payouts)
+                            walletRepository.observePayoutHistory(providerId),
+                            walletRepository.observeWalletTransactions(providerId)
+                        ) { analytics, payouts, transactions ->
+                            WalletSnapshot(
+                                providerId = providerId,
+                                analytics = analytics,
+                                payouts = payouts,
+                                transactions = transactions
+                            )
                         }.catch { e ->
                             _uiState.update {
                                 it.copy(
@@ -91,18 +129,23 @@ class ProviderWithdrawViewModel(
                         }
                     }
                 }
-                .collect { (providerId, analytics, payouts) ->
+                .collect { snapshot ->
                     _uiState.update { state ->
                         state.copy(
-                            providerId = providerId,
-                            availableBalance = analytics.availableBalance,
-                            revenueAnalytics = analytics,
-                            payouts = payouts,
+                            providerId = snapshot.providerId,
+                            availableBalance = snapshot.analytics.availableBalance,
+                            revenueAnalytics = snapshot.analytics,
+                            payouts = snapshot.payouts,
+                            walletTransactions = snapshot.transactions,
                             isLoading = false
                         )
                     }
                 }
         }
+    }
+
+    fun setHistoryFilter(filter: WalletHistoryFilter) {
+        _uiState.update { it.copy(historyFilter = filter) }
     }
 
     fun selectChannel(type: PayoutChannelType, name: String) {
@@ -202,7 +245,7 @@ class ProviderWithdrawViewModel(
                         it.copy(
                             isSubmitting = false,
                             amountInput = "",
-                            successMessage = "Pengajuan pencairan sebesar ${res.data.amount} berhasil diproses.",
+                            successMessage = "Pencairan ${CurrencyUtils.formatRupiah(res.data.amount)} ke ${res.data.channelName} berhasil diproses.",
                             errorMessage = null
                         )
                     }

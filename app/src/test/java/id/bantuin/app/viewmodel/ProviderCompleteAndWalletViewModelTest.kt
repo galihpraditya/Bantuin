@@ -216,5 +216,23 @@ class ProviderCompleteAndWalletViewModelTest {
         assertEquals(70_000, vm.uiState.value.availableBalance)
         assertEquals(1, vm.uiState.value.payouts.size)
         assertEquals(50_000, vm.uiState.value.payouts.first().amount)
+
+        // Riwayat transaksi saldo harus memuat CREDIT (QRIS masuk) dan DEBIT (penarikan)
+        assertTrue(vm.uiState.value.walletTransactions.any {
+            it.type == id.bantuin.app.domain.model.WalletTransactionType.CREDIT && it.amount == 120_000
+        })
+        assertTrue(vm.uiState.value.walletTransactions.any {
+            it.type == id.bantuin.app.domain.model.WalletTransactionType.DEBIT && it.amount == 50_000
+        })
+
+        vm.setHistoryFilter(id.bantuin.app.ui.provider.wallet.WalletHistoryFilter.CREDIT)
+        assertTrue(vm.uiState.value.filteredTransactions.all {
+            it.type == id.bantuin.app.domain.model.WalletTransactionType.CREDIT
+        })
+
+        vm.setHistoryFilter(id.bantuin.app.ui.provider.wallet.WalletHistoryFilter.DEBIT)
+        assertTrue(vm.uiState.value.filteredTransactions.all {
+            it.type == id.bantuin.app.domain.model.WalletTransactionType.DEBIT
+        })
     }
 }

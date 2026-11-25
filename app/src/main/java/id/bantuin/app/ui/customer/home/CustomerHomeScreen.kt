@@ -32,7 +32,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -41,7 +40,6 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.Chat
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.filled.Clear
@@ -88,7 +86,6 @@ import id.bantuin.app.domain.model.ProviderBadge
 import id.bantuin.app.domain.model.RankedProvider
 import id.bantuin.app.domain.model.ServiceCategory
 import id.bantuin.app.domain.repository.BantuinRepository
-import id.bantuin.app.ui.common.BadgeContainer
 import id.bantuin.app.ui.common.BantuinServiceIcon
 import id.bantuin.app.ui.common.BantuinViewModelFactory
 import id.bantuin.app.ui.common.EmergencyBeaconIllustration
@@ -98,8 +95,6 @@ import id.bantuin.app.ui.common.LoadingView
 import id.bantuin.app.ui.common.LocationPickerDialog
 import id.bantuin.app.ui.common.RatingDisplay
 import id.bantuin.app.ui.common.WarrantyShieldIllustration
-import id.bantuin.app.ui.common.serviceTagColors
-import id.bantuin.app.ui.common.serviceTagForCategory
 import id.bantuin.app.ui.customer.OrderFlowManager
 import id.bantuin.app.ui.theme.BantuinMotion
 import id.bantuin.app.ui.theme.BantuinTheme
@@ -112,7 +107,6 @@ fun CustomerHomeScreen(
     orderFlow: OrderFlowManager,
     onCategoryClick: (Int) -> Unit,
     onProviderClick: (String) -> Unit,
-    onChatClick: () -> Unit,
     onNotificationsClick: () -> Unit,
     onActiveOrderClick: (String) -> Unit,
     onEmergencyClick: () -> Unit,
@@ -162,12 +156,10 @@ fun CustomerHomeScreen(
                     address = uiState.customerAddress,
                     searchQuery = uiState.searchQuery,
                     readyProviderCount = uiState.readyProviderCount,
-                    unreadChatCount = uiState.unreadChatCount,
                     hasUnreadNotifications = hasUnreadNotifications,
                     activeOrder = activeOrder,
                     onSearchQueryChange = { viewModel.onSearchQueryChange(it) },
                     onLocationClick = { viewModel.setShowLocationDialog(true) },
-                    onChatClick = onChatClick,
                     onNotificationsClick = onNotificationsClick,
                     onEmergencyClick = onEmergencyClick,
                     onActiveOrderClick = onActiveOrderClick
@@ -260,12 +252,10 @@ private fun CurvedHeroAndQuickStrip(
     address: String,
     searchQuery: String,
     readyProviderCount: Int,
-    unreadChatCount: Int,
     hasUnreadNotifications: Boolean,
     activeOrder: BookingItem?,
     onSearchQueryChange: (String) -> Unit,
     onLocationClick: () -> Unit,
-    onChatClick: () -> Unit,
     onNotificationsClick: () -> Unit,
     onEmergencyClick: () -> Unit,
     onActiveOrderClick: (String) -> Unit
@@ -307,7 +297,7 @@ private fun CurvedHeroAndQuickStrip(
                 .background(headerBrush)
                 .padding(start = 16.dp, end = 12.dp, top = 14.dp, bottom = 46.dp)
         ) {
-            // Baris 1: Search Bar Pill + Chat + Notifikasi
+            // Baris 1: Search Bar Pill + Notifikasi (Chat sudah tersedia di Bottom Navbar)
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -317,16 +307,6 @@ private fun CurvedHeroAndQuickStrip(
                     query = searchQuery,
                     onQueryChange = onSearchQueryChange,
                     modifier = Modifier.weight(1f)
-                )
-
-                HeaderCircleActionButton(
-                    icon = Icons.AutoMirrored.Filled.Chat,
-                    contentDescription = "Pesan Chat",
-                    hasBadge = unreadChatCount > 0,
-                    badgeCount = unreadChatCount,
-                    containerColor = actionCircleBg,
-                    iconTint = actionIconTint,
-                    onClick = onChatClick
                 )
 
                 HeaderCircleActionButton(
@@ -748,7 +728,6 @@ private fun ServiceCategoryGrid3Col(
                     rowItems.forEach { category ->
                         AiryCategoryTile(
                             category = category,
-                            tag = serviceTagForCategory(category.id),
                             onClick = { onCategoryClick(category.id) },
                             modifier = Modifier.weight(1f)
                         )
@@ -765,14 +744,12 @@ private fun ServiceCategoryGrid3Col(
 @Composable
 private fun AiryCategoryTile(
     category: ServiceCategory,
-    tag: String,
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val colors = BantuinTheme.colors
     val interactionSource = remember { MutableInteractionSource() }
     val isPressed by interactionSource.collectIsPressedAsState()
-    val (tagBg, tagFg) = serviceTagColors(category.id, colors.isDark)
 
     Column(
         modifier = modifier
@@ -786,38 +763,14 @@ private fun AiryCategoryTile(
             )
             .padding(horizontal = 4.dp, vertical = 6.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(6.dp)
+        verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        Box(
-            modifier = Modifier.padding(top = 6.dp, end = 6.dp),
-            contentAlignment = Alignment.Center
-        ) {
-            BantuinServiceIcon(
-                categoryId = category.id,
-                size = 62.dp,
-                cornerRadius = 20.dp,
-                isPressed = isPressed
-            )
-
-            if (tag.isNotBlank()) {
-                Box(
-                    modifier = Modifier
-                        .align(Alignment.TopEnd)
-                        .offset(x = 8.dp, y = (-5).dp)
-                        .clip(RoundedCornerShape(10.dp))
-                        .background(tagBg)
-                        .border(1.5.dp, colors.background, RoundedCornerShape(10.dp))
-                        .padding(horizontal = 6.dp, vertical = 2.dp)
-                ) {
-                    Text(
-                        text = tag,
-                        style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.sp),
-                        color = tagFg,
-                        fontWeight = FontWeight.Bold
-                    )
-                }
-            }
-        }
+        BantuinServiceIcon(
+            categoryId = category.id,
+            size = 64.dp,
+            cornerRadius = 20.dp,
+            isPressed = isPressed
+        )
 
         Text(
             text = category.name,
@@ -1156,14 +1109,17 @@ private fun NearbyProvidersSection(
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Text(
-                                    text = provider.responseTimeText,
+                                    text = "Respon ${provider.responseTimeText}",
                                     style = MaterialTheme.typography.labelSmall,
                                     color = colors.textMuted
                                 )
-                                BadgeContainer(
-                                    text = "Skor ${ranked.matchScore}%",
+                                Text(
+                                    text = provider.completionRate?.let {
+                                        "${(it * 100).toInt()}% selesai"
+                                    } ?: "Siap booking",
+                                    style = MaterialTheme.typography.labelSmall,
                                     color = colors.success,
-                                    backgroundColor = colors.successContainer
+                                    fontWeight = FontWeight.SemiBold
                                 )
                             }
                         }

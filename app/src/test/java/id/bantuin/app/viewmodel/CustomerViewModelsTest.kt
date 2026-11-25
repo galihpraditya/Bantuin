@@ -17,6 +17,7 @@ import id.bantuin.app.ui.customer.orderdetail.OrderDetailViewModel
 import id.bantuin.app.ui.customer.orders.CustomerOrdersViewModel
 import id.bantuin.app.ui.customer.profile.CustomerProfileViewModel
 import id.bantuin.app.ui.customer.providerdetail.ProviderDetailViewModel
+import id.bantuin.app.ui.customer.recommendation.ProviderSortOption
 import id.bantuin.app.ui.customer.recommendation.RecommendationViewModel
 import id.bantuin.app.ui.customer.schedule.ScheduleViewModel
 import kotlinx.coroutines.Dispatchers
@@ -105,6 +106,19 @@ class CustomerViewModelsTest {
         // Terapkan filter rating 4.8+
         vm.setMinRatingFilter(4.8)
         assertTrue(vm.uiState.value.filteredList.all { (it.candidate.ratingAvg ?: 0.0) >= 4.8 })
+
+        // Uji reset & sorting berdasarkan jarak terdekat dan tarif terendah
+        vm.resetFilters()
+        assertEquals(0, vm.uiState.value.activeFilterCount)
+        assertEquals(ProviderSortOption.RECOMMENDED, vm.uiState.value.sortOption)
+
+        vm.setSortOption(ProviderSortOption.NEAREST)
+        val distances = vm.uiState.value.filteredList.map { it.distanceKm }
+        assertEquals(distances.sorted(), distances)
+
+        vm.setSortOption(ProviderSortOption.LOWEST_PRICE)
+        val prices = vm.uiState.value.filteredList.map { it.candidate.minBaseFare ?: Int.MAX_VALUE }
+        assertEquals(prices.sorted(), prices)
     }
 
     @Test

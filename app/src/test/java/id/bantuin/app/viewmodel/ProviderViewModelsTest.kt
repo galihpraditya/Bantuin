@@ -8,6 +8,7 @@ import id.bantuin.app.domain.model.GeoPoint
 import id.bantuin.app.domain.model.ServiceItem
 import id.bantuin.app.domain.repository.UserProfile
 import id.bantuin.app.ui.provider.calendar.ProviderCalendarViewModel
+import id.bantuin.app.ui.provider.calendar.WeeklyScheduleTemplate
 import id.bantuin.app.ui.provider.dashboard.ProviderDashboardViewModel
 import id.bantuin.app.ui.provider.evaluation.ProviderEvaluationViewModel
 import id.bantuin.app.ui.provider.home.ProviderHomeViewModel
@@ -278,5 +279,27 @@ class ProviderViewModelsTest {
         testDispatcher.scheduler.advanceUntilIdle()
 
         assertEquals("Edit sementara sebelum rotasi", vm.uiState.value.bio)
+    }
+
+    @Test
+    fun providerCalendarViewModel_appliesTemplatesAndCopiesSchedule() = runTest {
+        val mitraRepo = mitraRepository("p01", "Budi Santoso, S.T.")
+        val vm = ProviderCalendarViewModel(mitraRepo, mitraRepo)
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        vm.applyWeeklyTemplate(WeeklyScheduleTemplate.WEEKDAYS_OFFICE)
+        assertTrue(vm.uiState.value.hasUnsavedChanges)
+        assertEquals(AvailabilityMode.ON, vm.uiState.value.availabilities.first { it.dayOfWeek == 1 }.mode)
+        assertEquals(AvailabilityMode.OFF, vm.uiState.value.availabilities.first { it.dayOfWeek == 7 }.mode)
+
+        vm.updateOperatingHours(1, 540, 1080)
+        vm.copyDayToWeekdays(1)
+        assertTrue((1..5).all { dow ->
+            val d = vm.uiState.value.availabilities.first { it.dayOfWeek == dow }
+            d.openMin == 540 && d.closeMin == 1080
+        })
+
+        vm.applyWeeklyTemplate(WeeklyScheduleTemplate.ALWAYS_ON_24_7)
+        assertTrue(vm.uiState.value.availabilities.all { it.mode == AvailabilityMode.ALWAYS_ON })
     }
 }

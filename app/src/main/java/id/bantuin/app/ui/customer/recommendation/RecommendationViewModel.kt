@@ -20,6 +20,14 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
+enum class ProviderSortOption(val label: String, val subtitle: String) {
+    RECOMMENDED("Rekomendasi Terbaik", "Gabungan jarak, rating, dan rasio selesai"),
+    NEAREST("Jarak Terdekat", "Mitra paling dekat dari lokasi Anda"),
+    HIGHEST_RATING("Rating Tertinggi", "Penilaian pelanggan tertinggi"),
+    LOWEST_PRICE("Tarif Terendah", "Biaya dasar mulai paling terjangkau"),
+    MOST_REVIEWS("Ulasan Terbanyak", "Paling sering dipesan dan diulas")
+}
+
 data class RecommendationUiState(
     val categoryId: Int = 1,
     val category: ServiceCategory = ServiceCategory(1, "Kategori Jasa", "build", 60, "Layanan teknisi dan bantuan rumah"),
@@ -27,12 +35,23 @@ data class RecommendationUiState(
     val maxDistanceFilter: Double = 10.0,
     val minRatingFilter: Double = 0.0,
     val onlyTrusted: Boolean = false,
+    val sortOption: ProviderSortOption = ProviderSortOption.RECOMMENDED,
     val rawCandidates: List<ProviderCandidate> = emptyList(),
     val matchResult: MatchResult = MatchResult(emptyList(), emptyList()),
     val filteredList: List<RankedProvider> = emptyList(),
     val isLoading: Boolean = false,
     val errorMessage: String? = null
-)
+) {
+    val activeFilterCount: Int
+        get() = listOf(
+            maxDistanceFilter < 10.0,
+            minRatingFilter > 0.0,
+            onlyTrusted
+        ).count { it }
+
+    val hasActiveFilterOrSort: Boolean
+        get() = activeFilterCount > 0 || sortOption != ProviderSortOption.RECOMMENDED
+}
 
 class RecommendationViewModel(
     private val catalogRepository: CatalogRepository,
@@ -86,7 +105,8 @@ class RecommendationViewModel(
                             location = customerLocation,
                             maxDistance = _uiState.value.maxDistanceFilter,
                             minRating = _uiState.value.minRatingFilter,
-                            onlyTrusted = _uiState.value.onlyTrusted
+                            onlyTrusted = _uiState.value.onlyTrusted,
+                            sortOption = _uiState.value.sortOption
                         )
                     }
                     is AppResult.Error -> {
@@ -119,27 +139,65 @@ class RecommendationViewModel(
         recomputeFiltered()
     }
 
+    fun setSortOption(sortOption: ProviderSortOption) {
+        _uiState.update { it.copy(sortOption = sortOption) }
+        recomputeFiltered()
+    }
+
+    fun applyFiltersAndSort(
+        maxDistance: Double,
+        minRating: Double,
+        onlyTrusted: Boolean,
+        sortOption: ProviderSortOption
+    ) {
+        _uiState.update {
+            it.copy(
+                maxDistanceFilter = maxDistance,
+                minRatingFilter = minRating,
+                onlyTrusted = onlyTrusted,
+                sortOption = sortOption
+            )
+        }
+        recomputeFiltered()
+    }
+
+    fun resetFilters() {
+        applyFiltersAndSort(
+            maxDistance = 10.0,
+            minRating = 0.0,
+            onlyTrusted = false,
+            sortOption = ProviderSortOption.RECOMMENDED
+        )
+    }
+
+    fun previewMatchCount(
+        maxDistance: Double,
+        minRating: Double,
+        onlyTrusted: Boolean
+    ): Int {
+        return filterRanked(_uiState.value.matchResult.ranked, maxDistance, minRating, onlyTrusted).size
+    }
+
     private fun recomputeRankings(
         category: ServiceCategory,
         candidates: List<ProviderCandidate>,
         location: GeoPoint,
         maxDistance: Double,
         minRating: Double,
-        onlyTrusted: Boolean
+        onlyTrusted: Boolean,
+        sortOption: ProviderSortOption
     ) {
         val matchResult = matchmakingUseCase(location, candidates)
-        val filtered = matchResult.ranked.filter { ranked ->
-            val distPass = ranked.distanceKm <= maxDistance
-            val ratingPass = (ranked.candidate.ratingAvg ?: 0.0) >= minRating
-            val trustedPass = !onlyTrusted || ranked.candidate.badge == ProviderBadge.TRUSTED
-            distPass && ratingPass && trustedPass
-        }
+        val filteredAndSorted = sortRanked(
+            filterRanked(matchResult.ranked, maxDistance, minRating, onlyTrusted),
+            sortOption
+        )
         _uiState.update {
             it.copy(
                 category = category,
                 rawCandidates = candidates,
                 matchResult = matchResult,
-                filteredList = filtered,
+                filteredList = filteredAndSorted,
                 isLoading = false
             )
         }
@@ -147,12 +205,55 @@ class RecommendationViewModel(
 
     private fun recomputeFiltered() {
         val state = _uiState.value
-        val filtered = state.matchResult.ranked.filter { ranked ->
-            val distPass = ranked.distanceKm <= state.maxDistanceFilter
-            val ratingPass = (ranked.candidate.ratingAvg ?: 0.0) >= state.minRatingFilter
-            val trustedPass = !state.onlyTrusted || ranked.candidate.badge == ProviderBadge.TRUSTED
+        val filteredAndSorted = sortRanked(
+            filterRanked(
+                state.matchResult.ranked,
+                state.maxDistanceFilter,
+                state.minRatingFilter,
+                state.onlyTrusted
+            ),
+            state.sortOption
+        )
+        _uiState.update { it.copy(filteredList = filteredAndSorted) }
+    }
+
+    private fun filterRanked(
+        ranked: List<RankedProvider>,
+        maxDistance: Double,
+        minRating: Double,
+        onlyTrusted: Boolean
+    ): List<RankedProvider> {
+        return ranked.filter { item ->
+            val distPass = item.distanceKm <= maxDistance
+            val ratingPass = (item.candidate.ratingAvg ?: 0.0) >= minRating
+            val trustedPass = !onlyTrusted || item.candidate.badge == ProviderBadge.TRUSTED
             distPass && ratingPass && trustedPass
         }
-        _uiState.update { it.copy(filteredList = filtered) }
+    }
+
+    private fun sortRanked(
+        items: List<RankedProvider>,
+        sortOption: ProviderSortOption
+    ): List<RankedProvider> {
+        return when (sortOption) {
+            ProviderSortOption.RECOMMENDED -> items
+            ProviderSortOption.NEAREST -> items.sortedWith(
+                compareBy<RankedProvider> { it.distanceKm }
+                    .thenByDescending { it.matchScore }
+            )
+            ProviderSortOption.HIGHEST_RATING -> items.sortedWith(
+                compareByDescending<RankedProvider> { it.candidate.ratingAvg ?: 0.0 }
+                    .thenByDescending { it.candidate.reviewCount }
+                    .thenBy { it.distanceKm }
+            )
+            ProviderSortOption.LOWEST_PRICE -> items.sortedWith(
+                compareBy<RankedProvider> { it.candidate.minBaseFare ?: Int.MAX_VALUE }
+                    .thenBy { it.distanceKm }
+            )
+            ProviderSortOption.MOST_REVIEWS -> items.sortedWith(
+                compareByDescending<RankedProvider> { it.candidate.reviewCount }
+                    .thenByDescending { it.candidate.ratingAvg ?: 0.0 }
+            )
+        }
     }
 }

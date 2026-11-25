@@ -32,9 +32,11 @@ import id.bantuin.app.domain.model.ServiceItem
 import id.bantuin.app.domain.model.TimeBlock
 import id.bantuin.app.domain.model.TrustInput
 import id.bantuin.app.domain.model.TrustResult
+import id.bantuin.app.domain.model.WalletTransaction
 import id.bantuin.app.domain.repository.BantuinRepository
 import id.bantuin.app.domain.repository.UserProfile
 import id.bantuin.app.domain.usecase.trust.RecalculateProviderMetricsUseCase
+import id.bantuin.app.domain.usecase.wallet.BuildWalletTransactionsUseCase
 import id.bantuin.app.domain.usecase.wallet.CalculateProviderRevenueUseCase
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -55,6 +57,7 @@ class FakeBantuinRepository(
         RecalculateProviderMetricsUseCase(this)
     }
     private val calculateRevenueUseCase = CalculateProviderRevenueUseCase()
+    private val buildWalletTransactionsUseCase = BuildWalletTransactionsUseCase()
 
     private data class StoredReview(val providerId: String, val item: ReviewItem)
     private data class StoredSlotMeta(val dateIso: String, val startMin: Int, val endMin: Int, val startAt: Instant)
@@ -960,6 +963,14 @@ class FakeBantuinRepository(
     override fun observePayoutHistory(providerId: String): Flow<List<PayoutRequest>> {
         return payoutsFlow.map { map ->
             map[providerId].orEmpty().sortedByDescending { it.createdAt }
+        }
+    }
+
+    override fun observeWalletTransactions(providerId: String): Flow<List<WalletTransaction>> {
+        return combine(bookingsFlow, payoutsFlow) { bookings, payoutsMap ->
+            val providerBookings = bookings.filter { it.providerId == providerId }
+            val providerPayouts = payoutsMap[providerId].orEmpty()
+            buildWalletTransactionsUseCase(providerBookings, providerPayouts)
         }
     }
 

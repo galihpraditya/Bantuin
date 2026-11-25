@@ -30,44 +30,6 @@ import id.bantuin.app.ui.theme.BantuinMotion
 import id.bantuin.app.ui.theme.BantuinTheme
 import id.bantuin.app.ui.theme.rememberReducedMotion
 
-fun serviceTagForCategory(categoryId: Int): String = when (categoryId) {
-    1 -> "Populer"
-    2 -> "Cepat"
-    3 -> "Teruji"
-    4 -> "Higienis"
-    5 -> "Pindahan"
-    6 -> "Saluran"
-    else -> ""
-}
-
-/**
- * Mengembalikan pasangan (backgroundColor, textColor) ber-kontras WCAG AA (>= 4.5:1)
- * untuk pill tag di sudut ikon kategori.
- */
-fun serviceTagColors(categoryId: Int, isDark: Boolean): Pair<Color, Color> {
-    return if (isDark) {
-        when (categoryId) {
-            1 -> Color(0xFF3E2208) to Color(0xFFFFB74D)
-            2 -> Color(0xFF0E2B42) to Color(0xFF7DD3FC)
-            3 -> Color(0xFF3D1F10) to Color(0xFFFDBA74)
-            4 -> Color(0xFF0F3020) to Color(0xFF6EE7B7)
-            5 -> Color(0xFF3A280A) to Color(0xFFFDE68A)
-            6 -> Color(0xFF0D2E38) to Color(0xFF67E8F9)
-            else -> Color(0xFF2B2E33) to Color(0xFFE5E7EB)
-        }
-    } else {
-        when (categoryId) {
-            1 -> Color(0xFFC43E00) to Color.White // 5.20:1
-            2 -> Color(0xFF0369A1) to Color.White // 5.92:1
-            3 -> Color(0xFF9A3412) to Color.White // 7.31:1
-            4 -> Color(0xFF15803D) to Color.White // 5.13:1
-            5 -> Color(0xFFB45309) to Color.White // 5.02:1
-            6 -> Color(0xFF0E7490) to Color.White // 5.36:1
-            else -> Color(0xFF475569) to Color.White
-        }
-    }
-}
-
 @Composable
 fun BantuinServiceIcon(
     categoryId: Int,

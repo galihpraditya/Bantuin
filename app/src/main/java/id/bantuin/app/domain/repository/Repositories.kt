@@ -21,6 +21,7 @@ import id.bantuin.app.domain.model.ServiceItem
 import id.bantuin.app.domain.model.TimeBlock
 import id.bantuin.app.domain.model.TrustInput
 import id.bantuin.app.domain.model.TrustResult
+import id.bantuin.app.domain.model.WalletTransaction
 import kotlinx.coroutines.flow.Flow
 
 interface CatalogRepository {
@@ -105,6 +106,7 @@ interface ChatRepository {
 interface WalletRepository {
     fun observeProviderRevenue(providerId: String): Flow<ProviderRevenueAnalytics>
     fun observePayoutHistory(providerId: String): Flow<List<PayoutRequest>>
+    fun observeWalletTransactions(providerId: String): Flow<List<WalletTransaction>>
     suspend fun requestPayout(
         providerId: String,
         amount: Int,
