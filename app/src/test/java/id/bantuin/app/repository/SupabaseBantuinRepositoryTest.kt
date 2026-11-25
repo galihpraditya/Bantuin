@@ -80,7 +80,6 @@ class SupabaseBantuinRepositoryTest {
     @Test
     fun mapSupabaseError_mapsNetworkTimeoutCleanly() {
         val res = supabaseRepo.mapSupabaseError(RuntimeException("Socket timeout while connecting"), "Gagal")
-        assertTrue(res is AppResult.Error)
         assertTrue(res.message.contains("Koneksi", ignoreCase = true))
     }
 }

@@ -1,84 +1,69 @@
 # Bantuin
 
-Bantuin adalah aplikasi Android native untuk menghubungkan pelanggan dengan penyedia jasa harian seperti perbaikan AC, pipa, kelistrikan, elektronik, pertukangan, dan pembersihan rumah. Proyek ini dibangun menggunakan Kotlin, Jetpack Compose, dan Material 3 dengan pendekatan Clean Architecture.
+Bantuin adalah aplikasi Android native untuk menghubungkan pelanggan dengan penyedia jasa harian seperti kelistrikan, AC dan elektronik, pipa dan sanitasi, kebersihan kos, angkut barang, serta les privat. Proyek ini dibangun menggunakan Kotlin, Jetpack Compose, dan Material 3 dengan dukungan Mode Terang, Mode Gelap, serta backend Supabase (PostgREST, Auth, Realtime, dan RPC PostgreSQL).
 
-## Algoritma inti
+## Fitur dan algoritma inti
 
-Aplikasi ini mengimplementasikan empat logika perhitungan utama di layer domain:
+Aplikasi mengimplementasikan empat logika perhitungan di layer domain:
 
-1. Matchmaking mitra (F1)
-   Menyaring mitra aktif dalam radius 15 km dari lokasi pelanggan menggunakan rumus jarak Haversine. Skor akhir dihitung dari kombinasi bobot jarak (50%), rating rata-rata (35%), dan rasio penyelesaian pesanan (15%). Mitra yang terdeteksi anomali mendapat pengali penalti 0.7.
+1. **Matchmaking mitra (F1)**: Menyaring mitra aktif dalam radius `10 km` dari lokasi pelanggan menggunakan jarak Haversine (`BantuinConfig.MAX_RADIUS_KM = 10.0`). Skor akhir memadukan bobot jarak `50%`, rating rata-rata `35%`, dan rasio penyelesaian `15%`, dengan faktor pengali penalti `0.7` bila mitra berstatus anomali.
+2. **Estimasi tarif dinamis (F2)**: Menghitung perkiraan ongkos dari tarif dasar layanan ditambah biaya jarak (`Rp 2.000` per km). Total disesuaikan dengan pengali kompleksitas (`1.00x` ringan, `1.25x` sedang, `1.50x` berat) serta tambahan tunggal `20%` pada jam sibuk, jam malam, atau layanan darurat, lalu dibulatkan ke atas ke kelipatan `Rp 500`.
+3. **Deteksi konflik jadwal (F3)**: Memvalidasi ketersediaan mitra (`OFF`, `ON`, `ALWAYS_ON`), jeda perjalanan `30 menit` antar-pesanan, dan waktu yang sudah lewat. Sistem menawarkan hingga `3` opsi waktu alternatif dan mengunci slot pilihan selama `10 menit`.
+4. **Skor kepercayaan mitra (F4)**: Menghitung performa mitra pada jendela `30 hari` terakhir dengan bobot rating `45%`, ketepatan waktu SLA `35%` (toleransi `15 menit`), dan reliabilitas bebas pembatalan `20%`. Mitra baru dengan kurang dari `5` transaksi mendapat skor awal `70`. Status anomali aktif bila skor `< 60` atau rasio pembatalan `> 20%`.
 
-2. Estimasi tarif dinamis (F2)
-   Menghitung perkiraan ongkos dari tarif dasar layanan ditambah biaya jarak (Rp 2.000 per km). Total disesuaikan dengan pengali tingkat kesulitan kerja (1.0x untuk ringan, 1.25x untuk standar, dan 1.5x untuk berat) serta tambahan 20% saat jam sibuk atau malam hari. Hasil akhir dibulatkan ke atas ke kelipatan Rp 500 terdekat.
+## Dukungan lokasi dan tema visual
 
-3. Deteksi konflik jadwal (F3)
-   Mengecek ketersediaan mitra pada tanggal dan jam yang dipilih pelanggan. Sistem memperhitungkan jam operasional mitra, durasi pengerjaan, dan jeda perjalanan 30 menit antar-pesanan. Jika terjadi bentrok, sistem menyediakan hingga 3 rekomendasi waktu alternatif dan mengunci slot pilihan selama 10 menit saat pemesanan berlangsung.
-
-4. Skor kepercayaan mitra (F4)
-   Menilai performa mitra berdasarkan data 30 hari terakhir dengan bobot rating (45%), ketepatan waktu SLA (35%), dan tingkat penyelesaian (20%). Mitra baru dengan riwayat kurang dari 5 pesanan otomatis mendapat skor awal 70. Status anomali ditandai jika skor berada di bawah 60 atau rasio pembatalan melebihi 20%.
+- **Lokasi & Peta**: Mendukung deteksi GPS perangkat melalui `FusedLocationProviderClient` dan `Geocoder`, pemilihan titik interaktif langsung pada peta OSMDroid (tanpa API key Google Maps), serta area cepat di Malang.
+- **Mode Terang & Mode Gelap**: Tersedia pengaturan tema (**Ikuti Sistem**, **Mode Terang**, **Mode Gelap**) pada layar Profil Pelanggan maupun Dashboard Mitra dengan palet kontras terverifikasi WCAG AA.
 
 ## Struktur direktori
 
-Kode sumber dibagi ke dalam empat layer:
-
-- `app/src/main/java/id/bantuin/app/core`: Konstanta aturan bisnis, penanganan format mata uang Rupiah, manipulasi waktu WIB, dan coroutine dispatchers.
-- `app/src/main/java/id/bantuin/app/domain`: Model data murni, antarmuka repository, dan implementasi logika bisnis tanpa ketergantungan pada Android framework.
-- `app/src/main/java/id/bantuin/app/data`: Penyedia data lokal dan implementasi in-memory repository untuk menjalankan aplikasi secara mandiri tanpa backend luar.
-- `app/src/main/java/id/bantuin/app/ui`: Komponen antarmuka pengguna berbasis Jetpack Compose, terbagi untuk alur pelanggan, portal mitra, navigasi, dan tema visual.
+- `app/src/main/java/id/bantuin/app/core`: Konfigurasi konstanta bisnis (`BantuinConfig`), manajemen sesi (`SharedPreferencesSessionStore`), tema (`ThemePreferenceStore`), pembantu GPS (`LocationHelper`), format Rupiah, utilitas waktu WIB, dan `AppResult`.
+- `app/src/main/java/id/bantuin/app/domain`: Model data domain, kontrak antarmuka repository, serta use case F1 hingga F4.
+- `app/src/main/java/id/bantuin/app/data`: Implementasi cloud Supabase (`SupabaseBantuinRepository`, DTO, Ktor OkHttp WebSocket Realtime) serta mode mandiri offline (`FakeBantuinRepository` & `FakeData`).
+- `app/src/main/java/id/bantuin/app/ui`: Layar Jetpack Compose untuk autentikasi, alur pemesanan pelanggan, portal mitra, navigasi terintegrasi, komponen status Loading/Empty/Error, serta tema Material 3.
+- `supabase/`: Skema tabel, fungsi RPC keamanan, trigger akun baru, kebijakan RLS, dan data awal uji coba (`001_init.sql`, `002_fix_auth_and_grants.sql`, `003_security_hardening.sql`, `seed.sql`).
+- `docs/`: Dokumentasi arsitektur ([DECISIONS.md](docs/DECISIONS.md)), skenario demo ([DEMO_SCENARIO_GUIDE.md](docs/DEMO_SCENARIO_GUIDE.md)), dukungan laporan ([LAPORAN_SKRIPSI_SUPPORT.md](docs/LAPORAN_SKRIPSI_SUPPORT.md)), dan acuan desain UI di `docs/design/`.
 
 ## Kebutuhan sistem
 
-- Android Studio Ladybug (2024.2.1) atau versi lebih baru
-- JDK 17 atau JDK 21
-- Android SDK dengan `minSdk` 26 (Android 8.0) dan `compileSdk` 37
-- Gradle 9.3.2 (sudah disertakan lewat Gradle Wrapper)
+- Android Studio versi Ladybug (`2024.2.1`) atau yang lebih baru
+- JDK 17 (atau JDK 21)
+- Android SDK `minSdk 26`, `targetSdk 35`, `compileSdk 37`
+- Gradle `9.5.0` melalui Gradle Wrapper
 
-## Menjalankan aplikasi
+## Pengaturan Supabase dan build APK
 
-Untuk mengompilasi dan menghasilkan berkas APK debug, jalankan perintah berikut di terminal:
+1. Untuk mode **Supabase Cloud**, jalankan skrip SQL di SQL Editor proyek Supabase Anda secara berurutan:
+   - `supabase/migrations/001_init.sql`
+   - `supabase/migrations/002_fix_auth_and_grants.sql`
+   - `supabase/migrations/003_security_hardening.sql`
+   - `supabase/seed.sql` (opsional, untuk menanamkan akun & riwayat demo)
+2. Tambahkan kredensial pada `local.properties` (jangan commit ke Git):
+   ```properties
+   SUPABASE_URL=https://<project-id>.supabase.co
+   SUPABASE_ANON_KEY=<your-anon-key>
+   ```
+   Jika `SUPABASE_URL` dan `SUPABASE_ANON_KEY` tidak diatur, aplikasi berjalan dalam mode offline mandiri memakai `FakeBantuinRepository`.
+3. Kompilasi APK debug atau release:
+   ```bash
+   ./gradlew assembleDebug
+   ./gradlew assembleRelease
+   ```
+   Di Windows PowerShell, gunakan `.\gradlew.bat assembleDebug`. Hasil APK debug tersimpan di `app/build/outputs/apk/debug/app-debug.apk`.
 
-```bash
-./gradlew assembleDebug
-```
+## Pengujian dan pemeriksaan kualitas
 
-Di lingkungan Windows PowerShell:
-
-```powershell
-.\gradlew.bat assembleDebug
-```
-
-Berkas APK akan tersimpan di:
-`app/build/outputs/apk/debug/app-debug.apk`
-
-Untuk langsung memasang aplikasi ke perangkat fisik atau emulator yang aktif:
-
-```bash
-./gradlew installDebug
-```
-
-## Pengujian unit
-
-Seluruh uji logika bisnis F1 hingga F4 mencakup skenario perhitungan dari spesifikasi teknis. Jalankan pengujian dengan:
+Jalankan seluruh unit test, lint, dan kompilasi dengan:
 
 ```bash
-./gradlew testDebugUnitTest
+./gradlew testDebugUnitTest lintDebug --console=plain
 ```
 
-Laporan hasil pengujian dalam format HTML dapat dilihat di:
-`app/build/reports/tests/testDebugUnitTest/index.html`
+Laporan unit test tersimpan di `app/build/reports/tests/testDebugUnitTest/index.html`.
 
-## Autentikasi dan akun demo
+## Akun demo bawaan
 
-Aplikasi membuka layar login saat belum ada sesi. Kredensial yang salah akan ditolak, dan pengguna akan masuk ke profil sesuai akun yang digunakan (bukan akun demo bawaan).
-
-Akun demo (kata sandi `Demo12345!`):
-
+Kata sandi demo untuk seluruh akun berikut adalah `Demo12345!`:
 - Pelanggan: `pelanggan1@bantuin.test`, `pelanggan2@bantuin.test`
-- Mitra: `mitra01@bantuin.test` … `mitra15@bantuin.test`
-
-Saat Supabase dikonfigurasi, login memakai Supabase Auth. Jalankan `supabase/migrations/001_init.sql`, lalu `supabase/seed.sql`. Untuk proyek yang sudah menjalankan seed versi lama, jalankan juga `supabase/migrations/002_fix_auth_and_grants.sql` agar akun demo dapat login dan hak akses tabel sesuai RLS. Tanpa Supabase, aplikasi memakai repository in-memory dengan akun demo yang sama.
-
-## Catatan penggunaan demo
-
-Aplikasi ini sudah dilengkapi data awal 15 profil mitra di wilayah Malang (berpusat di sekitar Alun-alun Kota Malang) yang mencakup berbagai kategori layanan, kondisi jadwal sibuk, dan variasi skor metrik. Pengguna dapat berganti peran antara Pelanggan dan Mitra melalui profil/beranda selama akun memiliki peran tersebut.
+- Mitra: `mitra01@bantuin.test` sampai `mitra15@bantuin.test`
