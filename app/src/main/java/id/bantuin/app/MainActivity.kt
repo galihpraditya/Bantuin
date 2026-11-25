@@ -13,6 +13,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
+import id.bantuin.app.core.settings.InMemorySettingsStore
 import id.bantuin.app.core.theme.InMemoryThemeStore
 import id.bantuin.app.core.theme.ThemeMode
 import id.bantuin.app.data.repository.FakeBantuinRepository
@@ -26,6 +27,7 @@ class MainActivity : ComponentActivity() {
         val app = application as? BantuinApp
         val repository = app?.repository ?: FakeBantuinRepository()
         val themeStore = app?.themeStore ?: InMemoryThemeStore()
+        val settingsStore = app?.settingsStore ?: InMemorySettingsStore()
         val initialUser = app?.sessionStore?.currentUserValue
         val initialRole = app?.sessionStore?.activeRoleValue ?: "customer"
 
@@ -60,6 +62,7 @@ class MainActivity : ComponentActivity() {
                     BantuinNavGraph(
                         repository = repository,
                         themeStore = themeStore,
+                        settingsStore = settingsStore,
                         initialUser = initialUser,
                         initialRole = initialRole
                     )

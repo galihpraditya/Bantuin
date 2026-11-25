@@ -10,6 +10,7 @@ object Routes {
     const val CUSTOMER_NOTIFICATIONS = "customer_notifications"
     const val CUSTOMER_SCHEDULE = "customer_schedule"
     const val CUSTOMER_PROFILE = "customer_profile"
+    const val SETTINGS = "settings"
 
     // Order Funnel Pelanggan
     const val RECOMMENDATION = "recommendation/{categoryId}"
@@ -30,5 +31,6 @@ object Routes {
     const val PROVIDER_DASHBOARD = "provider_dashboard"
     const val PROVIDER_EVALUATION = "provider_evaluation"
     const val PROVIDER_SERVICES = "provider_services"
+    const val PROVIDER_PROFILE = "provider_profile"
     const val PROVIDER_PROFILE_EDIT = "provider_profile_edit"
 }

@@ -15,6 +15,8 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import androidx.lifecycle.viewmodel.compose.viewModel
+import id.bantuin.app.core.settings.InMemorySettingsStore
+import id.bantuin.app.core.settings.SettingsPreferenceStore
 import id.bantuin.app.core.theme.InMemoryThemeStore
 import id.bantuin.app.core.theme.ThemePreferenceStore
 import id.bantuin.app.domain.model.BookingStatus
@@ -40,12 +42,15 @@ import id.bantuin.app.ui.provider.evaluation.ProviderEvaluationScreen
 import id.bantuin.app.ui.provider.home.ProviderHomeScreen
 import id.bantuin.app.ui.provider.orders.ProviderOrdersScreen
 import id.bantuin.app.ui.provider.profile.ProviderProfileEditScreen
+import id.bantuin.app.ui.provider.profile.ProviderProfileScreen
 import id.bantuin.app.ui.provider.services.ProviderServicesScreen
+import id.bantuin.app.ui.settings.SettingsScreen
 
 @Composable
 fun BantuinNavGraph(
     repository: BantuinRepository,
     themeStore: ThemePreferenceStore = remember { InMemoryThemeStore() },
+    settingsStore: SettingsPreferenceStore = remember { InMemorySettingsStore() },
     initialUser: UserProfile? = null,
     initialRole: String = "customer",
     navController: NavHostController = rememberNavController(),
@@ -272,15 +277,25 @@ fun BantuinNavGraph(
             composable(Routes.CUSTOMER_PROFILE) {
                 CustomerProfileScreen(
                     repository = repository,
+                    onOpenSettings = {
+                        navController.navigate(Routes.SETTINGS)
+                    }
+                )
+            }
+
+            composable(Routes.SETTINGS) {
+                SettingsScreen(
+                    repository = repository,
                     themeStore = themeStore,
-                    onSwitchRole = {
+                    settingsStore = settingsStore,
+                    onNavigateBack = { navController.popBackStack() },
+                    onSwitchedToProvider = {
                         navController.navigate(Routes.PROVIDER_HOME) {
-                            popUpTo(Routes.CUSTOMER_HOME) { inclusive = true }
+                            popUpTo(0) { inclusive = true }
                         }
                     },
-                    onSwitchRoleUnauthorized = {
-                        orderFlow.resetAll()
-                        navController.navigate(Routes.LOGIN) {
+                    onSwitchedToCustomer = {
+                        navController.navigate(Routes.CUSTOMER_HOME) {
                             popUpTo(0) { inclusive = true }
                         }
                     },
@@ -289,6 +304,27 @@ fun BantuinNavGraph(
                         navController.navigate(Routes.LOGIN) {
                             popUpTo(0) { inclusive = true }
                         }
+                    }
+                )
+            }
+
+            composable(Routes.PROVIDER_PROFILE) {
+                ProviderProfileScreen(
+                    repository = repository,
+                    onOpenSettings = {
+                        navController.navigate(Routes.SETTINGS)
+                    },
+                    onNavigateToEditProfile = {
+                        navController.navigate(Routes.PROVIDER_PROFILE_EDIT)
+                    },
+                    onNavigateToServices = {
+                        navController.navigate(Routes.PROVIDER_SERVICES)
+                    },
+                    onNavigateToCalendar = {
+                        navController.navigate(Routes.PROVIDER_CALENDAR)
+                    },
+                    onNavigateToEvaluation = {
+                        navController.navigate(Routes.PROVIDER_EVALUATION)
                     }
                 )
             }

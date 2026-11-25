@@ -94,64 +94,6 @@ class CustomerViewModelsTest {
     }
 
     @Test
-    fun customerProfileViewModel_switchToProvider_withoutProviderRole_signsOutAndRedirects() = runTest {
-        val sessionStore = InMemorySessionStore(
-            initialRole = "customer",
-            initialUser = UserProfile(
-                id = "user_customer_only",
-                fullName = "Dimas Arya",
-                email = "pelanggan2@bantuin.test",
-                phone = "081234567891",
-                roles = setOf("customer")
-            )
-        )
-        val customerOnlyRepository = FakeBantuinRepository(sessionStore = sessionStore)
-        val vm = CustomerProfileViewModel(customerOnlyRepository)
-
-        var allowed = false
-        var unauthorized = false
-        vm.switchRole(
-            newRole = "provider",
-            onAllowed = { allowed = true },
-            onUnauthorized = { unauthorized = true }
-        )
-        testDispatcher.scheduler.advanceUntilIdle()
-
-        assertTrue(!allowed)
-        assertTrue(unauthorized)
-        assertEquals(null, sessionStore.currentUserValue)
-    }
-
-    @Test
-    fun customerProfileViewModel_switchToProvider_withProviderRole_switchesSuccessfully() = runTest {
-        val sessionStore = InMemorySessionStore(
-            initialRole = "customer",
-            initialUser = UserProfile(
-                id = "user_multi_role",
-                fullName = "Rani Wijaya",
-                email = "pelanggan1@bantuin.test",
-                phone = "081234567890",
-                roles = setOf("customer", "provider")
-            )
-        )
-        val repository = FakeBantuinRepository(sessionStore = sessionStore)
-        val vm = CustomerProfileViewModel(repository)
-
-        var allowed = false
-        var unauthorized = false
-        vm.switchRole(
-            newRole = "provider",
-            onAllowed = { allowed = true },
-            onUnauthorized = { unauthorized = true }
-        )
-        testDispatcher.scheduler.advanceUntilIdle()
-
-        assertTrue(allowed)
-        assertTrue(!unauthorized)
-        assertEquals("provider", sessionStore.activeRoleValue)
-    }
-
-    @Test
     fun recommendationViewModel_filtersAndRanksCandidates() = runTest {
         val vm = RecommendationViewModel(repository)
         vm.initialize(categoryId = 2, customerLocation = FakeData.MALANG_CENTER)
@@ -380,38 +322,44 @@ class CustomerViewModelsTest {
     }
 
     @Test
-    fun customerProfileViewModel_updatesThemeModeAndEnablesProviderRole() = runTest {
+    fun customerProfileViewModel_loadsStatsValidatesAndSavesCustomerProfile() = runTest {
         val sessionStore = InMemorySessionStore(
             initialRole = "customer",
             initialUser = UserProfile(
-                id = "user_customer_only",
-                fullName = "Dimas Arya",
-                email = "pelanggan2@bantuin.test",
-                phone = "081234567891",
+                id = "user_demo_rani",
+                fullName = "Rani Wijaya",
+                email = "pelanggan1@bantuin.test",
+                phone = "081234567890",
                 roles = setOf("customer")
             )
         )
-        val customerOnlyRepo = FakeBantuinRepository(sessionStore = sessionStore)
-        val themeStore = InMemoryThemeStore()
-        val vm = CustomerProfileViewModel(customerOnlyRepo, themeStore)
+        val customerRepo = FakeBantuinRepository(sessionStore = sessionStore)
+        val vm = CustomerProfileViewModel(customerRepo, customerRepo)
         testDispatcher.scheduler.advanceUntilIdle()
 
-        assertEquals(ThemeMode.SYSTEM, vm.uiState.value.themeMode)
-        vm.setThemeMode(ThemeMode.DARK)
-        testDispatcher.scheduler.advanceUntilIdle()
-        assertEquals(ThemeMode.DARK, vm.uiState.value.themeMode)
+        assertEquals("Rani Wijaya", vm.uiState.value.nameInput)
+        assertTrue(vm.uiState.value.activeCount >= 1)
 
-        var enabled = false
-        vm.activateProviderMode(
-            address = "Jl. Soekarno Hatta No. 12, Malang",
-            location = FakeData.MALANG_CENTER,
-            bio = "Teknisi listrik rumahan"
-        ) { enabled = true }
+        // Validasi nomor HP salah
+        vm.onPhoneChange("12345")
+        vm.onAddressChange("Jl. Ijen No. 12, Malang")
+        vm.saveCustomerProfile()
+        testDispatcher.scheduler.advanceUntilIdle()
+        assertNotNull(vm.uiState.value.errorMessage)
+        assertTrue(!vm.uiState.value.isSaved)
+
+        // Simpan valid
+        val pickedLoc = GeoPoint(-7.9666, 112.6326)
+        vm.onNameChange("Rani Putri")
+        vm.onPhoneChange("081299988877")
+        vm.onLocationPicked("Jl. Ijen No. 12, Malang", pickedLoc)
+        vm.saveCustomerProfile()
         testDispatcher.scheduler.advanceUntilIdle()
 
-        assertTrue(enabled)
-        assertTrue(sessionStore.currentUserValue?.roles?.contains("provider") == true)
-        assertEquals("provider", sessionStore.activeRoleValue)
+        assertTrue(vm.uiState.value.isSaved)
+        assertEquals("Rani Putri", sessionStore.currentUserValue?.fullName)
+        assertEquals("Jl. Ijen No. 12, Malang", sessionStore.currentUserValue?.defaultAddress)
+        assertEquals(pickedLoc, sessionStore.currentUserValue?.defaultLocation)
     }
 
     @Test

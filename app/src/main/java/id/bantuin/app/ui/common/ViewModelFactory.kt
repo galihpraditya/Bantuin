@@ -2,6 +2,8 @@ package id.bantuin.app.ui.common
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
+import id.bantuin.app.core.settings.InMemorySettingsStore
+import id.bantuin.app.core.settings.SettingsPreferenceStore
 import id.bantuin.app.core.theme.InMemoryThemeStore
 import id.bantuin.app.core.theme.ThemePreferenceStore
 import id.bantuin.app.domain.repository.BantuinRepository
@@ -21,11 +23,14 @@ import id.bantuin.app.ui.provider.evaluation.ProviderEvaluationViewModel
 import id.bantuin.app.ui.provider.home.ProviderHomeViewModel
 import id.bantuin.app.ui.provider.orders.ProviderOrdersViewModel
 import id.bantuin.app.ui.provider.profile.ProviderProfileEditViewModel
+import id.bantuin.app.ui.provider.profile.ProviderProfileViewModel
 import id.bantuin.app.ui.provider.services.ProviderServicesViewModel
+import id.bantuin.app.ui.settings.SettingsViewModel
 
 class BantuinViewModelFactory(
     private val repository: BantuinRepository,
-    private val themeStore: ThemePreferenceStore = InMemoryThemeStore()
+    private val themeStore: ThemePreferenceStore = InMemoryThemeStore(),
+    private val settingsStore: SettingsPreferenceStore = InMemorySettingsStore()
 ) : ViewModelProvider.Factory {
 
     @Suppress("UNCHECKED_CAST")
@@ -50,7 +55,11 @@ class BantuinViewModelFactory(
             modelClass.isAssignableFrom(CustomerNotificationsViewModel::class.java) ->
                 CustomerNotificationsViewModel(repository) as T
             modelClass.isAssignableFrom(CustomerProfileViewModel::class.java) ->
-                CustomerProfileViewModel(repository, themeStore) as T
+                CustomerProfileViewModel(repository, repository) as T
+            modelClass.isAssignableFrom(SettingsViewModel::class.java) ->
+                SettingsViewModel(repository, themeStore, settingsStore) as T
+            modelClass.isAssignableFrom(ProviderProfileViewModel::class.java) ->
+                ProviderProfileViewModel(repository, repository, repository) as T
             modelClass.isAssignableFrom(ProviderHomeViewModel::class.java) ->
                 ProviderHomeViewModel(repository, repository, repository, repository) as T
             modelClass.isAssignableFrom(ProviderOrdersViewModel::class.java) ->
