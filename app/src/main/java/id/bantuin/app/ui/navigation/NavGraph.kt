@@ -28,8 +28,6 @@ import id.bantuin.app.ui.auth.RegisterScreen
 import id.bantuin.app.ui.chat.ChatListScreen
 import id.bantuin.app.ui.chat.ChatRoomScreen
 import id.bantuin.app.ui.common.BantuinBottomBar
-import id.bantuin.app.ui.common.BantuinTopAppBar
-import id.bantuin.app.ui.common.EmptyView
 import id.bantuin.app.ui.common.bottomBarRoutes
 import id.bantuin.app.ui.customer.OrderFlowManager
 import id.bantuin.app.ui.customer.OrderFlowViewModel
@@ -47,10 +45,12 @@ import id.bantuin.app.ui.provider.calendar.ProviderCalendarScreen
 import id.bantuin.app.ui.provider.dashboard.ProviderDashboardScreen
 import id.bantuin.app.ui.provider.evaluation.ProviderEvaluationScreen
 import id.bantuin.app.ui.provider.home.ProviderHomeScreen
+import id.bantuin.app.ui.provider.orders.CompleteOrderConfirmScreen
 import id.bantuin.app.ui.provider.orders.ProviderOrdersScreen
 import id.bantuin.app.ui.provider.profile.ProviderProfileEditScreen
 import id.bantuin.app.ui.provider.profile.ProviderProfileScreen
 import id.bantuin.app.ui.provider.services.ProviderServicesScreen
+import id.bantuin.app.ui.provider.wallet.ProviderWithdrawScreen
 import id.bantuin.app.ui.settings.SettingsScreen
 
 @Composable
@@ -379,23 +379,20 @@ fun BantuinNavGraph(
             composable(Routes.PROVIDER_HOME) {
                 ProviderHomeScreen(
                     repository = repository,
-                    onNavigateToRoute = { route -> navController.navigate(route) },
-                    onSwitchToCustomer = {
-                        navController.navigate(Routes.CUSTOMER_HOME) {
-                            popUpTo(Routes.PROVIDER_HOME) { inclusive = true }
-                        }
-                    },
-                    onSwitchToCustomerUnauthorized = {
-                        orderFlow.resetAll()
-                        navController.navigate(Routes.LOGIN) {
-                            popUpTo(0) { inclusive = true }
-                        }
-                    }
+                    onNavigateToRoute = { route -> navController.navigate(route) }
                 )
             }
 
             composable(Routes.PROVIDER_ORDERS) {
-                ProviderOrdersScreen(repository = repository)
+                ProviderOrdersScreen(
+                    repository = repository,
+                    onOpenChat = { bookingId ->
+                        navController.navigate(Routes.chatRoom(bookingId))
+                    },
+                    onOpenCompleteOrder = { bookingId ->
+                        navController.navigate(Routes.completeOrder(bookingId))
+                    }
+                )
             }
 
             composable(Routes.PROVIDER_CALENDAR) {
@@ -405,26 +402,11 @@ fun BantuinNavGraph(
             composable(Routes.PROVIDER_DASHBOARD) {
                 ProviderDashboardScreen(
                     repository = repository,
-                    themeStore = themeStore,
                     onNavigateToEvaluation = {
                         navController.navigate(Routes.PROVIDER_EVALUATION)
                     },
-                    onSwitchToCustomer = {
-                        navController.navigate(Routes.CUSTOMER_HOME) {
-                            popUpTo(Routes.PROVIDER_HOME) { inclusive = true }
-                        }
-                    },
-                    onSwitchToCustomerUnauthorized = {
-                        orderFlow.resetAll()
-                        navController.navigate(Routes.LOGIN) {
-                            popUpTo(0) { inclusive = true }
-                        }
-                    },
-                    onSignOut = {
-                        orderFlow.resetAll()
-                        navController.navigate(Routes.LOGIN) {
-                            popUpTo(0) { inclusive = true }
-                        }
+                    onOpenWithdraw = {
+                        navController.navigate(Routes.PROVIDER_WITHDRAW)
                     }
                 )
             }
@@ -453,40 +435,21 @@ fun BantuinNavGraph(
             composable(
                 route = Routes.COMPLETE_ORDER,
                 arguments = listOf(navArgument("bookingId") { type = NavType.StringType })
-            ) {
-                Scaffold(
-                    topBar = {
-                        BantuinTopAppBar(
-                            title = "Selesaikan Pesanan",
-                            canNavigateBack = true,
-                            onNavigateBack = { navController.popBackStack() }
-                        )
-                    }
-                ) { pad ->
-                    EmptyView(
-                        title = "Konfirmasi Selesai",
-                        message = "Memuat detail penyelesaian pesanan.",
-                        modifier = Modifier.padding(pad)
-                    )
-                }
+            ) { backStackEntry ->
+                val bookingId = backStackEntry.arguments?.getString("bookingId").orEmpty()
+                CompleteOrderConfirmScreen(
+                    bookingId = bookingId,
+                    repository = repository,
+                    onNavigateBack = { navController.popBackStack() },
+                    onCompleted = { navController.popBackStack() }
+                )
             }
 
             composable(Routes.PROVIDER_WITHDRAW) {
-                Scaffold(
-                    topBar = {
-                        BantuinTopAppBar(
-                            title = "Tarik Saldo Mitra",
-                            canNavigateBack = true,
-                            onNavigateBack = { navController.popBackStack() }
-                        )
-                    }
-                ) { pad ->
-                    EmptyView(
-                        title = "Pencairan Saldo",
-                        message = "Memuat formulir penarikan saldo.",
-                        modifier = Modifier.padding(pad)
-                    )
-                }
+                ProviderWithdrawScreen(
+                    repository = repository,
+                    onNavigateBack = { navController.popBackStack() }
+                )
             }
         }
     }

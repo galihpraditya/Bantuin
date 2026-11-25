@@ -20,6 +20,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Chat
 import androidx.compose.material.icons.filled.Call
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -45,7 +46,10 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import id.bantuin.app.core.util.CurrencyUtils
 import id.bantuin.app.domain.model.BookingItem
 import id.bantuin.app.domain.model.BookingStatus
+import id.bantuin.app.domain.model.PaymentMethod
+import id.bantuin.app.domain.model.PaymentStatus
 import id.bantuin.app.domain.repository.BantuinRepository
+import id.bantuin.app.ui.common.BadgeContainer
 import id.bantuin.app.ui.common.BantuinTopAppBar
 import id.bantuin.app.ui.common.BantuinViewModelFactory
 import id.bantuin.app.ui.common.CountdownTimerView
@@ -58,6 +62,8 @@ import id.bantuin.app.ui.theme.BantuinTheme
 @Composable
 fun ProviderOrdersScreen(
     repository: BantuinRepository,
+    onOpenChat: (String) -> Unit = {},
+    onOpenCompleteOrder: (String) -> Unit = {},
     viewModel: ProviderOrdersViewModel = viewModel(factory = BantuinViewModelFactory(repository)),
     modifier: Modifier = Modifier
 ) {
@@ -152,7 +158,9 @@ fun ProviderOrdersScreen(
                             onExpired = { viewModel.loadOrders() },
                             onUpdateStatus = { newStatus ->
                                 viewModel.updateStatus(booking.id, newStatus)
-                            }
+                            },
+                            onOpenChat = { onOpenChat(booking.id) },
+                            onOpenCompleteOrder = { onOpenCompleteOrder(booking.id) }
                         )
                     }
                 }
@@ -166,7 +174,9 @@ private fun ProviderOrderActionCard(
     booking: BookingItem,
     isUpdating: Boolean,
     onExpired: () -> Unit,
-    onUpdateStatus: (BookingStatus) -> Unit
+    onUpdateStatus: (BookingStatus) -> Unit,
+    onOpenChat: () -> Unit,
+    onOpenCompleteOrder: () -> Unit
 ) {
     val colors = BantuinTheme.colors
     val context = LocalContext.current
@@ -213,6 +223,35 @@ private fun ProviderOrderActionCard(
                 color = colors.textMuted
             )
 
+            Spacer(modifier = Modifier.height(8.dp))
+
+            val paymentLabel = when {
+                booking.paymentMethod == PaymentMethod.QRIS && booking.paymentStatus == PaymentStatus.PAID ->
+                    "QRIS • Lunas"
+                booking.paymentMethod == PaymentMethod.QRIS ->
+                    "QRIS • Menunggu Bayar"
+                else -> "Tunai • Bayar di Lokasi"
+            }
+            val paymentFg = if (booking.paymentStatus == PaymentStatus.PAID) {
+                colors.success
+            } else if (booking.paymentMethod == PaymentMethod.QRIS) {
+                colors.warning
+            } else {
+                colors.textSecondary
+            }
+            val paymentBg = if (booking.paymentStatus == PaymentStatus.PAID) {
+                colors.successContainer
+            } else if (booking.paymentMethod == PaymentMethod.QRIS) {
+                colors.warningContainer
+            } else {
+                colors.surfaceSubtle
+            }
+            BadgeContainer(
+                text = paymentLabel,
+                color = paymentFg,
+                backgroundColor = paymentBg
+            )
+
             if (!booking.notes.isNullOrBlank()) {
                 Spacer(modifier = Modifier.height(6.dp))
                 Box(
@@ -250,31 +289,56 @@ private fun ProviderOrderActionCard(
                 }
             }
 
-            if (booking.status in listOf(BookingStatus.DIKONFIRMASI, BookingStatus.DALAM_PENGERJAAN) &&
-                !booking.customerPhone.isNullOrBlank()
-            ) {
+            if (booking.status.isActive) {
                 Spacer(modifier = Modifier.height(10.dp))
-                OutlinedButton(
-                    onClick = {
-                        val intent = Intent(Intent.ACTION_DIAL, Uri.parse("tel:${booking.customerPhone}"))
-                        context.startActivity(intent)
-                    },
-                    border = ButtonDefaults.outlinedButtonBorder(enabled = true).copy(
-                        brush = androidx.compose.ui.graphics.SolidColor(colors.outline)
-                    ),
-                    shape = RoundedCornerShape(10.dp),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .heightIn(min = 48.dp)
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
-                    Icon(
-                        imageVector = Icons.Default.Call,
-                        contentDescription = null,
-                        tint = colors.primary,
-                        modifier = Modifier.size(16.dp)
-                    )
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text("Hubungi Pelanggan", color = colors.textPrimary)
+                    Button(
+                        onClick = onOpenChat,
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = colors.primaryContainer,
+                            contentColor = colors.onPrimaryContainer
+                        ),
+                        shape = RoundedCornerShape(10.dp),
+                        modifier = Modifier
+                            .weight(1f)
+                            .heightIn(min = 48.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.Chat,
+                            contentDescription = null,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("Chat Pelanggan", fontWeight = FontWeight.SemiBold)
+                    }
+
+                    if (!booking.customerPhone.isNullOrBlank()) {
+                        OutlinedButton(
+                            onClick = {
+                                val intent = Intent(Intent.ACTION_DIAL, Uri.parse("tel:${booking.customerPhone}"))
+                                context.startActivity(intent)
+                            },
+                            border = ButtonDefaults.outlinedButtonBorder(enabled = true).copy(
+                                brush = androidx.compose.ui.graphics.SolidColor(colors.outline)
+                            ),
+                            shape = RoundedCornerShape(10.dp),
+                            modifier = Modifier
+                                .weight(1f)
+                                .heightIn(min = 48.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Call,
+                                contentDescription = null,
+                                tint = colors.primary,
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("Telepon", color = colors.textPrimary)
+                        }
+                    }
                 }
             }
 
@@ -353,18 +417,18 @@ private fun ProviderOrderActionCard(
                 }
                 BookingStatus.DALAM_PENGERJAAN -> {
                     Button(
-                        onClick = { onUpdateStatus(BookingStatus.SELESAI) },
+                        onClick = onOpenCompleteOrder,
                         enabled = !isUpdating,
                         colors = ButtonDefaults.buttonColors(
                             containerColor = colors.success,
-                            contentColor = colors.onPrimary
+                            contentColor = if (colors.isDark) colors.background else androidx.compose.ui.graphics.Color.White
                         ),
                         shape = RoundedCornerShape(10.dp),
                         modifier = Modifier
                             .fillMaxWidth()
                             .heightIn(min = 48.dp)
                     ) {
-                        Text("Selesaikan Pengerjaan")
+                        Text("Proses Selesai & Tagihan", fontWeight = FontWeight.Bold)
                     }
                 }
                 else -> {

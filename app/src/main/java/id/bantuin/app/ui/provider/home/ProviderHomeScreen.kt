@@ -19,16 +19,25 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Chat
 import androidx.compose.material.icons.automirrored.filled.ReceiptLong
+import androidx.compose.material.icons.filled.AccountBalanceWallet
 import androidx.compose.material.icons.filled.CalendarMonth
-import androidx.compose.material.icons.filled.Handyman
-import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.ChevronRight
+import androidx.compose.material.icons.filled.HomeRepairService
+import androidx.compose.material.icons.filled.Schedule
+import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
@@ -37,25 +46,30 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
-import id.bantuin.app.core.config.BantuinConfig
+import id.bantuin.app.core.util.CurrencyUtils
+import id.bantuin.app.domain.model.BookingItem
+import id.bantuin.app.domain.model.BookingStatus
+import id.bantuin.app.domain.model.PaymentMethod
+import id.bantuin.app.domain.model.PaymentStatus
 import id.bantuin.app.domain.repository.BantuinRepository
+import id.bantuin.app.ui.common.BadgeContainer
 import id.bantuin.app.ui.common.BantuinViewModelFactory
-import id.bantuin.app.ui.common.ErrorView
 import id.bantuin.app.ui.common.LoadingView
 import id.bantuin.app.ui.navigation.Routes
 import id.bantuin.app.ui.theme.BantuinTheme
+import java.util.Locale
 
 @Composable
 fun ProviderHomeScreen(
     repository: BantuinRepository,
     onNavigateToRoute: (String) -> Unit,
-    onSwitchToCustomer: () -> Unit,
-    onSwitchToCustomerUnauthorized: () -> Unit,
     viewModel: ProviderHomeViewModel = viewModel(factory = BantuinViewModelFactory(repository)),
     modifier: Modifier = Modifier
 ) {
@@ -64,189 +78,315 @@ fun ProviderHomeScreen(
 
     if (uiState.isLoading && uiState.provider == null) {
         LoadingView(
-            message = "Memuat beranda mitra...",
-            modifier = modifier.background(colors.background)
-        )
-        return
-    }
-
-    if (uiState.errorMessage != null && uiState.provider == null && uiState.user == null) {
-        ErrorView(
-            message = uiState.errorMessage ?: "Gagal memuat data mitra.",
-            onRetry = { viewModel.loadData() },
+            message = "Memuat operasional mitra...",
             modifier = modifier.background(colors.background)
         )
         return
     }
 
     val trust = uiState.trustResult
-    val scoreText = trust?.trustScore?.toInt()?.toString() ?: "70"
-    val trustStatusLabel = when {
-        trust == null -> "Aktif"
-        trust.flagAnomaly -> "Evaluasi"
-        trust.txCount < BantuinConfig.MIN_TX_FOR_EVALUATION -> "Mitra Baru"
-        trust.trustScore >= 85.0 -> "Sangat Baik"
-        else -> "Baik"
-    }
+    val isAccepting = uiState.isAcceptingOrders
 
     LazyColumn(
         modifier = modifier
             .fillMaxSize()
             .background(colors.background),
-        contentPadding = PaddingValues(16.dp),
+        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 24.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        // 1. Header Ringkasan Mitra
-        item {
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(16.dp),
-                colors = CardDefaults.cardColors(containerColor = colors.surface),
-                border = CardDefaults.outlinedCardBorder().copy(
-                    brush = androidx.compose.ui.graphics.SolidColor(colors.borderSubtle)
-                )
-            ) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(16.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
+        if (!uiState.errorMessage.isNullOrBlank()) {
+            item {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp),
+                    colors = CardDefaults.cardColors(containerColor = colors.errorContainer)
                 ) {
                     Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier.weight(1f)
+                        modifier = Modifier.padding(12.dp),
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Box(
-                            modifier = Modifier
-                                .size(48.dp)
-                                .clip(CircleShape)
-                                .background(colors.primaryContainer),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Text(
-                                text = uiState.user?.fullName?.trim()?.firstOrNull()?.uppercase() ?: "M",
-                                style = MaterialTheme.typography.titleLarge,
-                                color = colors.onPrimaryContainer
-                            )
-                        }
-                        Spacer(modifier = Modifier.width(12.dp))
-                        Column {
-                            Text(
-                                text = uiState.user?.fullName?.let { "Halo, $it!" } ?: "Halo, Mitra!",
-                                style = MaterialTheme.typography.titleLarge,
-                                color = colors.textPrimary
-                            )
-                            Text(
-                                text = "Mode Mitra Kerja • ${uiState.specialtyLabel}",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = colors.primary
-                            )
-                        }
-                    }
-
-                    Spacer(modifier = Modifier.width(8.dp))
-                    OutlinedButton(
-                        onClick = {
-                            viewModel.switchToCustomer(
-                                onAllowed = onSwitchToCustomer,
-                                onUnauthorized = onSwitchToCustomerUnauthorized
-                            )
-                        },
-                        border = ButtonDefaults.outlinedButtonBorder(enabled = true).copy(
-                            brush = androidx.compose.ui.graphics.SolidColor(colors.outline)
-                        ),
-                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
-                        modifier = Modifier.heightIn(min = 48.dp)
-                    ) {
-                        Text("Pelanggan", style = MaterialTheme.typography.labelSmall, color = colors.textPrimary)
+                        Icon(
+                            imageVector = Icons.Default.Warning,
+                            contentDescription = null,
+                            tint = colors.error,
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = uiState.errorMessage ?: "",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = colors.error
+                        )
                     }
                 }
             }
         }
 
-        // 2. Tiga Kartu Ringkasan Operasional
+        // 1. Header Operasional Mitra + Switch Cepat Terima Order
+        item {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(containerColor = colors.surface),
+                border = CardDefaults.outlinedCardBorder().copy(brush = SolidColor(colors.borderSubtle))
+            ) {
+                Column(
+                    modifier = Modifier.padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "Halo, ${uiState.provider?.name ?: uiState.user?.fullName ?: "Mitra Bantuin"}",
+                                style = MaterialTheme.typography.titleMedium,
+                                color = colors.textPrimary,
+                                fontWeight = FontWeight.Bold,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                            Text(
+                                text = uiState.specialtyLabel,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = colors.textSecondary,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                        Spacer(modifier = Modifier.width(8.dp))
+                        BadgeContainer(
+                            text = if (isAccepting) "Terima Pesanan" else "Sedang Istirahat",
+                            color = if (isAccepting) colors.success else colors.warning,
+                            backgroundColor = if (isAccepting) colors.successContainer else colors.warningContainer
+                        )
+                    }
+
+                    HorizontalDivider(color = colors.borderSubtle)
+
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(min = 48.dp)
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(colors.surfaceSubtle)
+                            .clickable(enabled = !uiState.isTogglingAccepting) {
+                                viewModel.toggleAcceptingOrders()
+                            }
+                            .padding(horizontal = 12.dp, vertical = 8.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = if (isAccepting) "Status Aktif Menerima Order" else "Mode Istirahat Aktif",
+                                style = MaterialTheme.typography.labelLarge,
+                                color = colors.textPrimary,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                            Text(
+                                text = if (isAccepting) {
+                                    "Profil Anda tampil di hasil pencarian pelanggan."
+                                } else {
+                                    "Anda tidak menerima pesanan baru sementara ini."
+                                },
+                                style = MaterialTheme.typography.bodySmall,
+                                color = colors.textSecondary
+                            )
+                        }
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Switch(
+                            checked = isAccepting,
+                            onCheckedChange = { checked -> viewModel.setAcceptingOrders(checked) },
+                            enabled = !uiState.isTogglingAccepting,
+                            colors = SwitchDefaults.colors(
+                                checkedThumbColor = colors.onPrimary,
+                                checkedTrackColor = colors.success,
+                                uncheckedThumbColor = colors.textMuted,
+                                uncheckedTrackColor = colors.borderSubtle
+                            )
+                        )
+                    }
+                }
+            }
+        }
+
+        // 2. Kartu Total Saldo & Akses Cepat Pencairan
+        item {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(containerColor = colors.surface),
+                border = CardDefaults.outlinedCardBorder().copy(brush = SolidColor(colors.borderSubtle))
+            ) {
+                Column(
+                    modifier = Modifier.padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "Saldo Siap Cair (QRIS)",
+                                style = MaterialTheme.typography.labelMedium,
+                                color = colors.textSecondary
+                            )
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text(
+                                text = CurrencyUtils.formatRupiah(uiState.availableBalance),
+                                style = MaterialTheme.typography.headlineMedium.copy(
+                                    fontFeatureSettings = "tnum"
+                                ),
+                                color = colors.primary,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+
+                        Button(
+                            onClick = { onNavigateToRoute(Routes.PROVIDER_WITHDRAW) },
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = colors.primary,
+                                contentColor = colors.onPrimary
+                            ),
+                            shape = RoundedCornerShape(10.dp),
+                            modifier = Modifier.heightIn(min = 48.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.AccountBalanceWallet,
+                                contentDescription = null,
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("Tarik Dana", style = MaterialTheme.typography.labelLarge)
+                        }
+                    }
+
+                    HorizontalDivider(color = colors.borderSubtle)
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "Total Pendapatan Keseluruhan",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = colors.textSecondary
+                        )
+                        Text(
+                            text = CurrencyUtils.formatRupiah(uiState.totalCombinedRevenue),
+                            style = MaterialTheme.typography.labelLarge.copy(
+                                fontFeatureSettings = "tnum"
+                            ),
+                            color = colors.textPrimary,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                }
+            }
+        }
+
+        // 3. Ringkasan Singkat Antrean & Skor
         item {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                SummaryCard(
+                HomeStatTile(
                     title = "Menunggu",
-                    count = uiState.pendingCount.toString(),
-                    subtext = "Perlu Respon",
-                    color = if (uiState.pendingCount > 0) colors.primary else colors.textPrimary,
-                    modifier = Modifier.weight(1f),
-                    onClick = { onNavigateToRoute(Routes.PROVIDER_ORDERS) }
+                    count = "${uiState.pendingCount}",
+                    subtext = "Perlu konfirmasi",
+                    color = colors.warning,
+                    onClick = { onNavigateToRoute(Routes.PROVIDER_ORDERS) },
+                    modifier = Modifier.weight(1f)
                 )
-                SummaryCard(
-                    title = "Hari Ini",
-                    count = uiState.todayOrdersCount.toString(),
-                    subtext = "Jadwal Aktif",
-                    color = colors.info,
-                    modifier = Modifier.weight(1f),
-                    onClick = { onNavigateToRoute(Routes.PROVIDER_CALENDAR) }
+                HomeStatTile(
+                    title = "Jadwal Aktif",
+                    count = "${uiState.todayOrdersCount}",
+                    subtext = "Hari ini & jalan",
+                    color = colors.primary,
+                    onClick = { onNavigateToRoute(Routes.PROVIDER_ORDERS) },
+                    modifier = Modifier.weight(1f)
                 )
-                SummaryCard(
+                HomeStatTile(
                     title = "Trust Score",
-                    count = scoreText,
-                    subtext = trustStatusLabel,
-                    color = if (trust?.flagAnomaly == true) colors.error else colors.success,
-                    modifier = Modifier.weight(1f),
-                    onClick = { onNavigateToRoute(Routes.PROVIDER_DASHBOARD) }
+                    count = "${trust?.trustScore?.toInt() ?: 70}",
+                    subtext = if (trust?.ratingAvg != null) {
+                        "Rating ${String.format(Locale.US, "%.1f", trust.ratingAvg)}"
+                    } else {
+                        "Mitra Baru"
+                    },
+                    color = colors.success,
+                    onClick = { onNavigateToRoute(Routes.PROVIDER_DASHBOARD) },
+                    modifier = Modifier.weight(1f)
                 )
             }
         }
 
-        // 3. Pintasan Cepat
+        // 4. Kartu 1 Tugas Prioritas Hari Ini
         item {
-            Text(
-                text = "Kelola Layanan & Jadwal",
-                style = MaterialTheme.typography.titleMedium,
-                color = colors.textPrimary
-            )
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(
+                    text = "Tugas Prioritas Hari Ini",
+                    style = MaterialTheme.typography.titleMedium,
+                    color = colors.textPrimary,
+                    fontWeight = FontWeight.Bold
+                )
+                PriorityOrderCard(
+                    order = uiState.priorityOrder,
+                    onOpenQueue = { onNavigateToRoute(Routes.PROVIDER_ORDERS) },
+                    onOpenChat = { id -> onNavigateToRoute(Routes.chatRoom(id)) },
+                    onCompleteOrder = { id -> onNavigateToRoute(Routes.completeOrder(id)) }
+                )
+            }
         }
 
+        // 5. Pintasan Operasional Mitra
         item {
-            ActionTile(
-                title = "Edit Profil & Pangkalan",
-                subtitle = "Ubah biodata, kontak, dan titik lokasi pangkalan mitra",
-                icon = Icons.Default.Person,
-                onClick = { onNavigateToRoute(Routes.PROVIDER_PROFILE_EDIT) }
-            )
-        }
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text(
+                    text = "Pintasan Operasional",
+                    style = MaterialTheme.typography.titleMedium,
+                    color = colors.textPrimary,
+                    fontWeight = FontWeight.Bold
+                )
 
-        item {
-            ActionTile(
-                title = "Antrean Pesanan Masuk",
-                subtitle = "Terima atau tolak pesanan baru dengan batas 15 menit",
-                icon = Icons.AutoMirrored.Filled.ReceiptLong,
-                onClick = { onNavigateToRoute(Routes.PROVIDER_ORDERS) }
-            )
-        }
+                OperationalShortcutItem(
+                    icon = Icons.AutoMirrored.Filled.Chat,
+                    title = "Pesan Masuk Pelanggan",
+                    subtitle = if (uiState.unreadChatCount > 0) {
+                        "${uiState.unreadChatCount} pesan baru menunggu balasan Anda"
+                    } else {
+                        "Koordinasi langsung terkait pesanan aktif"
+                    },
+                    badgeCount = uiState.unreadChatCount,
+                    onClick = { onNavigateToRoute(Routes.CHAT_LIST) }
+                )
 
-        item {
-            ActionTile(
-                title = "Pengaturan Kalender Ketersediaan",
-                subtitle = "Atur hari operasional OFF, ON, atau ALWAYS_ON per hari",
-                icon = Icons.Default.CalendarMonth,
-                onClick = { onNavigateToRoute(Routes.PROVIDER_CALENDAR) }
-            )
-        }
+                OperationalShortcutItem(
+                    icon = Icons.Default.HomeRepairService,
+                    title = "Kelola Layanan & Tarif",
+                    subtitle = "Tambah atau ubah tarif jasa dan durasi pengerjaan",
+                    onClick = { onNavigateToRoute(Routes.PROVIDER_SERVICES) }
+                )
 
-        item {
-            ActionTile(
-                title = "Katalog Layanan & Tarif",
-                subtitle = "Ubah tarif dasar, estimasi durasi, dan jenis layanan",
-                icon = Icons.Default.Handyman,
-                onClick = { onNavigateToRoute(Routes.PROVIDER_SERVICES) }
-            )
+                OperationalShortcutItem(
+                    icon = Icons.Default.CalendarMonth,
+                    title = "Atur Kalender Kerja",
+                    subtitle = "Kelola jam operasional dan jadwal libur harian",
+                    onClick = { onNavigateToRoute(Routes.PROVIDER_CALENDAR) }
+                )
+            }
         }
     }
 }
 
 @Composable
-private fun SummaryCard(
+private fun HomeStatTile(
     title: String,
     count: String,
     subtext: String,
@@ -258,12 +398,10 @@ private fun SummaryCard(
     Card(
         modifier = modifier
             .clip(RoundedCornerShape(14.dp))
-            .clickable { onClick() },
+            .clickable(onClick = onClick),
         shape = RoundedCornerShape(14.dp),
         colors = CardDefaults.cardColors(containerColor = colors.surface),
-        border = CardDefaults.outlinedCardBorder().copy(
-            brush = androidx.compose.ui.graphics.SolidColor(colors.borderSubtle)
-        )
+        border = CardDefaults.outlinedCardBorder().copy(brush = SolidColor(colors.borderSubtle))
     ) {
         Column(modifier = Modifier.padding(12.dp)) {
             Text(
@@ -274,37 +412,194 @@ private fun SummaryCard(
             Spacer(modifier = Modifier.height(4.dp))
             Text(
                 text = count,
-                style = MaterialTheme.typography.headlineMedium,
+                style = MaterialTheme.typography.headlineSmall.copy(fontFeatureSettings = "tnum"),
                 color = color,
                 fontWeight = FontWeight.Bold
             )
             Text(
                 text = subtext,
                 style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
-                color = colors.textSecondary
+                color = colors.textSecondary,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
             )
         }
     }
 }
 
 @Composable
-private fun ActionTile(
+private fun PriorityOrderCard(
+    order: BookingItem?,
+    onOpenQueue: () -> Unit,
+    onOpenChat: (String) -> Unit,
+    onCompleteOrder: (String) -> Unit
+) {
+    val colors = BantuinTheme.colors
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(containerColor = colors.surface),
+        border = CardDefaults.outlinedCardBorder().copy(brush = SolidColor(colors.borderSubtle))
+    ) {
+        if (order == null) {
+            Column(
+                modifier = Modifier.padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                Text(
+                    text = "Belum Ada Tugas Prioritas",
+                    style = MaterialTheme.typography.titleSmall,
+                    color = colors.textPrimary,
+                    fontWeight = FontWeight.Bold
+                )
+                Text(
+                    text = "Pesanan yang sedang dikerjakan atau perlu segera ditangani akan muncul otomatis di sini.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = colors.textSecondary
+                )
+                OutlinedButton(
+                    onClick = onOpenQueue,
+                    border = ButtonDefaults.outlinedButtonBorder(enabled = true)
+                        .copy(brush = SolidColor(colors.outline)),
+                    shape = RoundedCornerShape(10.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(min = 48.dp)
+                ) {
+                    Text("Buka Antrean Pesanan", color = colors.textPrimary)
+                }
+            }
+        } else {
+            val paymentLabel = when {
+                order.paymentMethod == PaymentMethod.QRIS && order.paymentStatus == PaymentStatus.PAID ->
+                    "QRIS • Lunas"
+                order.paymentMethod == PaymentMethod.QRIS -> "QRIS • Menunggu Bayar"
+                else -> "Tunai • Bayar di Lokasi"
+            }
+
+            Column(
+                modifier = Modifier.padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    BadgeContainer(
+                        text = order.status.displayName,
+                        color = if (order.status == BookingStatus.DALAM_PENGERJAAN) colors.success else colors.info,
+                        backgroundColor = if (order.status == BookingStatus.DALAM_PENGERJAAN) {
+                            colors.successContainer
+                        } else {
+                            colors.infoContainer
+                        }
+                    )
+                    Text(
+                        text = CurrencyUtils.formatRupiah(order.totalCost),
+                        style = MaterialTheme.typography.titleMedium.copy(fontFeatureSettings = "tnum"),
+                        color = colors.primary,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+
+                Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                    Text(
+                        text = "${order.customerName} • ${order.serviceName}",
+                        style = MaterialTheme.typography.titleSmall,
+                        color = colors.textPrimary,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Text(
+                        text = "${order.scheduledDate}, ${order.scheduledTime} • $paymentLabel",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = colors.textSecondary
+                    )
+                    Text(
+                        text = order.address,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = colors.textMuted,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    OutlinedButton(
+                        onClick = { onOpenChat(order.id) },
+                        border = ButtonDefaults.outlinedButtonBorder(enabled = true)
+                            .copy(brush = SolidColor(colors.outline)),
+                        shape = RoundedCornerShape(10.dp),
+                        modifier = Modifier
+                            .weight(1f)
+                            .heightIn(min = 48.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.Chat,
+                            contentDescription = null,
+                            tint = colors.primary,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("Chat Pelanggan", color = colors.textPrimary)
+                    }
+
+                    if (order.status == BookingStatus.DALAM_PENGERJAAN) {
+                        Button(
+                            onClick = { onCompleteOrder(order.id) },
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = colors.success,
+                                contentColor = if (colors.isDark) colors.background else Color.White
+                            ),
+                            shape = RoundedCornerShape(10.dp),
+                            modifier = Modifier
+                                .weight(1f)
+                                .heightIn(min = 48.dp)
+                        ) {
+                            Text("Selesaikan Order", fontWeight = FontWeight.Bold)
+                        }
+                    } else {
+                        Button(
+                            onClick = onOpenQueue,
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = colors.primary,
+                                contentColor = colors.onPrimary
+                            ),
+                            shape = RoundedCornerShape(10.dp),
+                            modifier = Modifier
+                                .weight(1f)
+                                .heightIn(min = 48.dp)
+                        ) {
+                            Text("Lihat Antrean", fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun OperationalShortcutItem(
+    icon: ImageVector,
     title: String,
     subtitle: String,
-    icon: ImageVector,
+    badgeCount: Int = 0,
     onClick: () -> Unit
 ) {
     val colors = BantuinTheme.colors
     Card(
         modifier = Modifier
             .fillMaxWidth()
+            .heightIn(min = 64.dp)
             .clip(RoundedCornerShape(14.dp))
-            .clickable { onClick() },
+            .clickable(onClick = onClick),
         shape = RoundedCornerShape(14.dp),
         colors = CardDefaults.cardColors(containerColor = colors.surface),
-        border = CardDefaults.outlinedCardBorder().copy(
-            brush = androidx.compose.ui.graphics.SolidColor(colors.borderSubtle)
-        )
+        border = CardDefaults.outlinedCardBorder().copy(brush = SolidColor(colors.borderSubtle))
     ) {
         Row(
             modifier = Modifier.padding(14.dp),
@@ -313,7 +608,7 @@ private fun ActionTile(
             Box(
                 modifier = Modifier
                     .size(40.dp)
-                    .clip(RoundedCornerShape(10.dp))
+                    .clip(CircleShape)
                     .background(colors.primaryContainer),
                 contentAlignment = Alignment.Center
             ) {
@@ -329,7 +624,8 @@ private fun ActionTile(
                 Text(
                     text = title,
                     style = MaterialTheme.typography.titleSmall,
-                    color = colors.textPrimary
+                    color = colors.textPrimary,
+                    fontWeight = FontWeight.SemiBold
                 )
                 Text(
                     text = subtitle,
@@ -337,6 +633,28 @@ private fun ActionTile(
                     color = colors.textSecondary
                 )
             }
+            if (badgeCount > 0) {
+                Box(
+                    modifier = Modifier
+                        .size(22.dp)
+                        .clip(CircleShape)
+                        .background(colors.primary),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = badgeCount.toString(),
+                        style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
+                        color = colors.onPrimary,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+                Spacer(modifier = Modifier.width(6.dp))
+            }
+            Icon(
+                imageVector = Icons.Default.ChevronRight,
+                contentDescription = null,
+                tint = colors.textMuted
+            )
         }
     }
 }

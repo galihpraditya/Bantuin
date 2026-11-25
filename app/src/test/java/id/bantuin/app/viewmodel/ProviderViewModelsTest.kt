@@ -1,8 +1,6 @@
 package id.bantuin.app.viewmodel
 
 import id.bantuin.app.core.session.InMemorySessionStore
-import id.bantuin.app.core.theme.InMemoryThemeStore
-import id.bantuin.app.core.theme.ThemeMode
 import id.bantuin.app.data.repository.FakeBantuinRepository
 import id.bantuin.app.domain.model.AvailabilityMode
 import id.bantuin.app.domain.model.BookingStatus
@@ -19,7 +17,6 @@ import id.bantuin.app.ui.provider.services.ProviderServicesViewModel
 import java.util.UUID
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runTest
@@ -70,18 +67,7 @@ class ProviderViewModelsTest {
 
         assertEquals("p02", vm.uiState.value.provider?.providerId)
         assertEquals("Ahmad Fauzi", vm.uiState.value.user?.fullName)
-
-        var switched = false
-        var unauthorized = false
-        vm.switchToCustomer(
-            onAllowed = { switched = true },
-            onUnauthorized = { unauthorized = true }
-        )
-        testDispatcher.scheduler.advanceUntilIdle()
-
-        assertTrue(switched)
-        assertTrue(!unauthorized)
-        assertEquals("customer", mitraRepository.activeRole().first())
+        assertTrue(vm.uiState.value.isAcceptingOrders)
     }
 
     @Test
@@ -250,22 +236,19 @@ class ProviderViewModelsTest {
     }
 
     @Test
-    fun providerDashboardViewModel_updatesThemeModeAndRespondsToPendingOrder() = runTest {
+    fun providerDashboardViewModel_loadsRevenueAnalyticsAlongWithTrustResult() = runTest {
         val mitraRepo = mitraRepository("p01", "Budi Santoso, S.T.")
-        val themeStore = InMemoryThemeStore()
         val vm = ProviderDashboardViewModel(
             metricsRepository = mitraRepo,
             authRepository = mitraRepo,
             catalogRepository = mitraRepo,
-            bookingRepository = mitraRepo,
-            themeStore = themeStore
+            walletRepository = mitraRepo
         )
         testDispatcher.scheduler.advanceUntilIdle()
 
-        assertEquals(ThemeMode.SYSTEM, vm.uiState.value.themeMode)
-        vm.setThemeMode(ThemeMode.DARK)
-        testDispatcher.scheduler.advanceUntilIdle()
-        assertEquals(ThemeMode.DARK, vm.uiState.value.themeMode)
+        assertNotNull(vm.uiState.value.trustResult)
+        assertEquals(185_000, vm.uiState.value.revenueAnalytics.totalCombinedRevenue)
+        assertEquals(120_000, vm.uiState.value.revenueAnalytics.availableBalance)
     }
 
     @Test

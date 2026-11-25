@@ -24,10 +24,12 @@ import id.bantuin.app.ui.provider.calendar.ProviderCalendarViewModel
 import id.bantuin.app.ui.provider.dashboard.ProviderDashboardViewModel
 import id.bantuin.app.ui.provider.evaluation.ProviderEvaluationViewModel
 import id.bantuin.app.ui.provider.home.ProviderHomeViewModel
+import id.bantuin.app.ui.provider.orders.CompleteOrderConfirmViewModel
 import id.bantuin.app.ui.provider.orders.ProviderOrdersViewModel
 import id.bantuin.app.ui.provider.profile.ProviderProfileEditViewModel
 import id.bantuin.app.ui.provider.profile.ProviderProfileViewModel
 import id.bantuin.app.ui.provider.services.ProviderServicesViewModel
+import id.bantuin.app.ui.provider.wallet.ProviderWithdrawViewModel
 import id.bantuin.app.ui.settings.SettingsViewModel
 
 class BantuinViewModelFactory(
@@ -70,9 +72,11 @@ class BantuinViewModelFactory(
             modelClass.isAssignableFrom(ProviderProfileViewModel::class.java) ->
                 ProviderProfileViewModel(repository, repository, repository) as T
             modelClass.isAssignableFrom(ProviderHomeViewModel::class.java) ->
-                ProviderHomeViewModel(repository, repository, repository, repository) as T
+                ProviderHomeViewModel(repository, repository, repository, repository, repository, repository) as T
             modelClass.isAssignableFrom(ProviderOrdersViewModel::class.java) ->
                 ProviderOrdersViewModel(repository) as T
+            modelClass.isAssignableFrom(CompleteOrderConfirmViewModel::class.java) ->
+                CompleteOrderConfirmViewModel(repository) as T
             modelClass.isAssignableFrom(ProviderCalendarViewModel::class.java) ->
                 ProviderCalendarViewModel(repository, repository, repository) as T
             modelClass.isAssignableFrom(ProviderServicesViewModel::class.java) ->
@@ -80,7 +84,9 @@ class BantuinViewModelFactory(
             modelClass.isAssignableFrom(ProviderProfileEditViewModel::class.java) ->
                 ProviderProfileEditViewModel(repository, repository) as T
             modelClass.isAssignableFrom(ProviderDashboardViewModel::class.java) ->
-                ProviderDashboardViewModel(repository, repository, repository, repository, themeStore) as T
+                ProviderDashboardViewModel(repository, repository, repository, repository) as T
+            modelClass.isAssignableFrom(ProviderWithdrawViewModel::class.java) ->
+                ProviderWithdrawViewModel(repository, repository) as T
             modelClass.isAssignableFrom(ProviderEvaluationViewModel::class.java) ->
                 ProviderEvaluationViewModel(repository, repository) as T
             else -> throw IllegalArgumentException("Unknown ViewModel class: ${modelClass.name}")
