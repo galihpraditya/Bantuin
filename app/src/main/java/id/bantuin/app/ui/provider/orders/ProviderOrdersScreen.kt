@@ -69,8 +69,8 @@ fun ProviderOrdersScreen(
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val colors = BantuinTheme.colors
-    val selectedTab = uiState.selectedTab
     val tabs = listOf("Menunggu", "Terkonfirmasi", "Berjalan", "Riwayat")
+    val selectedTab = uiState.selectedTab.coerceIn(0, tabs.lastIndex)
 
     Column(
         modifier = modifier

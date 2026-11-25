@@ -55,6 +55,8 @@ import java.util.Locale
 @Composable
 fun ProviderCalendarScreen(
     repository: BantuinRepository,
+    canNavigateBack: Boolean = false,
+    onNavigateBack: () -> Unit = {},
     viewModel: ProviderCalendarViewModel = viewModel(factory = BantuinViewModelFactory(repository)),
     modifier: Modifier = Modifier
 ) {
@@ -67,7 +69,11 @@ fun ProviderCalendarScreen(
             .fillMaxSize()
             .background(colors.background)
     ) {
-        BantuinTopAppBar(title = "Jadwal & Ketersediaan")
+        BantuinTopAppBar(
+            title = "Jadwal & Ketersediaan",
+            canNavigateBack = canNavigateBack,
+            onNavigateBack = onNavigateBack
+        )
 
         when {
             uiState.isLoading && uiState.availabilities.isEmpty() -> {

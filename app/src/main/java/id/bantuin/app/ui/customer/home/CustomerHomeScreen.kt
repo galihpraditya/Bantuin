@@ -155,7 +155,7 @@ fun CustomerHomeScreen(
             modifier = Modifier.fillMaxSize(),
             contentPadding = PaddingValues(bottom = if (showFloatingTracker) 104.dp else 24.dp)
         ) {
-            // 1. Hero Header Oranye Melengkung + Bilah Pencarian + Kartu Lokasi Mengambang (ala Grab/Gojek)
+            // 1. Hero Header Oranye Melengkung + Bilah Pencarian + Kartu Lokasi Mengambang
             item {
                 CurvedHeroAndQuickStrip(
                     userName = uiState.user?.fullName,
@@ -218,7 +218,7 @@ fun CustomerHomeScreen(
             }
         }
 
-        // 6. Floating Bottom Live Order Tracker Pill (ala Gojek)
+        // 6. Floating Bottom Live Order Tracker Pill
         AnimatedVisibility(
             visible = showFloatingTracker,
             enter = if (reducedMotion) fadeIn() else slideInVertically(BantuinMotion.snappySpring()) { it } + fadeIn(),
@@ -293,11 +293,16 @@ private fun CurvedHeroAndQuickStrip(
     val actionCircleBg = if (colors.isDark) colors.surfaceSubtle else Color(0xFF8C2C00)
     val actionIconTint = if (colors.isDark) colors.textPrimary else Color.White
 
-    Box(modifier = Modifier.fillMaxWidth()) {
-        // Latar Header Melengkung
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(bottom = 4.dp)
+    ) {
+        // Latar Header Melengkung (padding bawah 26.dp memberi ruang bagi kartu lokasi mengambang di dalam batas Box)
         Column(
             modifier = Modifier
                 .fillMaxWidth()
+                .padding(bottom = 26.dp)
                 .clip(RoundedCornerShape(bottomStart = 28.dp, bottomEnd = 28.dp))
                 .background(headerBrush)
                 .padding(start = 16.dp, end = 12.dp, top = 14.dp, bottom = 46.dp)
@@ -400,7 +405,7 @@ private fun CurvedHeroAndQuickStrip(
             }
         }
 
-        // Kartu Lokasi & Aksi Cepat Mengambang (menumpuk tepi bawah header melengkung)
+        // Kartu Lokasi & Aksi Cepat Mengambang (menumpuk tepi bawah header melengkung, tetap di dalam batas Box)
         OverlappingLocationQuickCard(
             address = address,
             activeOrder = activeOrder,
@@ -410,10 +415,8 @@ private fun CurvedHeroAndQuickStrip(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .padding(horizontal = 16.dp)
-                .offset(y = 26.dp)
         )
     }
-    Spacer(modifier = Modifier.height(30.dp))
 }
 
 @Composable
@@ -429,19 +432,19 @@ private fun HeaderCircleActionButton(
     val reducedMotion = rememberReducedMotion()
     val interactionSource = remember { MutableInteractionSource() }
 
-    Box(
+    IconButton(
+        onClick = onClick,
+        interactionSource = interactionSource,
         modifier = Modifier
             .size(48.dp)
-            .bantuinPressScale(interactionSource, targetScale = 0.90f),
-        contentAlignment = Alignment.Center
+            .bantuinPressScale(interactionSource, targetScale = 0.90f)
     ) {
-        IconButton(
-            onClick = onClick,
-            interactionSource = interactionSource,
+        Box(
             modifier = Modifier
                 .size(44.dp)
                 .clip(CircleShape)
-                .background(containerColor)
+                .background(containerColor),
+            contentAlignment = Alignment.Center
         ) {
             BadgedBox(
                 badge = {

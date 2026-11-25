@@ -231,7 +231,7 @@ fun LoginScreen(
 @Composable
 fun RegisterScreen(
     repository: BantuinRepository,
-    onRegisterSuccess: (UserProfile?) -> Unit,
+    onRegisterSuccess: (UserProfile?, Boolean) -> Unit,
     onNavigateToLogin: () -> Unit,
     viewModel: AuthViewModel = viewModel(factory = BantuinViewModelFactory(repository)),
     modifier: Modifier = Modifier
@@ -325,7 +325,7 @@ fun RegisterScreen(
                 imeAction = ImeAction.Done
             ),
             keyboardActions = KeyboardActions(
-                onDone = { viewModel.signUp { user -> onRegisterSuccess(user) } }
+                onDone = { viewModel.signUp { user -> onRegisterSuccess(user, uiState.isProvider) } }
             ),
             modifier = Modifier.fillMaxWidth(),
             singleLine = true
@@ -373,7 +373,7 @@ fun RegisterScreen(
         Spacer(modifier = Modifier.height(20.dp))
 
         Button(
-            onClick = { viewModel.signUp { user -> onRegisterSuccess(user) } },
+            onClick = { viewModel.signUp { user -> onRegisterSuccess(user, uiState.isProvider) } },
             enabled = !uiState.isLoading,
             colors = ButtonDefaults.buttonColors(
                 containerColor = colors.primary,

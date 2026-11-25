@@ -55,6 +55,8 @@ import id.bantuin.app.ui.theme.BantuinTheme
 fun CustomerNotificationsScreen(
     repository: BantuinRepository,
     onOrderClick: (String) -> Unit,
+    canNavigateBack: Boolean = false,
+    onNavigateBack: () -> Unit = {},
     viewModel: CustomerNotificationsViewModel = viewModel(factory = BantuinViewModelFactory(repository)),
     modifier: Modifier = Modifier
 ) {
@@ -66,7 +68,11 @@ fun CustomerNotificationsScreen(
             .fillMaxSize()
             .background(colors.background)
     ) {
-        BantuinTopAppBar(title = "Notifikasi")
+        BantuinTopAppBar(
+            title = "Notifikasi",
+            canNavigateBack = canNavigateBack,
+            onNavigateBack = onNavigateBack
+        )
 
         when {
             uiState.isLoading && uiState.notifications.isEmpty() -> {

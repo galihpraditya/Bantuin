@@ -67,7 +67,7 @@ fun CustomerOrdersScreen(
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val colors = BantuinTheme.colors
-    val selectedTab = uiState.selectedTab
+    val selectedTab = uiState.selectedTab.coerceIn(0, 1)
     val activeOrders = uiState.activeOrders
     val historyOrders = uiState.historyOrders
 
