@@ -89,6 +89,7 @@ import id.bantuin.app.ui.customer.OrderFlowManager
 import id.bantuin.app.ui.theme.BantuinTheme
 import id.bantuin.app.ui.theme.bantuinPressScale
 import java.util.Locale
+import kotlinx.coroutines.flow.drop
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -110,6 +111,9 @@ fun RecommendationScreen(
     LaunchedEffect(categoryId, orderFlow.customerLocation) {
         orderFlow.selectedCategoryId = categoryId
         viewModel.initialize(categoryId, orderFlow.customerLocation)
+        repository.trustChanges.drop(1).collect {
+            viewModel.loadCandidates(categoryId, orderFlow.customerLocation)
+        }
     }
 
     val category = uiState.category

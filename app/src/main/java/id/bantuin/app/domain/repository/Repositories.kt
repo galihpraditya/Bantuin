@@ -19,10 +19,12 @@ import id.bantuin.app.domain.model.ReviewItem
 import id.bantuin.app.domain.model.ServiceCategory
 import id.bantuin.app.domain.model.ServiceItem
 import id.bantuin.app.domain.model.TimeBlock
+import id.bantuin.app.domain.model.CompletionOutcome
 import id.bantuin.app.domain.model.TrustInput
 import id.bantuin.app.domain.model.TrustResult
 import id.bantuin.app.domain.model.WalletTransaction
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flowOf
 
 interface CatalogRepository {
     suspend fun categories(): AppResult<List<ServiceCategory>>
@@ -67,11 +69,15 @@ interface BookingRepository {
 }
 
 interface ReviewRepository {
-    suspend fun submitReview(bookingId: String, providerId: String, rating: Int, comment: String?, tags: List<String>): AppResult<Unit>
+    suspend fun submitReview(bookingId: String, providerId: String, rating: Int, comment: String?,
+        tags: List<String>, completion: CompletionOutcome? = null
+    ): AppResult<Unit>
+    suspend fun deleteReview(bookingId: String): AppResult<Unit>
     suspend fun reviewsOf(providerId: String): AppResult<List<ReviewItem>>
 }
 
 interface MetricsRepository {
+    val trustChanges: Flow<Long> get() = flowOf(0L)
     suspend fun trustInput(providerId: String, sinceDays: Int): AppResult<TrustInput>
     suspend fun apply(providerId: String, result: TrustResult): AppResult<Unit>
     suspend fun history(providerId: String): AppResult<List<MetricSnapshot>>

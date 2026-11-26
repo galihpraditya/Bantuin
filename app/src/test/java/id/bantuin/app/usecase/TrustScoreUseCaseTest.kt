@@ -20,7 +20,7 @@ class TrustScoreUseCaseTest {
     @Test
     fun testVector8_4_TrustScore() {
         // 1. Sehat: 8 SELESAI (6 tepat waktu, 2 telat), 2 DIBATALKAN_MITRA, 8 ulasan rata-rata 4.5
-        // -> rating 90, on-time 75, cancel 20 -> 82.75, bukan anomali (20 tidak > 20), badge TRUSTED
+        // -> rating 90, on-time 75, cancel 20 -> 62.75, bukan anomali (20 tidak > 20), badge TRUSTED
         val completedSehat = (1..6).map {
             CompletedJob(startAt = baseInstant, startedAt = baseInstant + 10.minutes) // tepat waktu <= 15m
         } + (1..2).map {
@@ -32,12 +32,12 @@ class TrustScoreUseCaseTest {
             ratings = listOf(5, 4, 5, 4, 5, 4, 5, 4) // avg 4.5
         )
         val r1 = useCase.calculate(inputSehat)
-        assertEquals(82.75, r1.trustScore, 0.001)
+        assertEquals(62.75, r1.trustScore, 0.001)
         assertFalse(r1.flagAnomaly)
         assertEquals(ProviderBadge.TRUSTED, r1.badge)
 
         // 2. Cancel tinggi: 6 SELESAI (semua tepat), 4 DIBATALKAN_MITRA, rata-rata 4.0
-        // cancel 40 -> skor 83, anomali HIGH_CANCEL_RATE, badge NONE
+        // cancel 40 -> skor 63, anomali HIGH_CANCEL_RATE, badge NONE
         val completedCancel = (1..6).map {
             CompletedJob(startAt = baseInstant, startedAt = baseInstant + 5.minutes)
         }
@@ -47,13 +47,13 @@ class TrustScoreUseCaseTest {
             ratings = listOf(4, 4, 4, 4, 4) // avg 4.0
         )
         val r2 = useCase.calculate(inputCancel)
-        assertEquals(83.0, r2.trustScore, 0.001)
+        assertEquals(63.0, r2.trustScore, 0.001)
         assertTrue(r2.flagAnomaly)
         assertEquals(ProviderBadge.NONE, r2.badge)
         assertTrue(r2.reasons.contains(AnomalyReason.HIGH_CANCEL_RATE))
 
         // 3. Skor rendah: 5 SELESAI (1 tepat waktu), 0 batal, rata-rata 2.0
-        // -> 18 + 7 + 20 = 45 -> anomali LOW_TRUST_SCORE
+        // -> 18 + 7 = 25 -> anomali LOW_TRUST_SCORE
         val completedLow = listOf(
             CompletedJob(startAt = baseInstant, startedAt = baseInstant + 5.minutes)
         ) + (1..4).map {
@@ -65,28 +65,40 @@ class TrustScoreUseCaseTest {
             ratings = listOf(2, 2, 2, 2, 2) // avg 2.0
         )
         val r3 = useCase.calculate(inputLow)
-        assertEquals(45.0, r3.trustScore, 0.001)
+        assertEquals(25.0, r3.trustScore, 0.001)
         assertTrue(r3.flagAnomaly)
         assertTrue(r3.reasons.contains(AnomalyReason.LOW_TRUST_SCORE))
 
-        // 4. Mitra baru: tx = 4 (< 5) -> trust 70, badge NEW, tanpa anomali
+        // 4. Mitra baru: tx = 4 (< 5) -> trust 80, badge TRUSTED, tanpa anomali
         val inputNew = TrustInput(
             completed = (1..4).map { CompletedJob(startAt = baseInstant, startedAt = baseInstant) },
             mitraCancelledCount = 0,
             ratings = listOf(5, 5, 5, 5)
         )
         val r4 = useCase.calculate(inputNew)
-        assertEquals(70.0, r4.trustScore, 0.001)
+        assertEquals(80.0, r4.trustScore, 0.001)
         assertFalse(r4.flagAnomaly)
-        assertEquals(ProviderBadge.NEW, r4.badge)
+        assertEquals(ProviderBadge.TRUSTED, r4.badge)
 
-        // 5. Tanpa ulasan: tx >= 5, ratings kosong -> skor rating = 70
+        // 5. Tanpa ulasan: tx >= 5, ratings kosong -> skor rating = 0
         val inputNoReviews = TrustInput(
             completed = (1..5).map { CompletedJob(startAt = baseInstant, startedAt = baseInstant) },
             mitraCancelledCount = 0,
             ratings = emptyList()
         )
         val r5 = useCase.calculate(inputNoReviews)
-        assertEquals(70.0, r5.ratingScore, 0.001)
+        assertEquals(0.0, r5.ratingScore, 0.001)
+    }
+    @Test
+    fun includesUnfinishedOrdersInCancellationDenominator() {
+        val result = useCase.calculate(TrustInput(
+            completed = listOf(CompletedJob(baseInstant, baseInstant)),
+            mitraCancelledCount = 1,
+            ratings = listOf(5),
+            otherOrderCount = 3
+        ))
+        assertEquals(20.0, result.cancelRate, 0.001)
+        assertEquals(76.0, result.trustScore, 0.001)
+        assertFalse(result.flagAnomaly)
     }
 }

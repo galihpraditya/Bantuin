@@ -53,6 +53,7 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
@@ -82,6 +83,7 @@ import id.bantuin.app.ui.theme.BantuinTheme
 import id.bantuin.app.ui.theme.bantuinPressScale
 import id.bantuin.app.ui.theme.rememberReducedMotion
 import java.util.Locale
+import kotlinx.coroutines.flow.drop
 
 @Composable
 fun ProviderHomeScreen(
@@ -91,6 +93,9 @@ fun ProviderHomeScreen(
     modifier: Modifier = Modifier
 ) {
     val uiState by viewModel.uiState.collectAsState()
+    LaunchedEffect(repository, viewModel) {
+        repository.trustChanges.drop(1).collect { viewModel.loadData() }
+    }
     val colors = BantuinTheme.colors
 
     if (uiState.isLoading && uiState.provider == null) {
@@ -343,7 +348,7 @@ fun ProviderHomeScreen(
                 )
                 HomeStatTile(
                     title = "Trust Score",
-                    count = "${trust?.trustScore?.toInt() ?: 70}",
+                    count = trust?.let { String.format(java.util.Locale.US, "%.2f", it.trustScore) } ?: "—",
                     subtext = if (trust?.ratingAvg != null) {
                         "Rating ${String.format(Locale.US, "%.1f", trust.ratingAvg)}"
                     } else {

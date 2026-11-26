@@ -388,8 +388,8 @@ object FakeData {
 
     // Riwayat snapshot mingguan untuk Screen 6 Canvas Chart
     val sampleSnapshots = listOf(
-        MetricSnapshot("M-1", 88.0, 90.0, 92.0, 2.0),
-        MetricSnapshot("M-2", 90.0, 92.0, 95.0, 1.8),
+        MetricSnapshot("M-1", 72.3, 90.0, 92.0, 2.0),
+        MetricSnapshot("M-2", 74.29, 92.0, 95.0, 1.8),
         MetricSnapshot("M-3", 91.0, 94.0, 96.0, 1.5),
         MetricSnapshot("Sekarang", 92.0, 96.4, 96.4, 1.8)
     )

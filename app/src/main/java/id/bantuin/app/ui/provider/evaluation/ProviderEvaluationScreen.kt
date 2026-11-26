@@ -40,6 +40,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
@@ -56,6 +57,7 @@ import id.bantuin.app.ui.common.ErrorView
 import id.bantuin.app.ui.common.LoadingView
 import id.bantuin.app.ui.theme.BantuinTheme
 import java.util.Locale
+import kotlinx.coroutines.flow.drop
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -66,6 +68,9 @@ fun ProviderEvaluationScreen(
     modifier: Modifier = Modifier
 ) {
     val uiState by viewModel.uiState.collectAsState()
+    LaunchedEffect(repository, viewModel) {
+        repository.trustChanges.drop(1).collect { viewModel.loadEvaluation() }
+    }
     val colors = BantuinTheme.colors
 
     Scaffold(
@@ -267,7 +272,7 @@ fun ProviderEvaluationScreen(
                                 FeedbackStepItem(
                                     stepNumber = "2",
                                     title = "Evaluasi Trust Score (F4)",
-                                    subtitle = "Menghitung skor ${result?.trustScore?.toInt() ?: 70}/100 dalam jendela ${BantuinConfig.TRUST_WINDOW_DAYS} hari",
+                                    subtitle = "Menghitung skor ${result?.let { String.format(java.util.Locale.US, "%.2f", it.trustScore) } ?: "—"}/100 dalam jendela ${BantuinConfig.TRUST_WINDOW_DAYS} hari",
                                     isDone = true
                                 )
                                 FeedbackStepItem(

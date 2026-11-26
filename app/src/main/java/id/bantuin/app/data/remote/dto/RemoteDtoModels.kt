@@ -108,6 +108,7 @@ data class BookingDto(
     @SerialName("payment_method") val paymentMethod: String = "CASH",
     @SerialName("payment_status") val paymentStatus: String = "UNPAID",
     @SerialName("completion_note") val completionNote: String? = null,
+    @SerialName("completion_outcome") val completionOutcome: String? = null,
     @SerialName("created_at") val createdAt: String? = null
 )
 
@@ -129,6 +130,7 @@ data class ReviewDto(
     @SerialName("provider_id") val providerId: String,
     @SerialName("rating") val rating: Int,
     @SerialName("comment") val comment: String? = null,
+    @SerialName("tags") val tags: List<String> = emptyList(),
     @SerialName("created_at") val createdAt: String? = null
 )
 

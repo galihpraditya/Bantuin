@@ -135,20 +135,33 @@ data class LockInfo(
     val dateIso: String = ""
 )
 
+enum class CompletionOutcome(val label: String) {
+    SELESAI_TEPAT_WAKTU("Selesai Tepat Waktu"), TERLAMBAT("Terlambat"), DIBATALKAN("Dibatalkan")
+}
+
+fun BookingStatus.reviewOutcomes(): List<CompletionOutcome> = when (this) {
+    BookingStatus.SELESAI -> listOf(CompletionOutcome.SELESAI_TEPAT_WAKTU, CompletionOutcome.TERLAMBAT)
+    BookingStatus.PENDING, BookingStatus.DIKONFIRMASI, BookingStatus.DIBATALKAN_PELANGGAN,
+    BookingStatus.DIBATALKAN_MITRA -> listOf(CompletionOutcome.DIBATALKAN)
+    else -> emptyList()
+}
+
 data class CompletedJob(
     val startAt: Instant,
-    val startedAt: Instant
+    val startedAt: Instant,
+    val outcome: CompletionOutcome? = null
 )
 
 data class TrustInput(
     val completed: List<CompletedJob>,
     val mitraCancelledCount: Int,
-    val ratings: List<Int>
+    val ratings: List<Int>,
+    val otherOrderCount: Int = 0
 )
 
 enum class AnomalyReason(val description: String) {
     LOW_TRUST_SCORE("Trust Score di bawah 60"),
-    HIGH_CANCEL_RATE("Rasio pembatalan mitra di atas 20%")
+    HIGH_CANCEL_RATE("Rasio pembatalan di atas 20%")
 }
 
 data class TrustResult(
@@ -216,7 +229,8 @@ data class BookingItem(
     val customerPhone: String? = null,
     val paymentMethod: PaymentMethod = PaymentMethod.CASH,
     val paymentStatus: PaymentStatus = PaymentStatus.UNPAID,
-    val completionNote: String? = null
+    val completionNote: String? = null,
+    val completionOutcome: CompletionOutcome? = null
 )
 
 data class BookingEvent(
@@ -234,5 +248,6 @@ data class ReviewItem(
     val rating: Int,
     val comment: String?,
     val tags: List<String> = emptyList(),
-    val createdAtText: String = "Baru saja"
+    val createdAtText: String = "Baru saja",
+    val createdAt: Instant? = null
 )

@@ -13,6 +13,10 @@ import id.bantuin.app.domain.model.BookingStatus
 import id.bantuin.app.domain.model.ChatMessage
 import id.bantuin.app.domain.model.ChatThreadSummary
 import id.bantuin.app.domain.model.CompletedJob
+import id.bantuin.app.domain.model.CompletionOutcome
+import id.bantuin.app.domain.model.reviewOutcomes
+import id.bantuin.app.domain.usecase.trust.TrustScoreUseCase
+import kotlinx.coroutines.flow.update
 import id.bantuin.app.domain.model.DayAvailability
 import id.bantuin.app.domain.model.GeoPoint
 import id.bantuin.app.domain.model.LockInfo
@@ -78,7 +82,17 @@ class FakeBantuinRepository(
     private val bookingEventsMap = mutableMapOf<String, MutableList<BookingEvent>>()
     private val chatMessagesFlow = MutableStateFlow<Map<String, List<ChatMessage>>>(emptyMap())
     private val payoutsFlow = MutableStateFlow<Map<String, List<PayoutRequest>>>(emptyMap())
-    private val reviewsList = FakeData.sampleReviews.map { StoredReview("p01", it) }.toMutableList()
+    private val reviewsList = (FakeData.sampleReviews.map { StoredReview("p01", it) } +
+        listOf(
+            ReviewItem("sugeng-review-1", "sugeng-demo-1", "Dewi", 5, "Datang tepat waktu dan MCB kembali normal."),
+            ReviewItem("sugeng-review-2", "sugeng-demo-2", "Arif", 5, "Instalasi stop kontak rapi dan sudah dites."),
+            ReviewItem("sugeng-review-3", "sugeng-demo-3", "Nina", 4, "Biayanya dijelaskan sebelum pengerjaan.")
+        ).map { StoredReview("p04", it) }).map {
+            it.copy(item = it.item.copy(createdAt = Clock.System.now() - 2.days))
+        }.toMutableList()
+    private val trustScore = TrustScoreUseCase()
+    private val trustRevision = MutableStateFlow(0L)
+    override val trustChanges: Flow<Long> = trustRevision
     private val activeLocks = mutableMapOf<String, Pair<String, LockInfo>>() // lockId -> (lockedByUserId, LockInfo)
     private val providerSnapshotsMap = mutableMapOf<String, MutableList<MetricSnapshot>>()
     private var nextEventId = 100L
@@ -188,7 +202,10 @@ class FakeBantuinRepository(
                 )
             )
         )
-        providerSnapshotsMap["p01"] = FakeData.sampleSnapshots.toMutableList()
+        providerSnapshotsMap["p01"] = FakeData.sampleSnapshots.filterNot { it.label == "Sekarang" }.toMutableList()
+        providersList.map { it.providerId }.forEach { providerId ->
+            cacheTrust(providerId, trustScore(buildTrustInput(providerId, 30)), addSnapshot = providerId == "p01")
+        }
     }
 
     // ================= CATALOG REPOSITORY =================
@@ -273,8 +290,8 @@ class FakeBantuinRepository(
                     ratingAvg = null,
                     reviewCount = 0,
                     completionRate = null,
-                    flagAnomaly = false,
-                    badge = ProviderBadge.NEW,
+                    flagAnomaly = true,
+                    badge = ProviderBadge.NONE,
                     minBaseFare = null
                 )
             )
@@ -458,7 +475,7 @@ class FakeBantuinRepository(
         bookingEventsMap.getOrPut(bookingId) { mutableListOf() }
             .add(BookingEvent(nextEventId++, bookingId, newStatus, sessionStore.currentUserValue?.id, now))
 
-        if (newStatus in setOf(BookingStatus.SELESAI, BookingStatus.DIBATALKAN_MITRA)) {
+        if (newStatus in setOf(BookingStatus.SELESAI, BookingStatus.DIBATALKAN_MITRA, BookingStatus.DIBATALKAN_PELANGGAN)) {
             recalculateMetricsUseCase(item.providerId)
         }
         return AppResult.Success(Unit)
@@ -594,64 +611,100 @@ class FakeBantuinRepository(
 
     // ================= REVIEW REPOSITORY =================
     override suspend fun submitReview(
-        bookingId: String,
-        providerId: String,
-        rating: Int,
-        comment: String?,
-        tags: List<String>
+        bookingId: String, providerId: String, rating: Int, comment: String?,
+        tags: List<String>, completion: CompletionOutcome?
     ): AppResult<Unit> {
-        val review = ReviewItem(
-            id = UUID.randomUUID().toString(),
-            bookingId = bookingId,
-            customerName = sessionStore.currentUserValue?.fullName ?: "Pelanggan",
-            rating = rating,
-            comment = comment,
-            tags = tags,
-            createdAtText = "Baru saja"
-        )
-        reviewsList.add(0, StoredReview(providerId, review))
-
-        val list = bookingsFlow.value.toMutableList()
-        val idx = list.indexOfFirst { it.id == bookingId }
-        if (idx >= 0) {
-            list[idx] = list[idx].copy(review = review)
-            bookingsFlow.value = list
+        val booking = bookingsFlow.value.find {
+            it.id == bookingId && it.providerId == providerId && it.customerId == sessionStore.currentUserValue?.id
+        } ?: return AppResult.Error("Pesanan bukan milik Anda")
+        if (rating !in 1..5 || (comment?.length ?: 0) > 300 || tags.size > 4 || tags.any { it.length > 40 }) {
+            return AppResult.Error("Rating atau ulasan tidak valid")
+        }
+        if (completion != null && completion !in booking.status.reviewOutcomes() ||
+            completion == null && booking.status !in reviewableStatuses) {
+            return AppResult.Error("Hasil penyelesaian tidak sesuai dengan status pesanan")
         }
 
-        recalculateMetricsUseCase(providerId)
-        return AppResult.Success(Unit)
+        val now = Clock.System.now()
+        if (booking.status == BookingStatus.PENDING && booking.expiresAt?.let { it <= now } == true) {
+            return AppResult.Error("Pesanan sudah kedaluwarsa")
+        }
+        val cancelsBooking = completion == CompletionOutcome.DIBATALKAN && booking.status.isActive
+        val previousReview = booking.review
+        val review = ReviewItem(
+            id = previousReview?.id ?: UUID.randomUUID().toString(),
+            bookingId = bookingId, customerName = booking.customerName,
+            rating = rating, comment = comment?.trim()?.takeIf { it.isNotEmpty() },
+            tags = tags.toList(), createdAtText = previousReview?.createdAtText ?: "Baru saja",
+            createdAt = previousReview?.createdAt ?: now
+        )
+        val updated = booking.copy(
+            status = if (cancelsBooking) BookingStatus.DIBATALKAN_PELANGGAN else booking.status,
+            finishedAt = if (cancelsBooking) now else booking.finishedAt,
+            completionOutcome = completion ?: booking.completionOutcome,
+            review = review
+        )
+        reviewsList.removeAll { it.item.bookingId == bookingId }
+        reviewsList.add(0, StoredReview(providerId, review))
+        if (cancelsBooking) {
+            bookingEventsMap.getOrPut(bookingId) { mutableListOf() }
+                .add(BookingEvent(nextEventId++, bookingId, updated.status, booking.customerId, now))
+        }
+        bookingsFlow.update { list -> list.map { if (it.id == bookingId) updated else it } }
+        return apply(providerId, trustScore(buildTrustInput(providerId, 30)))
     }
+
+    override suspend fun deleteReview(bookingId: String): AppResult<Unit> {
+        val booking = bookingsFlow.value.find { it.id == bookingId && it.customerId == sessionStore.currentUserValue?.id }
+            ?: return AppResult.Error("Pesanan bukan milik Anda")
+        if (booking.review == null) return AppResult.Success(Unit)
+        reviewsList.removeAll { it.item.bookingId == bookingId }
+        bookingsFlow.update { list -> list.map { if (it.id == bookingId) it.copy(review = null) else it } }
+        return apply(booking.providerId, trustScore(buildTrustInput(booking.providerId, 30)))
+    }
+
+    private val reviewableStatuses = setOf(
+        BookingStatus.SELESAI, BookingStatus.DIBATALKAN_MITRA, BookingStatus.DIBATALKAN_PELANGGAN
+    )
 
     override suspend fun reviewsOf(providerId: String): AppResult<List<ReviewItem>> {
         return AppResult.Success(reviewsList.filter { it.providerId == providerId }.map { it.item })
     }
 
     // ================= METRICS REPOSITORY =================
-    override suspend fun trustInput(providerId: String, sinceDays: Int): AppResult<TrustInput> {
+    override suspend fun trustInput(providerId: String, sinceDays: Int): AppResult<TrustInput> =
+        AppResult.Success(buildTrustInput(providerId, sinceDays))
+
+    private fun buildTrustInput(providerId: String, sinceDays: Int): TrustInput {
         val now = Clock.System.now()
         val cutoff = now - sinceDays.days
-        val providerBookings = bookingsFlow.value.filter { it.providerId == providerId }
+        val providerBookings = bookingsFlow.value.filter {
+            it.providerId == providerId && (it.finishedAt ?: it.createdAt) in cutoff..now
+        }
 
         val dynamicCompleted = providerBookings
             .filter { it.status == BookingStatus.SELESAI && (it.finishedAt == null || it.finishedAt >= cutoff) }
             .map { b ->
                 val startAt = bookingMetaMap[b.id]?.startAt ?: b.createdAt
                 val startedAt = b.startedAt ?: startAt
-                CompletedJob(startAt = startAt, startedAt = startedAt)
+                CompletedJob(startAt, startedAt, b.completionOutcome)
             }
         val dynamicCancelled = providerBookings.count {
-            it.status == BookingStatus.DIBATALKAN_MITRA && (it.finishedAt == null || it.finishedAt >= cutoff)
+            it.status in setOf(BookingStatus.DIBATALKAN_MITRA, BookingStatus.DIBATALKAN_PELANGGAN)
         }
 
-        val baseJobs = seededJobsFor(providerId, now)
-        val baseCancels = when (providerId) {
+        val fixture = FakeData.providers.any { it.providerId == providerId }
+        val baseJobs = if (fixture) seededJobsFor(providerId, now) else emptyList()
+        val baseCancels = if (!fixture) 0 else when (providerId) {
             "p05" -> 4
             "p06" -> 2
             "p07", "p11" -> 0
             else -> 1
         }
-        val providerRatings = reviewsList.filter { it.providerId == providerId }.map { it.item.rating }
-        val baseRatings = when (providerId) {
+        val providerRatings = reviewsList.filter {
+            it.providerId == providerId && it.item.createdAt?.let { date -> date in cutoff..now } == true
+        }.map { it.item.rating }
+        val baseRatings = if (!fixture) emptyList() else when (providerId) {
             "p01" -> listOf(5, 5, 5, 5, 5, 5, 4) // + 3 seeded 5-star = 4.9 exact
             "p05" -> listOf(4, 4, 4, 5, 4)
             "p06" -> listOf(2, 3, 2, 2, 3)
@@ -659,12 +712,11 @@ class FakeBantuinRepository(
             else -> listOf(5, 5, 4, 5, 5)
         }
 
-        return AppResult.Success(
-            TrustInput(
-                completed = baseJobs + dynamicCompleted,
-                mitraCancelledCount = baseCancels + dynamicCancelled,
-                ratings = if (providerRatings.isNotEmpty()) baseRatings + providerRatings else baseRatings
-            )
+        return TrustInput(
+            completed = baseJobs.filter { it.startAt >= cutoff } + dynamicCompleted,
+            mitraCancelledCount = baseCancels + dynamicCancelled,
+            ratings = baseRatings + providerRatings,
+            otherOrderCount = providerBookings.size - dynamicCompleted.size - dynamicCancelled
         )
     }
 
@@ -684,29 +736,26 @@ class FakeBantuinRepository(
     }
 
     override suspend fun apply(providerId: String, result: TrustResult): AppResult<Unit> {
+        cacheTrust(providerId, result, addSnapshot = true)
+        trustRevision.update { it + 1 }
+        return AppResult.Success(Unit)
+    }
+
+    private fun cacheTrust(providerId: String, result: TrustResult, addSnapshot: Boolean) {
         val idx = providersList.indexOfFirst { it.providerId == providerId }
         if (idx >= 0) {
             val p = providersList[idx]
             providersList[idx] = p.copy(
-                ratingAvg = result.ratingAvg ?: p.ratingAvg,
-                completionRate = result.completionRate ?: p.completionRate,
+                ratingAvg = result.ratingAvg,
+                completionRate = result.completionRate,
                 flagAnomaly = result.flagAnomaly,
                 badge = result.badge
             )
         }
-        val history = providerSnapshotsMap.getOrPut(providerId) {
-            FakeData.sampleSnapshots.toMutableList()
-        }
-        history.add(
-            MetricSnapshot(
-                label = "Baru saja",
-                trustScore = result.trustScore,
-                ratingScore = result.ratingScore,
-                onTimeRate = result.onTimeRate,
-                cancelRate = result.cancelRate
-            )
-        )
-        return AppResult.Success(Unit)
+        if (!addSnapshot) return
+        val history = providerSnapshotsMap.getOrPut(providerId) { mutableListOf() }
+        if (history.lastOrNull()?.label == "Sekarang") history.removeAt(history.lastIndex)
+        history.add(MetricSnapshot("Sekarang", result.trustScore, result.ratingScore, result.onTimeRate, result.cancelRate))
     }
 
     override suspend fun history(providerId: String): AppResult<List<MetricSnapshot>> {
@@ -811,8 +860,8 @@ class FakeBantuinRepository(
                     ratingAvg = null,
                     reviewCount = 0,
                     completionRate = null,
-                    flagAnomaly = false,
-                    badge = ProviderBadge.NEW,
+                    flagAnomaly = true,
+                    badge = ProviderBadge.NONE,
                     minBaseFare = null
                 )
             )
