@@ -7,7 +7,6 @@ import id.bantuin.app.core.result.AppResult
 import id.bantuin.app.core.util.TimeUtils
 import id.bantuin.app.domain.model.AvailabilityMode
 import id.bantuin.app.domain.model.DayAvailability
-import id.bantuin.app.domain.model.LockInfo
 import id.bantuin.app.domain.model.ProviderCandidate
 import id.bantuin.app.domain.model.ServiceItem
 import id.bantuin.app.domain.model.SlotCheckResult
@@ -42,16 +41,15 @@ data class ScheduleUiState(
     val slotValidMap: Map<Int, Boolean> = emptyMap(),
     val selectedStartMin: Int = 540,
     val slotCheckResult: SlotCheckResult? = null,
-    val lockInfo: LockInfo? = null,
     val isLoading: Boolean = false,
-    val isLocking: Boolean = false,
     val errorMessage: String? = null
 )
 
 class ScheduleViewModel(
     private val catalogRepository: CatalogRepository,
     private val bookingRepository: BookingRepository,
-    private val detector: SchedulingConflictDetector = SchedulingConflictDetector()
+    private val detector: SchedulingConflictDetector = SchedulingConflictDetector(),
+    private val nowProvider: () -> LocalTime = { LocalTime.now(ZoneId.of(BantuinConfig.TIMEZONE_ID)) }
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(ScheduleUiState())
@@ -181,7 +179,11 @@ class ScheduleViewModel(
             closeMin = 1020
         )
 
-        val slots = when (dayAvail.mode) {
+        val isToday = state.selectedDate == LocalDate.now(wibZone)
+        val now = nowProvider()
+        val nowMin = if (isToday) now.hour * 60 + now.minute else null
+
+        val rawSlots = when (dayAvail.mode) {
             AvailabilityMode.OFF -> emptyList()
             AvailabilityMode.ALWAYS_ON -> {
                 (0 until 1440 step BantuinConfig.SLOT_GRID_MIN)
@@ -192,17 +194,19 @@ class ScheduleViewModel(
                 val start = dayAvail.openMin ?: 480
                 val end = (dayAvail.closeMin ?: 1020) - service.durationMin
                 if (start <= end) {
-                    (start..end step 30).map { min -> min to TimeUtils.formatMinuteOfDay(min) }
+                    (start..end step BantuinConfig.SLOT_GRID_MIN)
+                        .map { min -> min to TimeUtils.formatMinuteOfDay(min) }
                 } else {
                     emptyList()
                 }
             }
         }
-
-        val nowMin = if (state.selectedDateIdx == 0) {
-            val now = LocalTime.now(wibZone)
-            now.hour * 60 + now.minute
-        } else null
+        // Jam yang sudah terlewat hari ini tidak ditampilkan lagi sebagai pilihan.
+        val slots = if (nowMin == null) {
+            rawSlots
+        } else {
+            rawSlots.filter { (min, _) -> min > nowMin }
+        }
 
         val validMap = slots.associate { (min, _) ->
             val check = detector.check(
@@ -239,10 +243,8 @@ class ScheduleViewModel(
         }
     }
 
-    fun acquireLockAndProceed(onSuccess: (LockInfo) -> Unit) {
-        val state = _uiState.value
-        val providerId = state.provider?.providerId ?: return
-        val check = state.slotCheckResult
+    fun validateAndProceed(onProceed: () -> Unit) {
+        val check = _uiState.value.slotCheckResult
         if (check?.valid != true) {
             _uiState.update {
                 it.copy(
@@ -252,29 +254,6 @@ class ScheduleViewModel(
             }
             return
         }
-
-        val startMin = state.selectedStartMin
-        val durationMin = state.service?.durationMin ?: 60
-        val lockEndMin = startMin + durationMin + BantuinConfig.TRAVEL_BUFFER_MIN
-        val dateIso = state.selectedDate.toString()
-
-        viewModelScope.launch {
-            _uiState.update { it.copy(isLocking = true, errorMessage = null) }
-            when (val lockRes = bookingRepository.acquireLock(providerId, dateIso, startMin, lockEndMin)) {
-                is AppResult.Success -> {
-                    _uiState.update { it.copy(isLocking = false, lockInfo = lockRes.data) }
-                    onSuccess(lockRes.data)
-                }
-                is AppResult.Error -> {
-                    val busyRes = bookingRepository.busyBlocks(providerId, dateIso)
-                    if (busyRes is AppResult.Success) {
-                        _uiState.update { it.copy(existingBlocks = busyRes.data) }
-                        recomputeSchedule()
-                    }
-                    _uiState.update { it.copy(isLocking = false, errorMessage = lockRes.message) }
-                }
-                is AppResult.Loading -> {}
-            }
-        }
+        onProceed()
     }
 }

@@ -621,52 +621,13 @@ class SupabaseBantuinRepository(
         }
     }
 
-    override suspend fun acquireLock(
-        providerId: String,
-        dateIso: String,
-        startMin: Int,
-        endMin: Int
-    ): AppResult<LockInfo> = withContext(ioDispatcher) {
-        try {
-            val startIso = TimeUtils.toIsoString(dateIso, startMin)
-            val endIso = TimeUtils.toIsoString(dateIso, endMin)
-
-            val lockId = client.postgrest.rpc(
-                function = "acquire_slot_lock",
-                parameters = AcquireSlotLockRpcParams(
-                    providerId = providerId,
-                    startAt = startIso,
-                    endAt = endIso
-                )
-            ).decodeAs<String>()
-
-            val lockInfo = LockInfo(
-                lockId = lockId,
-                providerId = providerId,
-                startMin = startMin,
-                endMin = endMin,
-                expiresAtMillis = Clock.System.now().toEpochMilliseconds() + 600_000L,
-                dateIso = dateIso
-            )
-            AppResult.Success(lockInfo)
-        } catch (e: Exception) {
-            mapSupabaseError(e, "Slot sedang dikunci pengguna lain")
-        }
-    }
-
-    override suspend fun releaseLock(lockId: String): AppResult<Unit> = withContext(ioDispatcher) {
-        try {
-            client.postgrest.rpc("release_slot_lock")
-            AppResult.Success(Unit)
-        } catch (e: Exception) {
-            mapSupabaseError(e, "Gagal melepas kunci slot")
-        }
-    }
-
     override suspend fun createBooking(draft: OrderDraft): AppResult<String> = withContext(ioDispatcher) {
         try {
-            val lockId = draft.lockInfo?.lockId
-                ?: return@withContext AppResult.Error("Waktu penahanan slot habis, pilih jadwal lagi")
+            val startIso = TimeUtils.toIsoString(draft.dateIso, draft.startMin)
+            val endIso = TimeUtils.toIsoString(
+                draft.dateIso,
+                draft.startMin + draft.durationMin + BantuinConfig.TRAVEL_BUFFER_MIN
+            )
             val estimate = draft.costEstimate
             val baseFare = estimate?.baseFare ?: draft.service.baseFare
             val baseCost = estimate?.baseCost ?: baseFare
@@ -676,8 +637,9 @@ class SupabaseBantuinRepository(
             val bookingId = client.postgrest.rpc(
                 function = "create_booking",
                 parameters = CreateBookingRpcParams(
-                    lockId = lockId,
                     serviceId = draft.service.id,
+                    startAt = startIso,
+                    endAt = endIso,
                     complexity = draft.complexity.name,
                     isUrgent = draft.isUrgent,
                     distanceKm = draft.distanceKm,

@@ -20,13 +20,12 @@ class CostEstimatorUseCaseTest {
         assertEquals(132500, r1.total)
         assertFalse(r1.surgeApplied)
 
-        // 2. 100000, 3.0, SEDANG, 17:00 (1020 min), urgent false -> total 159000, surge PEAK_HOUR
+        // 2. 100000, 3.0, SEDANG, 17:00 (1020 min), urgent false -> jam sibuk dihapus, tarif normal
         val r2 = useCase(100000, 3.0, Complexity.SEDANG, 1020, false)
         assertEquals(132500, r2.baseCost)
-        assertEquals(159000, r2.total)
-        assertTrue(r2.surgeApplied)
-        assertEquals(26500, r2.surgeAmount)
-        assertEquals(SurgeReason.PEAK_HOUR, r2.surgeReason)
+        assertEquals(132500, r2.total)
+        assertFalse(r2.surgeApplied)
+        assertEquals(SurgeReason.NONE, r2.surgeReason)
 
         // 3. 50000, 2.5, RINGAN, 10:00 (600 min), urgent true -> total 66000, URGENT
         val r3 = useCase(50000, 2.5, Complexity.RINGAN, 600, true)
@@ -49,11 +48,11 @@ class CostEstimatorUseCaseTest {
         assertEquals(23500, r5.surgeAmount)
         assertEquals(SurgeReason.NIGHT, r5.surgeReason)
 
-        // 6. 100000, 3.0, SEDANG, 17:00 (1020 min), urgent true -> total 159000 (tidak menumpuk)
+        // 6. 100000, 3.0, SEDANG, 17:00 (1020 min), urgent true -> +20% dari darurat saja
         val r6 = useCase(100000, 3.0, Complexity.SEDANG, 1020, true)
         assertEquals(132500, r6.baseCost)
         assertEquals(159000, r6.total)
-        assertEquals(SurgeReason.PEAK_AND_URGENT, r6.surgeReason)
+        assertEquals(SurgeReason.URGENT, r6.surgeReason)
 
         // 7. 100000, 0.0, RINGAN, 06:00 (360 min), urgent false -> total 100000 (batas 06:00 = normal)
         val r7 = useCase(100000, 0.0, Complexity.RINGAN, 360, false)

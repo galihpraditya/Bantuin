@@ -7,7 +7,6 @@ import id.bantuin.app.core.config.BantuinConfig
 import id.bantuin.app.core.util.TimeUtils
 import id.bantuin.app.domain.model.Complexity
 import id.bantuin.app.domain.model.CostEstimate
-import id.bantuin.app.domain.model.LockInfo
 import id.bantuin.app.domain.model.OrderDraft
 import id.bantuin.app.domain.model.PaymentMethod
 import id.bantuin.app.domain.model.ProviderCandidate
@@ -30,7 +29,6 @@ class OrderFlowManager {
     var orderNotes by mutableStateOf("")
     var selectedPaymentMethod by mutableStateOf(PaymentMethod.CASH)
     var currentEstimate by mutableStateOf<CostEstimate?>(null)
-    var currentLock by mutableStateOf<LockInfo?>(null)
 
     fun toDraft(): OrderDraft? {
         val provider = selectedProvider ?: return null
@@ -49,7 +47,6 @@ class OrderFlowManager {
             customerAddress = customerAddress,
             distanceKm = currentEstimate?.distanceKm ?: 1.8,
             costEstimate = currentEstimate,
-            lockInfo = currentLock,
             paymentMethod = selectedPaymentMethod
         )
     }
@@ -62,7 +59,6 @@ class OrderFlowManager {
         orderNotes = ""
         selectedPaymentMethod = PaymentMethod.CASH
         currentEstimate = null
-        currentLock = null
     }
 
     fun resetAll() {

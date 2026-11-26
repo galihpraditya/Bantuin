@@ -25,7 +25,6 @@ import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.filled.CalendarToday
 import androidx.compose.material.icons.filled.EditNote
-import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Payments
 import androidx.compose.material.icons.filled.QrCode2
 import androidx.compose.material.icons.filled.Receipt
@@ -69,7 +68,6 @@ import id.bantuin.app.domain.repository.BantuinRepository
 import id.bantuin.app.domain.usecase.matchmaking.HaversineCalculator
 import id.bantuin.app.domain.usecase.pricing.CostEstimatorUseCase
 import id.bantuin.app.ui.common.BantuinViewModelFactory
-import id.bantuin.app.ui.common.CountdownTimerView
 import id.bantuin.app.ui.common.ErrorView
 import id.bantuin.app.ui.customer.OrderFlowManager
 import id.bantuin.app.ui.theme.BantuinTheme
@@ -95,10 +93,7 @@ fun EstimateScreen(
     fun handleBack() {
         if (isNavigatingBack) return
         isNavigatingBack = true
-        viewModel.releaseLock {
-            orderFlow.currentLock = null
-            onNavigateBack()
-        }
+        onNavigateBack()
     }
 
     BackHandler(onBack = ::handleBack)
@@ -140,8 +135,7 @@ fun EstimateScreen(
         provider.providerId,
         service.id,
         orderFlow.selectedDateIso,
-        orderFlow.selectedStartMin,
-        orderFlow.currentLock?.lockId
+        orderFlow.selectedStartMin
     ) {
         viewModel.initialize(
             categoryId = orderFlow.selectedCategoryId,
@@ -152,7 +146,6 @@ fun EstimateScreen(
             scheduledDateIso = orderFlow.selectedDateIso,
             scheduledStartMin = orderFlow.selectedStartMin,
             scheduledDurationMin = orderFlow.selectedDurationMin,
-            lockInfo = orderFlow.currentLock,
             distanceKm = distanceKm,
             initialComplexity = orderFlow.selectedComplexity,
             initialUrgent = orderFlow.isUrgent,
@@ -225,19 +218,15 @@ fun EstimateScreen(
 
                     Button(
                         onClick = {
-                            if (uiState.isLockExpired) {
-                                handleBack()
-                            } else {
-                                val chosenMethod = uiState.paymentMethod
-                                viewModel.confirmOrder { bookingId ->
-                                    orderFlow.reset()
-                                    onOrderConfirmed(bookingId, chosenMethod)
-                                }
+                            val chosenMethod = uiState.paymentMethod
+                            viewModel.confirmOrder { bookingId ->
+                                orderFlow.reset()
+                                onOrderConfirmed(bookingId, chosenMethod)
                             }
                         },
                         enabled = !uiState.isSubmitting,
                         colors = ButtonDefaults.buttonColors(
-                            containerColor = if (uiState.isLockExpired) colors.error else colors.primary,
+                            containerColor = colors.primary,
                             contentColor = colors.onPrimary
                         ),
                         shape = RoundedCornerShape(12.dp),
@@ -245,11 +234,7 @@ fun EstimateScreen(
                         modifier = Modifier.heightIn(min = 48.dp)
                     ) {
                         Text(
-                            text = when {
-                                uiState.isLockExpired -> "Pilih Jadwal Ulang"
-                                uiState.isSubmitting -> "Memproses..."
-                                else -> "Konfirmasi Order"
-                            },
+                            text = if (uiState.isSubmitting) "Memproses..." else "Konfirmasi Order",
                             style = MaterialTheme.typography.labelLarge
                         )
                         Spacer(modifier = Modifier.width(6.dp))
@@ -272,55 +257,6 @@ fun EstimateScreen(
             contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 24.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            // 0. Hitung Mundur Kunci Slot 10 Menit
-            val activeLock = uiState.lockInfo
-            if (activeLock != null) {
-                item {
-                    Card(
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(12.dp),
-                        colors = CardDefaults.cardColors(
-                            containerColor = if (uiState.isLockExpired) colors.errorContainer else colors.infoContainer
-                        )
-                    ) {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 14.dp, vertical = 10.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                modifier = Modifier.weight(1f)
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.Lock,
-                                    contentDescription = null,
-                                    tint = if (uiState.isLockExpired) colors.error else colors.info,
-                                    modifier = Modifier.size(18.dp)
-                                )
-                                Spacer(modifier = Modifier.width(8.dp))
-                                Text(
-                                    text = if (uiState.isLockExpired) {
-                                        "Kunci slot 10 menit telah habis"
-                                    } else {
-                                        "Slot jadwal dikunci sementara"
-                                    },
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = if (uiState.isLockExpired) colors.error else colors.info,
-                                    fontWeight = FontWeight.SemiBold
-                                )
-                            }
-                            CountdownTimerView(
-                                targetEpochMillis = activeLock.expiresAtMillis,
-                                onExpired = { viewModel.onLockExpired() }
-                            )
-                        }
-                    }
-                }
-            }
-
             // Pesan galat RPC / validasi
             if (!uiState.errorMessage.isNullOrBlank()) {
                 item {
@@ -561,7 +497,7 @@ fun EstimateScreen(
                 }
             }
 
-            // 4. Kartu Informasi Surge (+20%) bila jam sibuk, malam, atau darurat
+            // 4. Kartu Informasi Surge (+20%) bila layanan malam atau darurat
             if (estimate.surgeApplied) {
                 item {
                     Card(
@@ -591,7 +527,7 @@ fun EstimateScreen(
                                     fontWeight = FontWeight.Bold
                                 )
                                 Text(
-                                    text = "Penambahan tunggal +20% berlaku sesuai jam sibuk, malam, atau prioritas darurat.",
+                                    text = "Penambahan tunggal +20% berlaku untuk layanan malam atau prioritas darurat.",
                                     style = MaterialTheme.typography.bodySmall,
                                     color = colors.textSecondary
                                 )

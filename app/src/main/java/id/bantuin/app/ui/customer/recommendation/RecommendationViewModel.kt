@@ -13,6 +13,7 @@ import id.bantuin.app.domain.model.ServiceCategory
 import id.bantuin.app.domain.repository.CatalogRepository
 import id.bantuin.app.domain.usecase.matchmaking.MatchmakingUseCase
 import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -20,6 +21,9 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+
+/** Sentinel kategori untuk "Lihat Semua" — menggabungkan kandidat dari semua kategori. */
+const val ALL_CATEGORIES_ID = 0
 
 enum class ProviderSortOption(val label: String, val subtitle: String) {
     RECOMMENDED("Rekomendasi Terbaik", "Gabungan jarak, rating, dan rasio selesai"),
@@ -33,7 +37,7 @@ data class RecommendationUiState(
     val categoryId: Int = 1,
     val category: ServiceCategory = ServiceCategory(1, "Kategori Jasa", "build", 60, "Layanan teknisi dan bantuan rumah"),
     val customerLocation: GeoPoint = BantuinConfig.MALANG_CENTER,
-    val maxDistanceFilter: Double = 10.0,
+    val maxDistanceFilter: Double = BantuinConfig.MAX_RADIUS_KM,
     val minRatingFilter: Double = 0.0,
     val onlyTrusted: Boolean = false,
     val sortOption: ProviderSortOption = ProviderSortOption.RECOMMENDED,
@@ -45,7 +49,7 @@ data class RecommendationUiState(
 ) {
     val activeFilterCount: Int
         get() = listOf(
-            maxDistanceFilter < 10.0,
+            (maxDistanceFilter < BantuinConfig.MAX_RADIUS_KM),
             minRatingFilter > 0.0,
             onlyTrusted
         ).count { it }
@@ -82,15 +86,39 @@ class RecommendationViewModel(
         loadJob = viewModelScope.launch {
             _uiState.update { it.copy(isLoading = true, errorMessage = null) }
             coroutineScope {
-                val catsDeferred = async { catalogRepository.categories() }
-                val candDeferred = async { catalogRepository.candidates(categoryId) }
+                val catsRes = catalogRepository.categories()
+                val categories = (catsRes as? AppResult.Success)?.data.orEmpty()
+                val resolvedCategory = if (categoryId == ALL_CATEGORIES_ID) {
+                    ServiceCategory(
+                        id = ALL_CATEGORIES_ID,
+                        name = "Semua Layanan",
+                        iconKey = "grid_view",
+                        defaultDurationMin = 60,
+                        description = "Semua layanan teknis yang tersedia"
+                    )
+                } else {
+                    categories.find { it.id == categoryId } ?: _uiState.value.category
+                }
 
-                val catsRes = catsDeferred.await()
-                val resolvedCategory = (catsRes as? AppResult.Success)?.data
-                    ?.find { it.id == categoryId }
-                    ?: _uiState.value.category
+                val res: AppResult<List<ProviderCandidate>> = if (categoryId == ALL_CATEGORIES_ID) {
+                    val results = categories.map { category ->
+                        async { catalogRepository.candidates(category.id) }
+                    }.awaitAll()
+                    val firstError = results.filterIsInstance<AppResult.Error>().firstOrNull()
+                    if (firstError != null) {
+                        firstError
+                    } else {
+                        AppResult.Success(
+                            results.filterIsInstance<AppResult.Success<List<ProviderCandidate>>>()
+                                .flatMap { it.data }
+                                .distinctBy { it.providerId }
+                        )
+                    }
+                } else {
+                    catalogRepository.candidates(categoryId)
+                }
 
-                when (val res = candDeferred.await()) {
+                when (res) {
                     is AppResult.Success -> {
                         recomputeRankings(
                             category = resolvedCategory,
@@ -156,7 +184,7 @@ class RecommendationViewModel(
 
     fun resetFilters() {
         applyFiltersAndSort(
-            maxDistance = 10.0,
+            maxDistance = BantuinConfig.MAX_RADIUS_KM,
             minRating = 0.0,
             onlyTrusted = false,
             sortOption = ProviderSortOption.RECOMMENDED
@@ -180,7 +208,7 @@ class RecommendationViewModel(
         onlyTrusted: Boolean,
         sortOption: ProviderSortOption
     ) {
-        val matchResult = matchmakingUseCase(location, candidates)
+        val matchResult = matchmakingUseCase(location, candidates, radiusKm = maxDistance)
         val filteredAndSorted = sortRanked(
             filterRanked(matchResult.ranked, maxDistance, minRating, onlyTrusted),
             sortOption
@@ -198,16 +226,15 @@ class RecommendationViewModel(
 
     private fun recomputeFiltered() {
         val state = _uiState.value
-        val filteredAndSorted = sortRanked(
-            filterRanked(
-                state.matchResult.ranked,
-                state.maxDistanceFilter,
-                state.minRatingFilter,
-                state.onlyTrusted
-            ),
-            state.sortOption
+        recomputeRankings(
+            category = state.category,
+            candidates = state.rawCandidates,
+            location = state.customerLocation,
+            maxDistance = state.maxDistanceFilter,
+            minRating = state.minRatingFilter,
+            onlyTrusted = state.onlyTrusted,
+            sortOption = state.sortOption
         )
-        _uiState.update { it.copy(filteredList = filteredAndSorted) }
     }
 
     private fun filterRanked(

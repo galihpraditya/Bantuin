@@ -20,8 +20,6 @@ object BantuinConfig {
     const val RATE_PER_KM = 2000
     const val SURGE_MULTIPLIER = "1.20"
     const val ROUNDING_STEP = 500
-    // Jam sibuk: 07:00-08:59 (420..539) & 16:00-18:59 (960..1139) menit sejak 00:00 WIB
-    val PEAK_RANGES = listOf(420..539, 960..1139)
     // Jam malam: >= 20:00 (1200) atau < 06:00 (360)
     const val NIGHT_START_MIN = 1200
     const val NIGHT_END_MIN = 360

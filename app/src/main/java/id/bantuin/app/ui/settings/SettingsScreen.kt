@@ -26,7 +26,6 @@ import androidx.compose.material.icons.filled.Handyman
 import androidx.compose.material.icons.filled.LightMode
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.Person
-import androidx.compose.material.icons.filled.Shield
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -353,40 +352,6 @@ fun SettingsScreen(
                 }
             }
 
-            // 4. Bantuan & Kebijakan Garansi
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(16.dp),
-                colors = CardDefaults.cardColors(containerColor = colors.surface),
-                border = CardDefaults.outlinedCardBorder().copy(brush = SolidColor(colors.borderSubtle))
-            ) {
-                Row(
-                    modifier = Modifier.padding(16.dp),
-                    verticalAlignment = Alignment.Top
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Shield,
-                        contentDescription = null,
-                        tint = colors.primary,
-                        modifier = Modifier.size(22.dp)
-                    )
-                    Spacer(modifier = Modifier.width(12.dp))
-                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        Text(
-                            text = "Garansi Layanan 7 Hari",
-                            style = MaterialTheme.typography.titleSmall,
-                            color = colors.textPrimary,
-                            fontWeight = FontWeight.Bold
-                        )
-                        Text(
-                            text = "Setiap pesanan yang diselesaikan dilindungi garansi pengerjaan ulang selama 7 hari. Gunakan chat pesanan untuk menyampaikan kendala secara langsung.",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = colors.textSecondary
-                        )
-                    }
-                }
-            }
-
             if (!uiState.errorMessage.isNullOrBlank()) {
                 Text(
                     text = uiState.errorMessage ?: "",
@@ -395,7 +360,7 @@ fun SettingsScreen(
                 )
             }
 
-            // 5. Keluar dari Akun
+            // 4. Keluar dari Akun
             OutlinedButton(
                 onClick = { viewModel.signOut(onSignOut) },
                 border = ButtonDefaults.outlinedButtonBorder(enabled = true).copy(

@@ -31,17 +31,28 @@ object HaversineCalculator {
  * Memberikan penalti 0.7x jika mitra terdeteksi anomali.
  */
 class MatchmakingUseCase {
-    operator fun invoke(customer: GeoPoint, candidates: List<ProviderCandidate>): MatchResult {
-        return invokeWithDistances(candidates.map { it to HaversineCalculator.distanceKm(customer, it.location) })
+    operator fun invoke(
+        customer: GeoPoint,
+        candidates: List<ProviderCandidate>,
+        radiusKm: Double = BantuinConfig.MAX_RADIUS_KM
+    ): MatchResult {
+        return invokeWithDistances(
+            candidates.map { it to HaversineCalculator.distanceKm(customer, it.location) },
+            radiusKm = radiusKm
+        )
     }
 
     /**
      * Memungkinkan pemanggilan langsung dengan jarak yang sudah dihitung (berguna untuk test vector).
      */
-    fun invokeWithDistances(candidatesWithDistance: List<Pair<ProviderCandidate, Double>>): MatchResult {
-        val (inRange, out) = candidatesWithDistance.partition { it.second <= BantuinConfig.MAX_RADIUS_KM }
+    fun invokeWithDistances(
+        candidatesWithDistance: List<Pair<ProviderCandidate, Double>>,
+        radiusKm: Double = BantuinConfig.MAX_RADIUS_KM
+    ): MatchResult {
+        val radius = radiusKm.coerceAtLeast(0.1)
+        val (inRange, out) = candidatesWithDistance.partition { it.second <= radius }
         val ranked = inRange.map { (c, d) ->
-            val ds = 1.0 - d / BantuinConfig.MAX_RADIUS_KM
+            val ds = (1.0 - d / radius).coerceIn(0.0, 1.0)
             val rs = c.ratingAvg?.div(5.0) ?: BantuinConfig.DEFAULT_RATING_SCORE
             val cs = c.completionRate ?: BantuinConfig.DEFAULT_COMPLETION_SCORE
             var s = BantuinConfig.W_DISTANCE * ds +

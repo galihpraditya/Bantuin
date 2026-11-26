@@ -41,7 +41,6 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
-import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.LocationOn
@@ -88,7 +87,6 @@ import id.bantuin.app.domain.model.ServiceCategory
 import id.bantuin.app.domain.repository.BantuinRepository
 import id.bantuin.app.ui.common.BantuinServiceIcon
 import id.bantuin.app.ui.common.BantuinViewModelFactory
-import id.bantuin.app.ui.common.EmergencyBeaconIllustration
 import id.bantuin.app.ui.common.ErrorView
 import id.bantuin.app.ui.common.HeroTechnicianIllustration
 import id.bantuin.app.ui.common.LoadingView
@@ -109,7 +107,6 @@ fun CustomerHomeScreen(
     onProviderClick: (String) -> Unit,
     onNotificationsClick: () -> Unit,
     onActiveOrderClick: (String) -> Unit,
-    onEmergencyClick: () -> Unit,
     hasUnreadNotifications: Boolean = false,
     repository: BantuinRepository,
     viewModel: CustomerHomeViewModel = viewModel(factory = BantuinViewModelFactory(repository)),
@@ -161,7 +158,6 @@ fun CustomerHomeScreen(
                     onSearchQueryChange = { viewModel.onSearchQueryChange(it) },
                     onLocationClick = { viewModel.setShowLocationDialog(true) },
                     onNotificationsClick = onNotificationsClick,
-                    onEmergencyClick = onEmergencyClick,
                     onActiveOrderClick = onActiveOrderClick
                 )
             }
@@ -177,18 +173,7 @@ fun CustomerHomeScreen(
                 )
             }
 
-            // 3. Banner Darurat 24 Jam
-            if (uiState.searchQuery.isBlank()) {
-                item {
-                    EmergencyBannerCard(
-                        readyProviderCount = uiState.readyProviderCount,
-                        onCallNow = onEmergencyClick,
-                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp)
-                    )
-                }
-            }
-
-            // 4. Mitra Terdekat Siap Booking
+            // 3. Mitra Terdekat Siap Booking
             item {
                 NearbyProvidersSection(
                     nearbyProviders = uiState.nearbyProviders,
@@ -202,7 +187,7 @@ fun CustomerHomeScreen(
                 )
             }
 
-            // 5. Banner Jaminan Garansi Layanan 7 Hari
+            // 4. Banner Jaminan Garansi Layanan 7 Hari
             item {
                 WarrantyBanner(
                     modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp)
@@ -210,7 +195,7 @@ fun CustomerHomeScreen(
             }
         }
 
-        // 6. Floating Bottom Live Order Tracker Pill
+        // 5. Floating Bottom Live Order Tracker Pill
         AnimatedVisibility(
             visible = showFloatingTracker,
             enter = if (reducedMotion) fadeIn() else slideInVertically(BantuinMotion.snappySpring()) { it } + fadeIn(),
@@ -257,7 +242,6 @@ private fun CurvedHeroAndQuickStrip(
     onSearchQueryChange: (String) -> Unit,
     onLocationClick: () -> Unit,
     onNotificationsClick: () -> Unit,
-    onEmergencyClick: () -> Unit,
     onActiveOrderClick: (String) -> Unit
 ) {
     val colors = BantuinTheme.colors
@@ -390,7 +374,6 @@ private fun CurvedHeroAndQuickStrip(
             address = address,
             activeOrder = activeOrder,
             onLocationClick = onLocationClick,
-            onEmergencyClick = onEmergencyClick,
             onActiveOrderClick = onActiveOrderClick,
             modifier = Modifier
                 .align(Alignment.BottomCenter)
@@ -465,7 +448,6 @@ private fun OverlappingLocationQuickCard(
     address: String,
     activeOrder: BookingItem?,
     onLocationClick: () -> Unit,
-    onEmergencyClick: () -> Unit,
     onActiveOrderClick: (String) -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -542,67 +524,52 @@ private fun OverlappingLocationQuickCard(
                 }
             }
 
-            Box(
-                modifier = Modifier
-                    .padding(horizontal = 6.dp)
-                    .width(1.dp)
-                    .height(32.dp)
-                    .background(colors.borderSubtle)
-            )
-
-            // Pintasan kanan: Lacak Pesanan aktif bila ada, atau Siaga Darurat
-            Row(
-                modifier = Modifier
-                    .heightIn(min = 48.dp)
-                    .bantuinPressScale(quickInteraction, targetScale = 0.94f)
-                    .clip(RoundedCornerShape(12.dp))
-                    .clickable(
-                        interactionSource = quickInteraction,
-                        indication = LocalIndication.current,
-                        onClick = {
-                            if (activeOrder != null) {
-                                onActiveOrderClick(activeOrder.id)
-                            } else {
-                                onEmergencyClick()
-                            }
-                        }
-                    )
-                    .padding(horizontal = 10.dp, vertical = 6.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(6.dp)
-            ) {
+            if (activeOrder != null) {
                 Box(
                     modifier = Modifier
-                        .size(30.dp)
-                        .clip(CircleShape)
-                        .background(
-                            if (activeOrder != null) colors.infoContainer else colors.errorContainer
-                        ),
-                    contentAlignment = Alignment.Center
+                        .padding(horizontal = 6.dp)
+                        .width(1.dp)
+                        .height(32.dp)
+                        .background(colors.borderSubtle)
+                )
+
+                // Pintasan kanan: lacak pesanan yang sedang aktif
+                Row(
+                    modifier = Modifier
+                        .heightIn(min = 48.dp)
+                        .bantuinPressScale(quickInteraction, targetScale = 0.94f)
+                        .clip(RoundedCornerShape(12.dp))
+                        .clickable(
+                            interactionSource = quickInteraction,
+                            indication = LocalIndication.current,
+                            onClick = { onActiveOrderClick(activeOrder.id) }
+                        )
+                        .padding(horizontal = 10.dp, vertical = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
-                    if (activeOrder != null) {
+                    Box(
+                        modifier = Modifier
+                            .size(30.dp)
+                            .clip(CircleShape)
+                            .background(colors.infoContainer),
+                        contentAlignment = Alignment.Center
+                    ) {
                         LivePulseDot(color = colors.info)
-                    } else {
-                        Icon(
-                            imageVector = Icons.Default.Bolt,
-                            contentDescription = null,
-                            tint = colors.error,
-                            modifier = Modifier.size(16.dp)
+                    }
+                    Column {
+                        Text(
+                            text = "Pantau",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = colors.textPrimary,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Text(
+                            text = "Order Aktif",
+                            style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
+                            color = colors.textMuted
                         )
                     }
-                }
-                Column {
-                    Text(
-                        text = if (activeOrder != null) "Pantau" else "Darurat",
-                        style = MaterialTheme.typography.labelMedium,
-                        color = colors.textPrimary,
-                        fontWeight = FontWeight.Bold
-                    )
-                    Text(
-                        text = if (activeOrder != null) "Order Aktif" else "Siaga 24J",
-                        style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
-                        color = colors.textMuted
-                    )
                 }
             }
         }
@@ -684,7 +651,7 @@ private fun ServiceCategoryGrid3Col(
             )
             if (allCategories.isNotEmpty()) {
                 TextButton(
-                    onClick = { onCategoryClick(allCategories.first().id) },
+                    onClick = { onCategoryClick(0) },
                     modifier = Modifier.heightIn(min = 48.dp)
                 ) {
                     Text(
@@ -901,84 +868,6 @@ private fun LivePulseDot(
             .clip(CircleShape)
             .background(color)
     )
-}
-
-@Composable
-private fun EmergencyBannerCard(
-    readyProviderCount: Int,
-    onCallNow: () -> Unit,
-    modifier: Modifier = Modifier
-) {
-    val ctaInteraction = remember { MutableInteractionSource() }
-    Card(
-        modifier = modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(18.dp),
-        colors = CardDefaults.cardColors(containerColor = Color(0xFF4A2500))
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(14.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            EmergencyBeaconIllustration()
-
-            Column(modifier = Modifier.weight(1f)) {
-                Box(
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(6.dp))
-                        .background(Color(0xFFC62828))
-                        .padding(horizontal = 8.dp, vertical = 2.dp)
-                ) {
-                    Text(
-                        text = "DARURAT 24 JAM",
-                        style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
-                        color = Color.White,
-                        fontWeight = FontWeight.Bold
-                    )
-                }
-                Spacer(modifier = Modifier.height(6.dp))
-                Text(
-                    text = "Korsleting atau AC Rusak Mendadak?",
-                    style = MaterialTheme.typography.titleSmall,
-                    color = Color.White,
-                    fontWeight = FontWeight.Bold
-                )
-                Spacer(modifier = Modifier.height(2.dp))
-                Text(
-                    text = if (readyProviderCount > 0) {
-                        "$readyProviderCount teknisi siaga siap meluncur cepat."
-                    } else {
-                        "Teknisi siaga terdekat siap membantu kapan saja."
-                    },
-                    style = MaterialTheme.typography.bodySmall,
-                    color = Color(0xFFFFCC80)
-                )
-            }
-
-            Button(
-                onClick = onCallNow,
-                interactionSource = ctaInteraction,
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = Color.White,
-                    contentColor = Color(0xFF4A2500)
-                ),
-                shape = RoundedCornerShape(20.dp),
-                contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp),
-                modifier = Modifier
-                    .heightIn(min = 48.dp)
-                    .bantuinPressScale(ctaInteraction, targetScale = 0.94f)
-            ) {
-                Text(
-                    text = "Panggil",
-                    style = MaterialTheme.typography.labelMedium,
-                    color = Color(0xFF4A2500),
-                    fontWeight = FontWeight.Bold
-                )
-            }
-        }
-    }
 }
 
 @Composable

@@ -6,7 +6,6 @@ import id.bantuin.app.core.result.AppResult
 import id.bantuin.app.domain.model.Complexity
 import id.bantuin.app.domain.model.CostEstimate
 import id.bantuin.app.domain.model.GeoPoint
-import id.bantuin.app.domain.model.LockInfo
 import id.bantuin.app.domain.model.OrderDraft
 import id.bantuin.app.domain.model.PaymentMethod
 import id.bantuin.app.domain.model.ProviderCandidate
@@ -28,14 +27,12 @@ data class EstimateUiState(
     val scheduledDateIso: String = "",
     val scheduledStartMin: Int = 540,
     val scheduledDurationMin: Int = 90,
-    val lockInfo: LockInfo? = null,
     val distanceKm: Double = 1.8,
     val complexity: Complexity = Complexity.SEDANG,
     val isUrgent: Boolean = false,
     val notes: String = "",
     val paymentMethod: PaymentMethod = PaymentMethod.CASH,
     val costEstimate: CostEstimate? = null,
-    val isLockExpired: Boolean = false,
     val isSubmitting: Boolean = false,
     val createdBookingId: String? = null,
     val errorMessage: String? = null
@@ -49,8 +46,6 @@ class EstimateViewModel(
     private val _uiState = MutableStateFlow(EstimateUiState())
     val uiState: StateFlow<EstimateUiState> = _uiState.asStateFlow()
 
-    private var isReleasingLock = false
-
     fun initialize(
         categoryId: Int,
         provider: ProviderCandidate,
@@ -60,7 +55,6 @@ class EstimateViewModel(
         scheduledDateIso: String,
         scheduledStartMin: Int,
         scheduledDurationMin: Int,
-        lockInfo: LockInfo?,
         distanceKm: Double,
         initialComplexity: Complexity = Complexity.SEDANG,
         initialUrgent: Boolean = false,
@@ -72,7 +66,6 @@ class EstimateViewModel(
             current.service?.id == service.id &&
             current.scheduledDateIso == scheduledDateIso &&
             current.scheduledStartMin == scheduledStartMin &&
-            current.lockInfo?.lockId == lockInfo?.lockId &&
             current.costEstimate != null
         ) {
             return
@@ -96,14 +89,12 @@ class EstimateViewModel(
                 scheduledDateIso = scheduledDateIso,
                 scheduledStartMin = scheduledStartMin,
                 scheduledDurationMin = scheduledDurationMin,
-                lockInfo = lockInfo,
                 distanceKm = distanceKm,
                 complexity = initialComplexity,
                 isUrgent = initialUrgent,
                 notes = initialNotes,
                 paymentMethod = initialPaymentMethod,
                 costEstimate = initialEstimate,
-                isLockExpired = false,
                 errorMessage = null
             )
         }
@@ -155,40 +146,8 @@ class EstimateViewModel(
         _uiState.update { it.copy(paymentMethod = method, errorMessage = null) }
     }
 
-    fun onLockExpired() {
-        _uiState.update {
-            it.copy(
-                isLockExpired = true,
-                errorMessage = "Batas waktu kunci slot 10 menit telah berakhir. Silakan pilih jadwal ulang."
-            )
-        }
-    }
-
-    fun releaseLock(onDone: () -> Unit = {}) {
-        if (isReleasingLock) return
-        isReleasingLock = true
-        val lockId = _uiState.value.lockInfo?.lockId
-        _uiState.update { it.copy(lockInfo = null) }
-        viewModelScope.launch {
-            try {
-                if (!lockId.isNullOrBlank()) {
-                    bookingRepository.releaseLock(lockId)
-                }
-            } finally {
-                isReleasingLock = false
-            }
-            onDone()
-        }
-    }
-
     fun confirmOrder(onSuccess: (String) -> Unit) {
         val state = _uiState.value
-        if (state.isLockExpired) {
-            _uiState.update {
-                it.copy(errorMessage = "Kunci slot telah berakhir. Silakan kembali dan pilih jadwal ulang.")
-            }
-            return
-        }
         val provider = state.provider ?: return
         val service = state.service ?: return
         val estimate = state.costEstimate ?: return
@@ -207,7 +166,6 @@ class EstimateViewModel(
             customerAddress = state.customerAddress,
             distanceKm = state.distanceKm,
             costEstimate = estimate,
-            lockInfo = state.lockInfo,
             paymentMethod = state.paymentMethod
         )
 
@@ -218,22 +176,14 @@ class EstimateViewModel(
                     _uiState.update {
                         it.copy(
                             isSubmitting = false,
-                            createdBookingId = res.data,
-                            lockInfo = null
+                            createdBookingId = res.data
                         )
                     }
                     onSuccess(res.data)
                 }
                 is AppResult.Error -> {
-                    val isExpiredOrTaken = res.message.contains("penahanan slot habis", ignoreCase = true) ||
-                        res.message.contains("LOCK_EXPIRED", ignoreCase = true) ||
-                        res.message.contains("baru saja diambil", ignoreCase = true)
                     _uiState.update {
-                        it.copy(
-                            isSubmitting = false,
-                            isLockExpired = it.isLockExpired || isExpiredOrTaken,
-                            errorMessage = res.message
-                        )
+                        it.copy(isSubmitting = false, errorMessage = res.message)
                     }
                 }
                 is AppResult.Loading -> {}

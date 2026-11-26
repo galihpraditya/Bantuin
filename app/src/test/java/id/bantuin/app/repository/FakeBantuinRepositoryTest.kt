@@ -128,47 +128,8 @@ class FakeBantuinRepositoryTest {
     }
 
     @Test
-    fun acquireLock_recordsSelectedDateIso_andEventsTrackStatusTransitions() = runBlocking {
-        // Pelanggan lain harus melihat blok [480, 600) termasuk buffer 30 menit saat lock masih aktif
-        val sessionStore = InMemorySessionStore(
-            initialRole = "customer",
-            initialUser = UserProfile(
-                id = "user_demo_rani",
-                fullName = "Rani Wijaya",
-                email = "pelanggan1@bantuin.test",
-                phone = "081234567890",
-                roles = setOf("customer")
-            )
-        )
-        val sharedRepo = FakeBantuinRepository(sessionStore = sessionStore)
-        val lockRes = sharedRepo.acquireLock("p01", "2026-11-28", 480, 600)
-        assertTrue(lockRes is AppResult.Success)
-        val lock = (lockRes as AppResult.Success).data
-        assertEquals("2026-11-28", lock.dateIso)
-        assertEquals(600, lock.endMin)
-
-        sessionStore.saveSession(
-            UserProfile(
-                id = "user_demo_dimas",
-                fullName = "Dimas Arya",
-                email = "pelanggan2@bantuin.test",
-                phone = "081234567891",
-                roles = setOf("customer")
-            )
-        )
-        val busyForOtherUser = (sharedRepo.busyBlocks("p01", "2026-11-28") as AppResult.Success).data
-        assertTrue(busyForOtherUser.any { it.startMin == 480 && it.endMin == 600 })
-
-        sessionStore.saveSession(
-            UserProfile(
-                id = "user_demo_rani",
-                fullName = "Rani Wijaya",
-                email = "pelanggan1@bantuin.test",
-                phone = "081234567890",
-                roles = setOf("customer")
-            )
-        )
-
+    fun createBooking_recordsScheduleAndEventsTrackStatusTransitions() = runBlocking {
+        val sharedRepo = FakeBantuinRepository()
         val draft = OrderDraft(
             categoryId = 2,
             provider = FakeData.providers.first { it.providerId == "p01" },
@@ -180,8 +141,7 @@ class FakeBantuinRepositoryTest {
             isUrgent = false,
             customerLocation = FakeData.MALANG_CENTER,
             customerAddress = "Alun-alun Malang",
-            distanceKm = 1.8,
-            lockInfo = lock
+            distanceKm = 1.8
         )
         val bookingId = (sharedRepo.createBooking(draft) as AppResult.Success).data
         val busyAfterBooking = (sharedRepo.busyBlocks("p01", "2026-11-28") as AppResult.Success).data

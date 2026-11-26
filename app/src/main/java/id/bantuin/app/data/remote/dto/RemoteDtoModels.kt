@@ -173,8 +173,9 @@ data class AcquireSlotLockRpcParams(
 
 @Serializable
 data class CreateBookingRpcParams(
-    @SerialName("p_lock_id") val lockId: String,
     @SerialName("p_service_id") val serviceId: String,
+    @SerialName("p_start_at") val startAt: String,
+    @SerialName("p_end_at") val endAt: String,
     @SerialName("p_complexity") val complexity: String,
     @SerialName("p_is_urgent") val isUrgent: Boolean,
     @SerialName("p_distance_km") val distanceKm: Double,

@@ -8,7 +8,6 @@ import id.bantuin.app.domain.model.ChatMessage
 import id.bantuin.app.domain.model.ChatThreadSummary
 import id.bantuin.app.domain.model.DayAvailability
 import id.bantuin.app.domain.model.GeoPoint
-import id.bantuin.app.domain.model.LockInfo
 import id.bantuin.app.domain.model.MetricSnapshot
 import id.bantuin.app.domain.model.OrderDraft
 import id.bantuin.app.domain.model.PayoutChannelType
@@ -49,8 +48,6 @@ interface CatalogRepository {
 
 interface BookingRepository {
     suspend fun busyBlocks(providerId: String, dateIso: String): AppResult<List<TimeBlock>>
-    suspend fun acquireLock(providerId: String, dateIso: String, startMin: Int, endMin: Int): AppResult<LockInfo>
-    suspend fun releaseLock(lockId: String): AppResult<Unit>
     suspend fun createBooking(draft: OrderDraft): AppResult<String>
     suspend fun updateStatus(bookingId: String, newStatus: BookingStatus): AppResult<Unit>
     suspend fun confirmQrisPayment(bookingId: String): AppResult<Unit>

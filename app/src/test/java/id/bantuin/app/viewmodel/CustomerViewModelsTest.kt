@@ -1,5 +1,6 @@
 package id.bantuin.app.viewmodel
 
+import id.bantuin.app.core.result.AppResult
 import id.bantuin.app.core.session.InMemorySessionStore
 import id.bantuin.app.core.theme.InMemoryThemeStore
 import id.bantuin.app.core.theme.ThemeMode
@@ -9,6 +10,9 @@ import id.bantuin.app.domain.model.BookingStatus
 import id.bantuin.app.domain.model.CompletionOutcome
 import id.bantuin.app.domain.model.Complexity
 import id.bantuin.app.domain.model.GeoPoint
+import id.bantuin.app.domain.model.OrderDraft
+import id.bantuin.app.domain.model.SurgeReason
+import id.bantuin.app.domain.repository.BookingRepository
 import id.bantuin.app.domain.repository.UserProfile
 import id.bantuin.app.ui.customer.estimate.EstimateViewModel
 import id.bantuin.app.ui.customer.home.CustomerHomeViewModel
@@ -18,6 +22,7 @@ import id.bantuin.app.ui.customer.orderdetail.OrderDetailViewModel
 import id.bantuin.app.ui.customer.orders.CustomerOrdersViewModel
 import id.bantuin.app.ui.customer.profile.CustomerProfileViewModel
 import id.bantuin.app.ui.customer.providerdetail.ProviderDetailViewModel
+import id.bantuin.app.ui.customer.recommendation.ALL_CATEGORIES_ID
 import id.bantuin.app.ui.customer.recommendation.ProviderSortOption
 import id.bantuin.app.ui.customer.recommendation.RecommendationViewModel
 import id.bantuin.app.ui.customer.schedule.ScheduleViewModel
@@ -123,7 +128,64 @@ class CustomerViewModelsTest {
     }
 
     @Test
-    fun scheduleViewModel_selectsSlotAndAcquiresLock() = runTest {
+    fun recommendationViewModel_allCategoriesMergesCandidatesWithoutDuplicates() = runTest {
+        val vm = RecommendationViewModel(repository)
+        vm.initialize(categoryId = ALL_CATEGORIES_ID, customerLocation = FakeData.MALANG_CENTER)
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        assertEquals("Semua Layanan", vm.uiState.value.category.name)
+        assertTrue(vm.uiState.value.rawCandidates.isNotEmpty())
+        val ids = vm.uiState.value.rawCandidates.map { it.providerId }
+        assertEquals(ids.toSet().size, ids.size)
+    }
+
+    @Test
+    fun recommendationViewModel_radiusFeedsBackIntoMatchmaking() = runTest {
+        val vm = RecommendationViewModel(repository)
+        vm.initialize(categoryId = ALL_CATEGORIES_ID, customerLocation = FakeData.MALANG_CENTER)
+        testDispatcher.scheduler.advanceUntilIdle()
+        val defaultOutOfRange = vm.uiState.value.matchResult.outOfRange.size
+
+        vm.setMaxDistanceFilter(3.0)
+        assertTrue(vm.uiState.value.filteredList.all { it.distanceKm <= 3.0 })
+        assertTrue(vm.uiState.value.matchResult.outOfRange.size > defaultOutOfRange)
+    }
+
+    @Test
+    fun estimateViewModel_urgentToggleChangesTariffAndPersistsToDraft() = runTest {
+        var capturedDraft: OrderDraft? = null
+        val spyRepository = object : BookingRepository by repository {
+            override suspend fun createBooking(draft: OrderDraft): AppResult<String> {
+                capturedDraft = draft
+                return AppResult.Success("bti_urgent_test")
+            }
+        }
+        val vm = EstimateViewModel(spyRepository)
+        vm.initialize(
+            categoryId = 2,
+            provider = FakeData.providers.first(),
+            service = FakeData.services.first(),
+            customerLocation = FakeData.MALANG_CENTER,
+            customerAddress = "Alun-alun",
+            scheduledDateIso = "2026-11-26",
+            scheduledStartMin = 600, // 10:00, bukan jam malam
+            scheduledDurationMin = 90,
+            distanceKm = 2.0
+        )
+        val normalTotal = vm.uiState.value.costEstimate?.total ?: 0
+
+        vm.setUrgent(true)
+        val urgentTotal = vm.uiState.value.costEstimate?.total ?: 0
+        assertTrue(urgentTotal > normalTotal)
+        assertEquals(SurgeReason.URGENT, vm.uiState.value.costEstimate?.surgeReason)
+
+        vm.confirmOrder {}
+        testDispatcher.scheduler.advanceUntilIdle()
+        assertEquals(true, capturedDraft?.isUrgent)
+    }
+
+    @Test
+    fun scheduleViewModel_validatesSlotBeforeProceeding() = runTest {
         val vm = ScheduleViewModel(repository, repository)
         val provider = FakeData.providers.first { it.providerId == "p01" }
         val service = FakeData.services.first { it.providerId == "p01" }
@@ -133,32 +195,43 @@ class CustomerViewModelsTest {
 
         assertEquals(7, vm.uiState.value.dynamicDates.size)
 
-        // Pilih slot jam bentrok -> harus ditolak saat mengunci
+        // Slot bentrok tidak boleh melanjutkan ke estimasi
         vm.selectSlot(600) // 10:00 (bentrok dengan busyBlocks demo)
         assertTrue(vm.uiState.value.slotCheckResult != null)
         assertEquals(false, vm.uiState.value.slotCheckResult?.valid)
 
-        var lockAcquired = false
-        vm.acquireLockAndProceed { lockAcquired = true }
-        testDispatcher.scheduler.advanceUntilIdle()
-        assertTrue(!lockAcquired)
+        var proceeded = false
+        vm.validateAndProceed { proceeded = true }
+        assertTrue(!proceeded)
         assertNotNull(vm.uiState.value.errorMessage)
 
-        // Pilih slot valid berikutnya (14:00 = 840, di luar blok 10:00-11:30 dan 12:00-13:45)
-        vm.selectDate(1) // besok agar tidak terkena PAST_TIME pada waktu siang/malam test
+        // Slot valid (besok 14:00) boleh melanjutkan tanpa mengunci slot
+        vm.selectDate(1)
         testDispatcher.scheduler.advanceUntilIdle()
         vm.selectSlot(840)
-        vm.acquireLockAndProceed { lockInfo ->
-            lockAcquired = true
-            assertNotNull(lockInfo.lockId)
-            assertEquals(vm.uiState.value.selectedDate.toString(), lockInfo.dateIso)
-            // Wajib menyimpan end + 30 menit TRAVEL_BUFFER_MIN
-            assertEquals(840 + service.durationMin + id.bantuin.app.core.config.BantuinConfig.TRAVEL_BUFFER_MIN, lockInfo.endMin)
-        }
+        vm.validateAndProceed { proceeded = true }
+        assertTrue(proceeded)
+        assertEquals(null, vm.uiState.value.errorMessage)
+    }
+
+    @Test
+    fun scheduleViewModel_hidesPastSlotsOnToday() = runTest {
+        // Jam 14:30 WIB -> slot 14:00 dan sebelumarnya tidak boleh ditampilkan
+        val vm = ScheduleViewModel(
+            repository,
+            repository,
+            nowProvider = { java.time.LocalTime.of(14, 30) }
+        )
+        val provider = FakeData.providers.first { it.providerId == "p09" } // ALWAYS_ON
+        val service = FakeData.services.first().copy(providerId = "p09", durationMin = 30)
+
+        vm.initialize(provider = provider, service = service, distanceKm = 1.0)
         testDispatcher.scheduler.advanceUntilIdle()
 
-        assertTrue(lockAcquired)
-        assertNotNull(vm.uiState.value.lockInfo)
+        val slotMins = vm.uiState.value.availableSlots.map { it.first }
+        assertTrue(slotMins.isNotEmpty())
+        assertTrue(slotMins.min() > 870)
+        assertTrue(!slotMins.contains(840))
     }
 
     @Test
@@ -193,7 +266,6 @@ class CustomerViewModelsTest {
             scheduledDateIso = "2026-11-21",
             scheduledStartMin = 540,
             scheduledDurationMin = 90,
-            lockInfo = null,
             distanceKm = 2.0
         )
 
@@ -288,32 +360,6 @@ class CustomerViewModelsTest {
     }
 
     @Test
-    fun estimateViewModel_releasesLockWhenRequestedAndHandlesExpiry() = runTest {
-        val lock = (repository.acquireLock("p01", "2026-11-22", 840, 930) as id.bantuin.app.core.result.AppResult.Success).data
-        val vm = EstimateViewModel(repository)
-        vm.initialize(
-            categoryId = 2,
-            provider = FakeData.providers.first(),
-            service = FakeData.services.first(),
-            customerLocation = FakeData.MALANG_CENTER,
-            customerAddress = "Jl. Ijen",
-            scheduledDateIso = "2026-11-22",
-            scheduledStartMin = 840,
-            scheduledDurationMin = 90,
-            lockInfo = lock,
-            distanceKm = 1.5
-        )
-
-        vm.onLockExpired()
-        assertTrue(vm.uiState.value.isLockExpired)
-        assertNotNull(vm.uiState.value.errorMessage)
-
-        vm.releaseLock()
-        testDispatcher.scheduler.advanceUntilIdle()
-        assertEquals(null, vm.uiState.value.lockInfo)
-    }
-
-    @Test
     fun orderDetailViewModel_loadsTimelineEventsAndRejectsIllegalCompletionAndLongReview() = runTest {
         val vm = OrderDetailViewModel(repository, repository)
         vm.observeBooking("b01")
@@ -393,22 +439,13 @@ class CustomerViewModelsTest {
     }
 
     @Test
-    fun estimateViewModel_marksExpiredWhenCreateBookingFailsWithLockExpired() = runTest {
-        val fakeLock = id.bantuin.app.domain.model.LockInfo(
-            lockId = "expired_lock_id",
-            providerId = "p01",
-            startMin = 540,
-            endMin = 660,
-            expiresAtMillis = System.currentTimeMillis() - 10_000L,
-            dateIso = "2026-11-22"
-        )
-        // Buat FakeRepository khusus yang menolak lock kedaluwarsa meski tidak ada di map
-        val repoWithExpiredCheck = object : id.bantuin.app.domain.repository.BookingRepository by repository {
+    fun estimateViewModel_surfacesCreateBookingErrorWithoutLock() = runTest {
+        val repoWithError = object : id.bantuin.app.domain.repository.BookingRepository by repository {
             override suspend fun createBooking(draft: id.bantuin.app.domain.model.OrderDraft): id.bantuin.app.core.result.AppResult<String> {
-                return id.bantuin.app.core.result.AppResult.Error("Waktu penahanan slot habis, pilih jadwal lagi")
+                return id.bantuin.app.core.result.AppResult.Error("Gagal membuat pesanan")
             }
         }
-        val vm = EstimateViewModel(repoWithExpiredCheck)
+        val vm = EstimateViewModel(repoWithError)
         vm.initialize(
             categoryId = 2,
             provider = FakeData.providers.first(),
@@ -418,13 +455,13 @@ class CustomerViewModelsTest {
             scheduledDateIso = "2026-11-22",
             scheduledStartMin = 540,
             scheduledDurationMin = 90,
-            lockInfo = fakeLock,
             distanceKm = 1.5
         )
 
         vm.confirmOrder {}
         testDispatcher.scheduler.advanceUntilIdle()
 
-        assertTrue(vm.uiState.value.isLockExpired)
+        assertEquals("Gagal membuat pesanan", vm.uiState.value.errorMessage)
+        assertEquals(false, vm.uiState.value.isSubmitting)
     }
 }

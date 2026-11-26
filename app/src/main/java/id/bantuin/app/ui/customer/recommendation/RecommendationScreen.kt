@@ -74,6 +74,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import id.bantuin.app.core.config.BantuinConfig
 import id.bantuin.app.core.util.CurrencyUtils
 import id.bantuin.app.domain.model.ProviderCandidate
 import id.bantuin.app.domain.model.RankedProvider
@@ -269,7 +270,7 @@ fun RecommendationScreen(
                                 selected = uiState.maxDistanceFilter == 5.0,
                                 onClick = {
                                     viewModel.setMaxDistanceFilter(
-                                        if (uiState.maxDistanceFilter == 5.0) 10.0 else 5.0
+                                        if (uiState.maxDistanceFilter == 5.0) BantuinConfig.MAX_RADIUS_KM else 5.0
                                     )
                                 },
                                 label = { Text("<= 5 km") },
@@ -327,7 +328,7 @@ fun RecommendationScreen(
                         }
                     }
 
-                    // 3. Catatan Mitra di Luar Radius 10 km
+                    // 3. Catatan Mitra di Luar Radius Maksimal
                     if (matchResult.outOfRange.isNotEmpty()) {
                         item {
                             OutOfRangeNoticeCard(count = matchResult.outOfRange.size)
@@ -510,7 +511,7 @@ private fun FilterAndSortBottomSheet(
                         listOf(
                             3.0 to "Maks 3 km",
                             5.0 to "Maks 5 km",
-                            10.0 to "Semua (<= 10 km)"
+                            BantuinConfig.MAX_RADIUS_KM to "Semua (<= ${BantuinConfig.MAX_RADIUS_KM.toInt()} km)"
                         ).forEach { (value, label) ->
                             val selected = draftDistance == value
                             SelectableOptionPill(
@@ -859,7 +860,7 @@ private fun OutOfRangeNoticeCard(count: Int) {
             )
             Spacer(modifier = Modifier.width(10.dp))
             Text(
-                text = "$count mitra lain berada di luar radius 10 km sehingga tidak ditampilkan untuk menjaga ketepatan waktu kedatangan.",
+                text = "$count mitra lain berada di luar radius ${BantuinConfig.MAX_RADIUS_KM.toInt()} km sehingga tidak ditampilkan untuk menjaga ketepatan waktu kedatangan.",
                 style = MaterialTheme.typography.bodySmall,
                 color = colors.info
             )

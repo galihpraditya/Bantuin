@@ -12,7 +12,7 @@ import java.math.RoundingMode
  * Menghitung estimasi tarif transparan:
  * raw = (baseFare + jarakKm * 2000) * bobotKompleksitas (jarak dibulatkan 1 desimal HALF_UP)
  * baseCost = dibulatkan ke atas kelipatan 500
- * surge = +20% tunggal jika jam sibuk, malam, atau darurat.
+ * surge = +20% tunggal jika layanan malam atau darurat.
  */
 class CostEstimatorUseCase {
     operator fun invoke(
@@ -27,9 +27,8 @@ class CostEstimatorUseCase {
         val raw = (BigDecimal(baseFare) + distCost).multiply(complexity.weight)
         val baseCost = roundUp(raw)
 
-        val peak = BantuinConfig.PEAK_RANGES.any { startMinOfDay in it }
         val night = startMinOfDay >= BantuinConfig.NIGHT_START_MIN || startMinOfDay < BantuinConfig.NIGHT_END_MIN
-        val surge = peak || night || isUrgent
+        val surge = night || isUrgent
 
         val total = if (surge) {
             roundUp(raw.multiply(BigDecimal(BantuinConfig.SURGE_MULTIPLIER)))
@@ -39,9 +38,7 @@ class CostEstimatorUseCase {
 
         val reason = when {
             !surge -> SurgeReason.NONE
-            peak && isUrgent -> SurgeReason.PEAK_AND_URGENT
             night && isUrgent -> SurgeReason.NIGHT_AND_URGENT
-            peak -> SurgeReason.PEAK_HOUR
             night -> SurgeReason.NIGHT
             else -> SurgeReason.URGENT
         }

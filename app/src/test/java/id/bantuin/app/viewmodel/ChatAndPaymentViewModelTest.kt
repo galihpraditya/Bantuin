@@ -56,7 +56,6 @@ class ChatAndPaymentViewModelTest {
             scheduledDateIso = "2026-11-26",
             scheduledStartMin = 600,
             scheduledDurationMin = 90,
-            lockInfo = null,
             distanceKm = 2.0
         )
 
@@ -91,7 +90,6 @@ class ChatAndPaymentViewModelTest {
             scheduledDateIso = "2026-11-26",
             scheduledStartMin = 660,
             scheduledDurationMin = 90,
-            lockInfo = null,
             distanceKm = 1.5
         )
         estimateVm.setPaymentMethod(PaymentMethod.QRIS)

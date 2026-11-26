@@ -91,10 +91,8 @@ data class MatchResult(
 
 enum class SurgeReason(val label: String) {
     NONE("Tarif Normal"),
-    PEAK_HOUR("Jam Sibuk (+20%)"),
     NIGHT("Layanan Malam (+20%)"),
     URGENT("Layanan Cepat Tanggap (+20%)"),
-    PEAK_AND_URGENT("Jam Sibuk & Darurat (+20%)"),
     NIGHT_AND_URGENT("Malam & Darurat (+20%)")
 }
 
@@ -124,15 +122,6 @@ data class SlotCheckResult(
     val reason: ConflictReason?,
     val block: TimeBlock,
     val alternativeStartsMin: List<Int>
-)
-
-data class LockInfo(
-    val lockId: String,
-    val providerId: String,
-    val startMin: Int,
-    val endMin: Int,
-    val expiresAtMillis: Long,
-    val dateIso: String = ""
 )
 
 enum class CompletionOutcome(val label: String) {
@@ -199,7 +188,6 @@ data class OrderDraft(
     val customerAddress: String,
     val distanceKm: Double,
     val costEstimate: CostEstimate? = null,
-    val lockInfo: LockInfo? = null,
     val paymentMethod: PaymentMethod = PaymentMethod.CASH
 )
 

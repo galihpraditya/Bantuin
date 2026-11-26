@@ -19,7 +19,6 @@ import id.bantuin.app.domain.usecase.trust.TrustScoreUseCase
 import kotlinx.coroutines.flow.update
 import id.bantuin.app.domain.model.DayAvailability
 import id.bantuin.app.domain.model.GeoPoint
-import id.bantuin.app.domain.model.LockInfo
 import id.bantuin.app.domain.model.MetricSnapshot
 import id.bantuin.app.domain.model.OrderDraft
 import id.bantuin.app.domain.model.PaymentMethod
@@ -93,7 +92,6 @@ class FakeBantuinRepository(
     private val trustScore = TrustScoreUseCase()
     private val trustRevision = MutableStateFlow(0L)
     override val trustChanges: Flow<Long> = trustRevision
-    private val activeLocks = mutableMapOf<String, Pair<String, LockInfo>>() // lockId -> (lockedByUserId, LockInfo)
     private val providerSnapshotsMap = mutableMapOf<String, MutableList<MetricSnapshot>>()
     private var nextEventId = 100L
 
@@ -315,8 +313,6 @@ class FakeBantuinRepository(
     // ================= BOOKING REPOSITORY =================
     override suspend fun busyBlocks(providerId: String, dateIso: String): AppResult<List<TimeBlock>> {
         expirePending()
-        val nowMs = System.currentTimeMillis()
-        val selfId = sessionStore.currentUserValue?.id
 
         val demoBlocks = if (providerId == "p01") {
             listOf(
@@ -333,53 +329,7 @@ class FakeBantuinRepository(
                 bookingMetaMap[booking.id]?.let { TimeBlock(it.startMin, it.endMin) }
             }
 
-        val lockBlocks = activeLocks.values
-            .filter { (lockedBy, lock) ->
-                lock.providerId == providerId &&
-                    lock.dateIso == dateIso &&
-                    lock.expiresAtMillis > nowMs &&
-                    (selfId == null || lockedBy != selfId)
-            }
-            .map { (_, lock) -> TimeBlock(lock.startMin, lock.endMin) }
-
-        return AppResult.Success((demoBlocks + dynamicBookingBlocks + lockBlocks).distinct())
-    }
-
-    override suspend fun acquireLock(
-        providerId: String,
-        dateIso: String,
-        startMin: Int,
-        endMin: Int
-    ): AppResult<LockInfo> {
-        val currentUserId = sessionStore.currentUserValue?.id ?: "user_guest"
-        if (currentUserId == providerId) {
-            return AppResult.Error("Tidak bisa memesan layanan sendiri")
-        }
-
-        val nowMs = System.currentTimeMillis()
-        activeLocks.entries.removeIf { it.value.second.expiresAtMillis <= nowMs || it.value.first == currentUserId }
-
-        val busy = (busyBlocks(providerId, dateIso) as? AppResult.Success)?.data.orEmpty()
-        if (busy.any { it.startMin < endMin && startMin < it.endMin }) {
-            return AppResult.Error("Slot baru saja diambil, pilih jam lain")
-        }
-
-        val lockId = UUID.randomUUID().toString()
-        val info = LockInfo(
-            lockId = lockId,
-            providerId = providerId,
-            startMin = startMin,
-            endMin = endMin,
-            expiresAtMillis = nowMs + BantuinConfig.SLOT_LOCK_MINUTES * 60_000L,
-            dateIso = dateIso
-        )
-        activeLocks[lockId] = currentUserId to info
-        return AppResult.Success(info)
-    }
-
-    override suspend fun releaseLock(lockId: String): AppResult<Unit> {
-        activeLocks.remove(lockId)
-        return AppResult.Success(Unit)
+        return AppResult.Success((demoBlocks + dynamicBookingBlocks).distinct())
     }
 
     override suspend fun createBooking(draft: OrderDraft): AppResult<String> {
@@ -388,18 +338,10 @@ class FakeBantuinRepository(
         if (customerId == draft.provider.providerId) {
             return AppResult.Error("Tidak bisa memesan layanan sendiri")
         }
-        val lockId = draft.lockInfo?.lockId
-        if (lockId != null) {
-            val locked = activeLocks[lockId]
-            if (locked != null && locked.second.expiresAtMillis <= System.currentTimeMillis()) {
-                activeLocks.remove(lockId)
-                return AppResult.Error("Waktu penahanan slot habis, pilih jadwal lagi")
-            }
-        }
 
         val now = Clock.System.now()
         val bookingId = "bti_" + UUID.randomUUID().toString().take(8)
-        val endWithBuffer = draft.lockInfo?.endMin ?: (draft.startMin + draft.durationMin + BantuinConfig.TRAVEL_BUFFER_MIN)
+        val endWithBuffer = draft.startMin + draft.durationMin + BantuinConfig.TRAVEL_BUFFER_MIN
         val newBooking = BookingItem(
             id = bookingId,
             customerId = customerId,
@@ -441,7 +383,6 @@ class FakeBantuinRepository(
         updated.add(0, newBooking)
         bookingsFlow.value = updated
 
-        lockId?.let { activeLocks.remove(it) }
         return AppResult.Success(bookingId)
     }
 

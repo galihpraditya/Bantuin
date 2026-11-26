@@ -25,7 +25,6 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.EventAvailable
-import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material.icons.outlined.Timer
 import androidx.compose.material3.Button
@@ -204,15 +203,14 @@ fun ScheduleScreen(
 
                     Button(
                         onClick = {
-                            viewModel.acquireLockAndProceed { lockInfo ->
-                                orderFlow.currentLock = lockInfo
+                            viewModel.validateAndProceed {
                                 orderFlow.selectedStartMin = selectedStartMin
                                 orderFlow.selectedDurationMin = service.durationMin
                                 orderFlow.selectedDateIso = uiState.selectedDate.toString()
                                 onContinueToEstimate()
                             }
                         },
-                        enabled = isSlotValid && !uiState.isLocking && !uiState.isLoading,
+                        enabled = isSlotValid && !uiState.isLoading,
                         colors = ButtonDefaults.buttonColors(
                             containerColor = colors.primary,
                             contentColor = colors.onPrimary,
@@ -225,11 +223,7 @@ fun ScheduleScreen(
                             .heightIn(min = 48.dp)
                     ) {
                         Text(
-                            text = when {
-                                uiState.isLocking -> "Mengunci Slot..."
-                                isSlotValid -> "Lanjut ke Estimasi Biaya"
-                                else -> "Pilih Jam Bebas Konflik"
-                            },
+                            text = if (isSlotValid) "Lanjut ke Estimasi Biaya" else "Pilih Jam Bebas Konflik",
                             style = MaterialTheme.typography.labelLarge
                         )
                         Spacer(modifier = Modifier.width(8.dp))
@@ -459,19 +453,6 @@ fun ScheduleScreen(
                             }
                         }
 
-                        Box(
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(8.dp))
-                                .background(colors.primaryContainer)
-                                .padding(horizontal = 8.dp, vertical = 4.dp)
-                        ) {
-                            Text(
-                                text = "+ 30m Buffer SLA",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = colors.onPrimaryContainer,
-                                fontWeight = FontWeight.Bold
-                            )
-                        }
                     }
                 }
             }
@@ -590,35 +571,6 @@ fun ScheduleScreen(
                 }
             }
 
-            // 6. Informasi Kunci Slot 10 Menit
-            item {
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(12.dp),
-                    colors = CardDefaults.cardColors(containerColor = colors.infoContainer),
-                    border = CardDefaults.outlinedCardBorder().copy(
-                        brush = androidx.compose.ui.graphics.SolidColor(colors.borderSubtle)
-                    )
-                ) {
-                    Row(
-                        modifier = Modifier.padding(12.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Lock,
-                            contentDescription = null,
-                            tint = colors.info,
-                            modifier = Modifier.size(18.dp)
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(
-                            text = "Slot jadwal dikunci otomatis selama 10 menit saat Anda melanjutkan ke estimasi biaya.",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = colors.info
-                        )
-                    }
-                }
-            }
         }
     }
 }

@@ -318,11 +318,6 @@ fun BantuinNavGraph(
                     },
                     onActiveOrderClick = { bookingId ->
                         navigateSingleTop(Routes.orderTracking(bookingId))
-                    },
-                    onEmergencyClick = {
-                        orderFlow.selectedCategoryId = 2 // AC & Listrik
-                        orderFlow.isUrgent = true
-                        navigateSingleTop(Routes.recommendation(2))
                     }
                 )
             }
@@ -331,7 +326,7 @@ fun BantuinNavGraph(
                 route = Routes.RECOMMENDATION,
                 arguments = listOf(navArgument("categoryId") { type = NavType.IntType })
             ) { backStackEntry ->
-                val categoryId = backStackEntry.arguments?.getInt("categoryId") ?: 2
+                val categoryId = backStackEntry.arguments?.getInt("categoryId") ?: 0
                 RecommendationScreen(
                     categoryId = categoryId,
                     orderFlow = orderFlow,
