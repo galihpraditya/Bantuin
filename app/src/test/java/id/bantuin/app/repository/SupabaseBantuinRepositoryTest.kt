@@ -80,6 +80,26 @@ class SupabaseBantuinRepositoryTest {
     }
 
     @Test
+    fun mapSupabaseError_mapsPostgrestWriteViolations() {
+        assertEquals(
+            "Tidak memiliki izin mengubah data. Silakan masuk kembali dengan akun mitra.",
+            supabaseRepo.mapSupabaseError(IllegalStateException("42501 permission denied"), "default").message
+        )
+        assertEquals(
+            "Format jadwal tidak valid. Periksa jam buka dan jam tutup Anda.",
+            supabaseRepo.mapSupabaseError(IllegalStateException("new row violates check constraint 23514"), "default").message
+        )
+        assertEquals(
+            "Akun mitra belum terdaftar di database.",
+            supabaseRepo.mapSupabaseError(IllegalStateException("foreign key violation 23503"), "default").message
+        )
+        assertEquals(
+            "Akun mitra tidak valid. Silakan masuk kembali.",
+            supabaseRepo.mapSupabaseError(IllegalStateException("invalid input syntax for type uuid 22P02"), "default").message
+        )
+    }
+
+    @Test
     fun mapSupabaseError_mapsNetworkTimeoutCleanly() {
         val res = supabaseRepo.mapSupabaseError(RuntimeException("Socket timeout while connecting"), "Gagal")
         assertTrue(res.message.contains("Koneksi", ignoreCase = true))

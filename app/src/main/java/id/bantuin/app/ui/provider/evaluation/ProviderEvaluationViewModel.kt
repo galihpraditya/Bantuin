@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import id.bantuin.app.core.config.BantuinConfig
 import id.bantuin.app.core.result.AppResult
 import id.bantuin.app.core.util.TimeUtils
+import id.bantuin.app.domain.model.ProviderBadge
 import id.bantuin.app.domain.model.TrustInput
 import id.bantuin.app.domain.model.TrustResult
 import id.bantuin.app.domain.repository.AuthRepository
@@ -106,6 +107,7 @@ class ProviderEvaluationViewModel(
         recalculated: Boolean
     ) {
         val tier = when {
+            result.badge == ProviderBadge.NEW -> "Mitra Baru"
             result.flagAnomaly -> "Evaluasi Anomali"
             else -> "Mitra Terpercaya"
         }

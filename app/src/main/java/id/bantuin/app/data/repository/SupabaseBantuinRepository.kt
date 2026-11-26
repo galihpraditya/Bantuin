@@ -85,6 +85,7 @@ class SupabaseBantuinRepository(
     companion object {
         private const val LOG_TAG_LOGIN = "LOGIN"
         private const val LOG_TAG_REALTIME = "BantuinRealtime"
+        private const val LOG_TAG_REPOSITORY = "BantuinRepository"
     }
 
     init {
@@ -419,19 +420,50 @@ class SupabaseBantuinRepository(
     }
 
     override suspend fun saveAvailability(providerId: String, days: List<DayAvailability>): AppResult<Unit> = withContext(ioDispatcher) {
+        if (days.isEmpty()) return@withContext AppResult.Success(Unit)
+        val uid = currentUidOrNull()
+        if (uid.isNullOrBlank()) {
+            return@withContext AppResult.Error("Sesi login berakhir, silakan masuk kembali")
+        }
+        val dtoList = days.map { day ->
+            AvailabilityDto(
+                providerId = providerId,
+                dayOfWeek = day.dayOfWeek,
+                mode = day.mode.name,
+                openTime = if (day.mode == AvailabilityMode.ON) day.openMin?.let { formatMinToTime(it) } else null,
+                closeTime = if (day.mode == AvailabilityMode.ON) day.closeMin?.let { formatMinToTime(it) } else null
+            )
+        }
         try {
-            val dtoList = days.map { day ->
-                AvailabilityDto(
-                    providerId = providerId,
-                    dayOfWeek = day.dayOfWeek,
-                    mode = day.mode.name,
-                    openTime = if (day.mode == AvailabilityMode.ON) day.openMin?.let { formatMinToTime(it) } else null,
-                    closeTime = if (day.mode == AvailabilityMode.ON) day.closeMin?.let { formatMinToTime(it) } else null
-                )
+            client.postgrest["availability"].upsert(dtoList) {
+                onConflict = "provider_id,day_of_week"
             }
-            client.postgrest["availability"].upsert(dtoList)
             AppResult.Success(Unit)
         } catch (e: Exception) {
+            logError(LOG_TAG_REPOSITORY, "Gagal menyimpan jadwal mitra $providerId: ${e.message}", e)
+            val raw = e.message.orEmpty()
+            val isNetworkIssue = listOf("timeout", "unable to resolve host", "connect", "connection")
+                .any { raw.contains(it, ignoreCase = true) }
+            if (!isNetworkIssue) {
+                // Upsert batch dapat ditolak karena satu baris bermasalah. Coba
+                // simpan per hari agar perubahan hari lain tetap tersimpan.
+                var failedDays = 0
+                dtoList.forEach { dto ->
+                    runCatching {
+                        client.postgrest["availability"].upsert(dto) {
+                            onConflict = "provider_id,day_of_week"
+                        }
+                    }.onFailure { dayError ->
+                        failedDays++
+                        logError(
+                            LOG_TAG_REPOSITORY,
+                            "Gagal menyimpan jadwal hari ${dto.dayOfWeek}: ${dayError.message}",
+                            dayError
+                        )
+                    }
+                }
+                if (failedDays == 0) return@withContext AppResult.Success(Unit)
+            }
             mapSupabaseError(e, "Gagal menyimpan jadwal ketersediaan")
         }
     }
@@ -483,7 +515,10 @@ class SupabaseBantuinRepository(
     ): AppResult<Unit> = withContext(ioDispatcher) {
         try {
             client.postgrest["profiles"].update(
-                mapOf("full_name" to name, "phone" to phone)
+                buildJsonObject {
+                    put("full_name", name)
+                    put("phone", phone)
+                }
             ) {
                 filter { eq("id", providerId) }
             }
@@ -495,12 +530,12 @@ class SupabaseBantuinRepository(
 
             if (existing != null) {
                 client.postgrest["provider_profiles"].update(
-                    mapOf(
-                        "bio" to bio,
-                        "address" to address,
-                        "lat" to location.lat,
-                        "lng" to location.lng
-                    )
+                    buildJsonObject {
+                        put("bio", bio)
+                        put("address", address)
+                        put("lat", location.lat)
+                        put("lng", location.lng)
+                    }
                 ) {
                     filter { eq("user_id", providerId) }
                 }
@@ -900,21 +935,61 @@ class SupabaseBantuinRepository(
             val cutoff = now - sinceDays.days
             val cutoffIso = cutoff.toString()
 
-            val reviewsDto = client.postgrest["reviews"]
-                .select {
-                    filter {
-                        eq("provider_id", providerId)
-                        gte("created_at", cutoffIso)
-                        lte("created_at", now.toString())
+            val ratings = runCatching {
+                client.postgrest["reviews"]
+                    .select {
+                        filter {
+                            eq("provider_id", providerId)
+                            gte("created_at", cutoffIso)
+                            lte("created_at", now.toString())
+                        }
                     }
-                }
-                .decodeList<ReviewDto>()
-            val ratings = reviewsDto.map { it.rating }
+                    .decodeList<ReviewDto>()
+                    .map { it.rating }
+            }.getOrElse { e ->
+                logError(LOG_TAG_REPOSITORY, "Gagal memuat ulasan trust mitra $providerId: ${e.message}", e)
+                emptyList()
+            }
 
-            val bookingsDto = client.postgrest.rpc(
-                "get_provider_trust_bookings",
-                TrustBookingsRpcParams(providerId = providerId, cutoffIso = cutoffIso)
-            ).decodeList<TrustBookingDto>()
+            val bookingsDto = runCatching {
+                client.postgrest.rpc(
+                    "get_provider_trust_bookings",
+                    TrustBookingsRpcParams(providerId = providerId, cutoffIso = cutoffIso)
+                ).decodeList<TrustBookingDto>()
+            }.getOrElse { rpcError ->
+                logError(
+                    LOG_TAG_REPOSITORY,
+                    "RPC get_provider_trust_bookings gagal untuk $providerId, fallback ke SELECT bookings: ${rpcError.message}",
+                    rpcError
+                )
+                runCatching {
+                    client.postgrest["bookings"]
+                        .select {
+                            filter {
+                                eq("provider_id", providerId)
+                                gte("created_at", cutoffIso)
+                            }
+                        }
+                        .decodeList<BookingDto>()
+                        .map { booking ->
+                            TrustBookingDto(
+                                status = booking.status,
+                                startAt = booking.startAt,
+                                startedAt = booking.startedAt,
+                                finishedAt = booking.finishedAt,
+                                createdAt = booking.createdAt,
+                                completionOutcome = booking.completionOutcome
+                            )
+                        }
+                }.getOrElse { fallbackError ->
+                    logError(
+                        LOG_TAG_REPOSITORY,
+                        "Fallback bookings trust gagal untuk $providerId: ${fallbackError.message}",
+                        fallbackError
+                    )
+                    emptyList()
+                }
+            }
 
             val finished = bookingsDto.filter { it.status == "SELESAI" }
             val cancelled = bookingsDto.count { it.status in setOf("DIBATALKAN_MITRA", "DIBATALKAN_PELANGGAN") }
@@ -1443,6 +1518,15 @@ class SupabaseBantuinRepository(
             raw.contains("INVALID_TRANSITION", ignoreCase = true) ||
                 raw.contains("FORBIDDEN", ignoreCase = true) ->
                 "Aksi tidak diizinkan"
+            raw.contains("42501", ignoreCase = true) ||
+                raw.contains("permission denied", ignoreCase = true) ->
+                "Tidak memiliki izin mengubah data. Silakan masuk kembali dengan akun mitra."
+            raw.contains("23514", ignoreCase = true) ->
+                "Format jadwal tidak valid. Periksa jam buka dan jam tutup Anda."
+            raw.contains("23503", ignoreCase = true) ->
+                "Akun mitra belum terdaftar di database."
+            raw.contains("22P02", ignoreCase = true) ->
+                "Akun mitra tidak valid. Silakan masuk kembali."
             raw.contains("SELF_BOOKING", ignoreCase = true) ->
                 "Tidak bisa memesan layanan sendiri"
             raw.contains("CASH_CONFIRMATION_REQUIRED", ignoreCase = true) ->

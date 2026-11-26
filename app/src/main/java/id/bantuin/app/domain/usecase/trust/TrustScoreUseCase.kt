@@ -15,6 +15,22 @@ class TrustScoreUseCase {
         val done = input.completed.size
         val cancelled = input.mitraCancelledCount
         val total = done + cancelled + input.otherOrderCount
+        if (total == 0) {
+            // Mitra benar-benar baru belum punya riwayat; gunakan skor awal agar
+            // tidak dianggap anomali dan tidak kena penalti visibilitas 0.7x.
+            return TrustResult(
+                ratingAvg = null,
+                ratingScore = 0.0,
+                onTimeRate = 0.0,
+                cancelRate = 0.0,
+                completionRate = null,
+                trustScore = BantuinConfig.TRUST_NEW_PROVIDER_SCORE,
+                txCount = 0,
+                flagAnomaly = false,
+                badge = ProviderBadge.NEW,
+                reasons = emptyList()
+            )
+        }
         val onTime = input.completed.count { job ->
             job.outcome?.let { it == CompletionOutcome.SELESAI_TEPAT_WAKTU }
                 ?: (job.startedAt <= job.startAt + BantuinConfig.LATE_TOLERANCE_MIN.minutes)

@@ -1,5 +1,6 @@
 package id.bantuin.app.usecase
 
+import id.bantuin.app.core.config.BantuinConfig
 import id.bantuin.app.domain.model.AnomalyReason
 import id.bantuin.app.domain.model.CompletedJob
 import id.bantuin.app.domain.model.ProviderBadge
@@ -89,6 +90,20 @@ class TrustScoreUseCaseTest {
         val r5 = useCase.calculate(inputNoReviews)
         assertEquals(0.0, r5.ratingScore, 0.001)
     }
+    @Test
+    fun brandNewProviderWithNoTransactionsGetsDefaultScoreWithoutAnomaly() {
+        val result = useCase.calculate(TrustInput(
+            completed = emptyList(),
+            mitraCancelledCount = 0,
+            ratings = emptyList()
+        ))
+        assertEquals(BantuinConfig.TRUST_NEW_PROVIDER_SCORE, result.trustScore, 0.001)
+        assertEquals(0, result.txCount)
+        assertEquals(ProviderBadge.NEW, result.badge)
+        assertFalse(result.flagAnomaly)
+        assertTrue(result.reasons.isEmpty())
+    }
+
     @Test
     fun includesUnfinishedOrdersInCancellationDenominator() {
         val result = useCase.calculate(TrustInput(

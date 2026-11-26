@@ -180,6 +180,20 @@ class ProviderViewModelsTest {
     }
 
     @Test
+    fun providerEvaluationViewModel_showsNewPartnerStateForAccountWithoutTransactions() = runTest {
+        val mitraRepository = mitraRepository("mitra_baru_tanpa_transaksi", "Mitra Baru")
+        val vm = ProviderEvaluationViewModel(mitraRepository, mitraRepository)
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        val state = vm.uiState.value
+        assertNotNull(state.trustResult)
+        assertEquals(70.0, state.trustResult?.trustScore ?: 0.0, 0.001)
+        assertEquals(false, state.trustResult?.flagAnomaly)
+        assertEquals("Mitra Baru", state.tierTitle)
+        assertEquals(null, state.errorMessage)
+    }
+
+    @Test
     fun providerOrdersViewModel_runsExpirePendingAndObservesFlow() = runTest {
         val vm = ProviderOrdersViewModel(repository)
         testDispatcher.scheduler.advanceUntilIdle()

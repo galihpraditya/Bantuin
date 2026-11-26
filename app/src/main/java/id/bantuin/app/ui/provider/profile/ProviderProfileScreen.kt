@@ -277,8 +277,8 @@ fun ProviderProfileScreen(
                             )
                             ProviderActionRow(
                                 icon = Icons.Default.Speed,
-                                title = "Simulasi & Evaluasi SLA",
-                                subtitle = "Pantau skor kepercayaan, tingkat penyelesaian, dan simulasi performa",
+                                title = "Evaluasi Performa",
+                                subtitle = "Pantau skor kepercayaan dan tingkat penyelesaian pesanan",
                                 onClick = onNavigateToEvaluation
                             )
                         }
