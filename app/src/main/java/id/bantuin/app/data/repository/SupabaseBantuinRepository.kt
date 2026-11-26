@@ -75,6 +75,7 @@ class SupabaseBantuinRepository(
     private val providerBookingsFlow = MutableStateFlow<List<BookingItem>>(emptyList())
     private val acceptingOrdersFlow = MutableStateFlow<Map<String, Boolean>>(emptyMap())
     private val chatMessagesFlow = MutableStateFlow<Map<String, List<ChatMessage>>>(emptyMap())
+    private val chatErrorsFlow = MutableStateFlow<Map<String, String>>(emptyMap())
     private val payoutsFlow = MutableStateFlow<Map<String, List<PayoutRequest>>>(emptyMap())
 
     private var activeRealtimeUserId: String? = null
@@ -107,6 +108,7 @@ class SupabaseBantuinRepository(
                         customerBookingsFlow.value = emptyList()
                         providerBookingsFlow.value = emptyList()
                         chatMessagesFlow.value = emptyMap()
+                        chatErrorsFlow.value = emptyMap()
                         payoutsFlow.value = emptyMap()
                     }
                 }
@@ -154,6 +156,9 @@ class SupabaseBantuinRepository(
                     if (status == Realtime.Status.CONNECTED && activeRealtimeUserId == userId) {
                         trustRevision.update { it + 1 }
                         refreshBookingsForCurrentUser()
+                        chatErrorsFlow.value.keys.toList().forEach { bookingId ->
+                            realtimeScope.launch { refreshMessagesForBooking(bookingId) }
+                        }
                     }
                 }
             } catch (ce: CancellationException) {
@@ -1226,6 +1231,8 @@ class SupabaseBantuinRepository(
     }
 
     override fun observeMessages(bookingId: String): Flow<List<ChatMessage>> {
+        // Jika fetch sebelumnya gagal, key tidak disimpan sehingga langganan
+        // berikutnya mencoba lagi secara otomatis.
         if (!chatMessagesFlow.value.containsKey(bookingId) && SupabaseClientProvider.isConfigured) {
             realtimeScope.launch {
                 refreshMessagesForBooking(bookingId)
@@ -1235,6 +1242,12 @@ class SupabaseBantuinRepository(
             map[bookingId].orEmpty().sortedBy { it.createdAt }
         }
     }
+
+    override fun observeChatError(bookingId: String): Flow<String?> =
+        chatErrorsFlow.map { it[bookingId] }
+
+    override suspend fun retryMessages(bookingId: String): AppResult<Unit> =
+        refreshMessagesForBooking(bookingId)
 
     override suspend fun sendMessage(bookingId: String, text: String): AppResult<Unit> = withContext(ioDispatcher) {
         val trimmed = text.trim()
@@ -1247,7 +1260,15 @@ class SupabaseBantuinRepository(
         try {
             val uid = currentUidOrNull()
                 ?: return@withContext AppResult.Error("Sesi login berakhir, silakan masuk kembali")
-            val role = if (sessionStore.activeRoleValue == "provider") "provider" else "customer"
+            // Peran pengirim ditentukan dari keanggotaan booking, bukan peran aktif
+            // global (akun bisa berperan ganda customer + provider).
+            val relatedBooking = (customerBookingsFlow.value + providerBookingsFlow.value)
+                .firstOrNull { it.id == bookingId }
+            val role = when {
+                relatedBooking?.customerId == uid -> "customer"
+                relatedBooking?.providerId == uid -> "provider"
+                else -> if (sessionStore.activeRoleValue == "provider") "provider" else "customer"
+            }
 
             client.postgrest["booking_messages"].insert(
                 BookingMessageInsertDto(
@@ -1260,6 +1281,7 @@ class SupabaseBantuinRepository(
             refreshMessagesForBooking(bookingId)
             AppResult.Success(Unit)
         } catch (e: Exception) {
+            logError(LOG_TAG_REPOSITORY, "Gagal mengirim pesan ke booking $bookingId: ${e.message}", e)
             mapSupabaseError(e, "Gagal mengirim pesan")
         }
     }
@@ -1305,9 +1327,9 @@ class SupabaseBantuinRepository(
         }
     }
 
-    private suspend fun refreshMessagesForBooking(bookingId: String) {
-        if (!SupabaseClientProvider.isConfigured) return
-        runCatching {
+    private suspend fun refreshMessagesForBooking(bookingId: String): AppResult<Unit> {
+        if (!SupabaseClientProvider.isConfigured) return AppResult.Success(Unit)
+        return try {
             val msgsDto = client.postgrest["booking_messages"]
                 .select {
                     filter { eq("booking_id", bookingId) }
@@ -1338,6 +1360,13 @@ class SupabaseBantuinRepository(
                 )
             }
             chatMessagesFlow.value = chatMessagesFlow.value + (bookingId to mapped)
+            chatErrorsFlow.value = chatErrorsFlow.value - bookingId
+            AppResult.Success(Unit)
+        } catch (e: Exception) {
+            logError(LOG_TAG_REPOSITORY, "Gagal memuat pesan booking $bookingId: ${e.message}", e)
+            val error = mapSupabaseError(e, "Gagal memuat percakapan")
+            chatErrorsFlow.value = chatErrorsFlow.value + (bookingId to error.message)
+            AppResult.Error(error.message, error.cause)
         }
     }
 
@@ -1490,7 +1519,7 @@ class SupabaseBantuinRepository(
                 "Aksi tidak diizinkan"
             raw.contains("42501", ignoreCase = true) ||
                 raw.contains("permission denied", ignoreCase = true) ->
-                "Tidak memiliki izin mengubah data. Silakan masuk kembali dengan akun mitra."
+                "Tidak memiliki izin mengakses data. Periksa hak akses akun Anda lalu coba lagi."
             raw.contains("PGRST202", ignoreCase = true) ||
                 raw.contains("Could not find the function", ignoreCase = true) ||
                 raw.contains("missing required argument", ignoreCase = true) ||
@@ -1635,6 +1664,7 @@ class SupabaseBantuinRepository(
                 finishedAt = parseInstantOrNull(dto.finishedAt),
                 customerLat = dto.customerLat,
                 customerLng = dto.customerLng,
+                distanceKm = dto.distanceKm,
                 providerLocation = providerLocationDto?.let { GeoPoint(it.lat, it.lng) },
                 providerPhone = providerProfile?.phone,
                 customerPhone = customerProfile?.phone,

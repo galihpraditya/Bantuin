@@ -104,6 +104,12 @@ interface ChatRepository {
     fun observeChatThreads(role: String): Flow<List<ChatThreadSummary>>
     fun observeMessages(bookingId: String): Flow<List<ChatMessage>>
     suspend fun sendMessage(bookingId: String, text: String): AppResult<Unit>
+
+    /** Error terakhir saat memuat pesan, dipakai UI untuk tombol coba lagi. */
+    fun observeChatError(bookingId: String): Flow<String?> = flowOf(null)
+
+    /** Paksa muat ulang pesan setelah gagal. */
+    suspend fun retryMessages(bookingId: String): AppResult<Unit> = AppResult.Success(Unit)
 }
 
 interface WalletRepository {

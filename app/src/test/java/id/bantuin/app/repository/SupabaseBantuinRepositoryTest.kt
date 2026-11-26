@@ -85,7 +85,7 @@ class SupabaseBantuinRepositoryTest {
     @Test
     fun mapSupabaseError_mapsPostgrestWriteViolations() {
         assertEquals(
-            "Tidak memiliki izin mengubah data. Silakan masuk kembali dengan akun mitra.",
+            "Tidak memiliki izin mengakses data. Periksa hak akses akun Anda lalu coba lagi.",
             supabaseRepo.mapSupabaseError(IllegalStateException("42501 permission denied"), "default").message
         )
         assertEquals(

@@ -3,15 +3,21 @@ package id.bantuin.app.viewmodel
 import id.bantuin.app.core.result.AppResult
 import id.bantuin.app.data.fake.FakeData
 import id.bantuin.app.data.repository.FakeBantuinRepository
+import id.bantuin.app.domain.model.ChatMessage
+import id.bantuin.app.domain.model.ChatThreadSummary
 import id.bantuin.app.domain.model.PaymentMethod
 import id.bantuin.app.domain.model.PaymentStatus
+import id.bantuin.app.domain.repository.ChatRepository
 import id.bantuin.app.ui.chat.ChatListViewModel
 import id.bantuin.app.ui.chat.ChatRoomViewModel
 import id.bantuin.app.ui.customer.estimate.EstimateViewModel
 import id.bantuin.app.ui.payment.QrisPaymentViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runTest
@@ -157,5 +163,41 @@ class ChatAndPaymentViewModelTest {
 
         vm.onSearchQueryChange("zzzz_tidak_ada_sama_sekali")
         assertTrue(vm.uiState.value.filteredThreads.isEmpty())
+    }
+
+    @Test
+    fun chatListViewModel_keepsErrorWhenThreadStreamFails() = runTest {
+        val failingRepository = object : ChatRepository {
+            override fun observeChatThreads(role: String): Flow<List<ChatThreadSummary>> =
+                flow { throw IllegalStateException("Gagal RLS booking_messages") }
+            override fun observeMessages(bookingId: String): Flow<List<ChatMessage>> = flowOf(emptyList())
+            override suspend fun sendMessage(bookingId: String, text: String): AppResult<Unit> =
+                AppResult.Success(Unit)
+        }
+        val vm = ChatListViewModel(failingRepository, repository)
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        assertNotNull(vm.uiState.value.errorMessage)
+        assertTrue(vm.uiState.value.threads.isEmpty())
+        assertFalse(vm.uiState.value.isLoading)
+    }
+
+    @Test
+    fun chatRoomViewModel_retryMessagesSurfacesLoadError() = runTest {
+        val failingRepository = object : ChatRepository by repository {
+            override fun observeChatError(bookingId: String): Flow<String?> =
+                flowOf("Gagal memuat percakapan")
+            override suspend fun retryMessages(bookingId: String): AppResult<Unit> =
+                AppResult.Error("Masih gagal memuat percakapan")
+        }
+        val vm = ChatRoomViewModel(failingRepository, repository)
+        vm.initialize("b01")
+        testDispatcher.scheduler.advanceUntilIdle()
+        assertEquals("Gagal memuat percakapan", vm.uiState.value.errorMessage)
+
+        vm.retryMessages()
+        testDispatcher.scheduler.advanceUntilIdle()
+        assertEquals("Masih gagal memuat percakapan", vm.uiState.value.errorMessage)
+        assertFalse(vm.uiState.value.isLoading)
     }
 }

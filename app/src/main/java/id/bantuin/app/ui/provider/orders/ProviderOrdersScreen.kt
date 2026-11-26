@@ -41,9 +41,12 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import id.bantuin.app.core.util.CurrencyUtils
+import id.bantuin.app.core.util.DistanceUtils
 import id.bantuin.app.domain.model.BookingItem
 import id.bantuin.app.domain.model.BookingStatus
 import id.bantuin.app.domain.model.PaymentMethod
@@ -218,7 +221,11 @@ private fun ProviderOrderActionCard(
             )
 
             Text(
-                text = "Lokasi: ${booking.address}",
+                text = if (booking.distanceKm > 0.0) {
+                    "Jarak: ${DistanceUtils.formatKm(booking.distanceKm)}"
+                } else {
+                    "Lokasi: ${booking.address}"
+                },
                 style = MaterialTheme.typography.bodySmall,
                 color = colors.textMuted
             )
@@ -302,9 +309,10 @@ private fun ProviderOrderActionCard(
                             contentColor = colors.onPrimaryContainer
                         ),
                         shape = RoundedCornerShape(10.dp),
+                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp),
                         modifier = Modifier
                             .weight(1f)
-                            .heightIn(min = 48.dp)
+                            .height(48.dp)
                     ) {
                         Icon(
                             imageVector = Icons.AutoMirrored.Filled.Chat,
@@ -312,7 +320,15 @@ private fun ProviderOrderActionCard(
                             modifier = Modifier.size(16.dp)
                         )
                         Spacer(modifier = Modifier.width(6.dp))
-                        Text("Chat Pelanggan", fontWeight = FontWeight.SemiBold)
+                        Text(
+                            text = "Chat Pelanggan",
+                            style = MaterialTheme.typography.labelMedium,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            maxLines = 1,
+                            softWrap = false,
+                            overflow = TextOverflow.Ellipsis
+                        )
                     }
 
                     if (!booking.customerPhone.isNullOrBlank()) {
@@ -325,9 +341,10 @@ private fun ProviderOrderActionCard(
                                 brush = androidx.compose.ui.graphics.SolidColor(colors.outline)
                             ),
                             shape = RoundedCornerShape(10.dp),
+                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp),
                             modifier = Modifier
                                 .weight(1f)
-                                .heightIn(min = 48.dp)
+                                .height(48.dp)
                         ) {
                             Icon(
                                 imageVector = Icons.Default.Call,
@@ -336,7 +353,15 @@ private fun ProviderOrderActionCard(
                                 modifier = Modifier.size(16.dp)
                             )
                             Spacer(modifier = Modifier.width(6.dp))
-                            Text("Telepon", color = colors.textPrimary)
+                            Text(
+                                text = "Telepon",
+                                style = MaterialTheme.typography.labelMedium,
+                                fontSize = 12.sp,
+                                color = colors.textPrimary,
+                                maxLines = 1,
+                                softWrap = false,
+                                overflow = TextOverflow.Ellipsis
+                            )
                         }
                     }
                 }

@@ -62,6 +62,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import id.bantuin.app.core.util.CurrencyUtils
@@ -922,28 +924,36 @@ private fun TimelineStepItem(
 
         Spacer(modifier = Modifier.width(12.dp))
 
-        Column(modifier = Modifier.weight(1f)) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
+        // Grid dua kolom tanpa garis: kolom jam lebar tetap agar teks riwayat
+        // tidak masuk/bertabrakan dengan kolom jam.
+        Row(modifier = Modifier.weight(1f)) {
+            Text(
+                text = timeText,
+                style = MaterialTheme.typography.bodySmall,
+                color = colors.textMuted,
+                textAlign = TextAlign.End,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.width(76.dp)
+            )
+            Spacer(modifier = Modifier.width(10.dp))
+            Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = title,
                     style = MaterialTheme.typography.labelLarge,
-                    color = colors.textPrimary
+                    color = colors.textPrimary,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
                 )
                 Text(
-                    text = timeText,
+                    text = description,
                     style = MaterialTheme.typography.bodySmall,
-                    color = colors.textMuted
+                    color = colors.textSecondary,
+                    maxLines = 3,
+                    overflow = TextOverflow.Ellipsis
                 )
+                Spacer(modifier = Modifier.height(10.dp))
             }
-            Text(
-                text = description,
-                style = MaterialTheme.typography.bodySmall,
-                color = colors.textSecondary
-            )
-            Spacer(modifier = Modifier.height(10.dp))
         }
     }
 }

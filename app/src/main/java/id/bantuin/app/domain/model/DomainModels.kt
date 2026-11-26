@@ -212,6 +212,7 @@ data class BookingItem(
     val finishedAt: Instant? = null,
     val customerLat: Double? = null,
     val customerLng: Double? = null,
+    val distanceKm: Double = 0.0,
     val providerLocation: GeoPoint? = null,
     val providerPhone: String? = null,
     val customerPhone: String? = null,

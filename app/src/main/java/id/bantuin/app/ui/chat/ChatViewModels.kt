@@ -50,11 +50,13 @@ class ChatListViewModel(
         observeJob?.cancel()
         _uiState.update { it.copy(isLoading = true, errorMessage = null) }
         observeJob = viewModelScope.launch {
+            var streamFailed = false
             authRepository.activeRole()
                 .flatMapLatest { role ->
                     _uiState.update { it.copy(activeRole = role) }
                     chatRepository.observeChatThreads(role)
                         .catch { e ->
+                            streamFailed = true
                             _uiState.update {
                                 it.copy(
                                     isLoading = false,
@@ -70,7 +72,8 @@ class ChatListViewModel(
                             threads = threads,
                             filteredThreads = filterThreads(threads, state.searchQuery),
                             isLoading = false,
-                            errorMessage = null
+                            // Jangan hapus pesan error yang baru saja ditetapkan .catch()
+                            errorMessage = if (streamFailed) state.errorMessage else null
                         )
                     }
                 }
@@ -119,6 +122,7 @@ class ChatRoomViewModel(
     val uiState: StateFlow<ChatRoomUiState> = _uiState.asStateFlow()
 
     private var observeJob: Job? = null
+    private var errorObserveJob: Job? = null
     private var authJob: Job? = null
 
     init {
@@ -135,12 +139,20 @@ class ChatRoomViewModel(
 
     fun initialize(bookingId: String) {
         observeJob?.cancel()
+        errorObserveJob?.cancel()
         _uiState.update {
             it.copy(
                 bookingId = bookingId,
                 isLoading = true,
                 errorMessage = null
             )
+        }
+        errorObserveJob = viewModelScope.launch {
+            chatRepository.observeChatError(bookingId).collect { error ->
+                if (!error.isNullOrBlank()) {
+                    _uiState.update { it.copy(isLoading = false, errorMessage = error) }
+                }
+            }
         }
         observeJob = viewModelScope.launch {
             combine(
@@ -174,6 +186,20 @@ class ChatRoomViewModel(
                         )
                     }
                 }
+        }
+    }
+
+    fun retryMessages() {
+        val bookingId = _uiState.value.bookingId
+        if (bookingId.isBlank()) return
+        viewModelScope.launch {
+            _uiState.update { it.copy(isLoading = true, errorMessage = null) }
+            when (val res = chatRepository.retryMessages(bookingId)) {
+                is AppResult.Error -> _uiState.update {
+                    it.copy(isLoading = false, errorMessage = res.message)
+                }
+                else -> _uiState.update { it.copy(isLoading = false) }
+            }
         }
     }
 
