@@ -5,12 +5,15 @@ import id.bantuin.app.core.result.AppResult
 import id.bantuin.app.core.session.InMemorySessionStore
 import id.bantuin.app.core.util.TimeUtils
 import id.bantuin.app.data.remote.SupabaseClientProvider
+import id.bantuin.app.data.remote.dto.CreateBookingRpcParams
 import id.bantuin.app.data.repository.SupabaseBantuinRepository
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.setMain
+import kotlinx.serialization.encodeToString
+import kotlinx.serialization.json.Json
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -97,6 +100,54 @@ class SupabaseBantuinRepositoryTest {
             "Akun mitra tidak valid. Silakan masuk kembali.",
             supabaseRepo.mapSupabaseError(IllegalStateException("invalid input syntax for type uuid 22P02"), "default").message
         )
+    }
+
+    @Test
+    fun mapSupabaseError_mapsCreateBookingServerErrors() {
+        assertEquals(
+            "Fungsi pemesanan di server belum sesuai. Terapkan ulang migrasi 006 lalu coba lagi.",
+            supabaseRepo.mapSupabaseError(
+                IllegalStateException("PGRST202 Could not find the function public.create_booking"),
+                "Gagal membuat pesanan"
+            ).message
+        )
+        assertEquals(
+            "Jadwal pesanan tidak valid. Silakan pilih jadwal lain.",
+            supabaseRepo.mapSupabaseError(IllegalStateException("INVALID_SCHEDULE"), "Gagal membuat pesanan").message
+        )
+        assertEquals(
+            "Layanan tidak tersedia atau sudah dinonaktifkan.",
+            supabaseRepo.mapSupabaseError(IllegalStateException("INVALID_SERVICE"), "Gagal membuat pesanan").message
+        )
+    }
+
+    @Test
+    fun createBookingRpcParams_alwaysSerializesNotesEvenWhenBlank() {
+        // Supabase-kt memakai Json { encodeDefaults = false }; field non-nullable
+        // dengan default tetap dikirim sehingga p_notes tidak hilang dari payload.
+        val json = Json { encodeDefaults = false }
+        val payload = json.encodeToString(
+            CreateBookingRpcParams(
+                serviceId = "service-1",
+                startAt = "2026-11-26T10:00:00+07:00",
+                endAt = "2026-11-26T11:30:00+07:00",
+                complexity = "SEDANG",
+                isUrgent = false,
+                distanceKm = 2.0,
+                baseFare = 100000,
+                baseCost = 120000,
+                surgeApplied = false,
+                totalCost = 120000,
+                customerLat = -7.95,
+                customerLng = 112.63,
+                notes = "",
+                paymentMethod = "CASH"
+            )
+        )
+        assertTrue(payload.contains("\"p_notes\":\"\""))
+        assertTrue(payload.contains("\"p_start_at\""))
+        assertTrue(payload.contains("\"p_end_at\""))
+        assertTrue(!payload.contains("p_lock_id"))
     }
 
     @Test

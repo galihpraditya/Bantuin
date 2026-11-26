@@ -128,6 +128,18 @@ class CustomerViewModelsTest {
     }
 
     @Test
+    fun estimateViewModel_confirmOrderWithIncompleteStateShowsError() = runTest {
+        val vm = EstimateViewModel(repository)
+        vm.confirmOrder {}
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        assertEquals(
+            "Data order tidak lengkap. Kembali dan pilih layanan serta jadwal lagi.",
+            vm.uiState.value.errorMessage
+        )
+    }
+
+    @Test
     fun recommendationViewModel_allCategoriesMergesCandidatesWithoutDuplicates() = runTest {
         val vm = RecommendationViewModel(repository)
         vm.initialize(categoryId = ALL_CATEGORIES_ID, customerLocation = FakeData.MALANG_CENTER)

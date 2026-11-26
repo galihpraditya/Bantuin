@@ -622,6 +622,9 @@ class SupabaseBantuinRepository(
     }
 
     override suspend fun createBooking(draft: OrderDraft): AppResult<String> = withContext(ioDispatcher) {
+        if (currentUidOrNull().isNullOrBlank()) {
+            return@withContext AppResult.Error("Sesi login berakhir, silakan masuk kembali")
+        }
         try {
             val startIso = TimeUtils.toIsoString(draft.dateIso, draft.startMin)
             val endIso = TimeUtils.toIsoString(
@@ -649,7 +652,7 @@ class SupabaseBantuinRepository(
                     totalCost = totalCost,
                     customerLat = draft.customerLocation.lat,
                     customerLng = draft.customerLocation.lng,
-                    notes = draft.notes.ifBlank { null },
+                    notes = draft.notes.trim(),
                     paymentMethod = draft.paymentMethod.name
                 )
             ).decodeAs<String>()
@@ -657,6 +660,11 @@ class SupabaseBantuinRepository(
             myBookingsCustomer()
             AppResult.Success(bookingId)
         } catch (e: Exception) {
+            logError(
+                LOG_TAG_REPOSITORY,
+                "Gagal membuat pesanan (service=${draft.service.id}, jadwal=${draft.dateIso} ${draft.startMin}): ${e.message}",
+                e
+            )
             mapSupabaseError(e, "Gagal membuat pesanan")
         }
     }
@@ -1483,6 +1491,21 @@ class SupabaseBantuinRepository(
             raw.contains("42501", ignoreCase = true) ||
                 raw.contains("permission denied", ignoreCase = true) ->
                 "Tidak memiliki izin mengubah data. Silakan masuk kembali dengan akun mitra."
+            raw.contains("PGRST202", ignoreCase = true) ||
+                raw.contains("Could not find the function", ignoreCase = true) ||
+                raw.contains("missing required argument", ignoreCase = true) ||
+                raw.contains("is a required argument", ignoreCase = true) ->
+                "Fungsi pemesanan di server belum sesuai. Terapkan ulang migrasi 006 lalu coba lagi."
+            raw.contains("INVALID_SCHEDULE", ignoreCase = true) ->
+                "Jadwal pesanan tidak valid. Silakan pilih jadwal lain."
+            raw.contains("INVALID_SERVICE", ignoreCase = true) ->
+                "Layanan tidak tersedia atau sudah dinonaktifkan."
+            (raw.contains("22P02", ignoreCase = true) || raw.contains("23514", ignoreCase = true)) &&
+                (raw.contains("p_service_id", ignoreCase = true) ||
+                    raw.contains("p_start_at", ignoreCase = true) ||
+                    raw.contains("p_end_at", ignoreCase = true) ||
+                    raw.contains("bookings", ignoreCase = true)) ->
+                "Data layanan atau jadwal pesanan tidak valid."
             raw.contains("23514", ignoreCase = true) ->
                 "Format jadwal tidak valid. Periksa jam buka dan jam tutup Anda."
             raw.contains("23503", ignoreCase = true) ->

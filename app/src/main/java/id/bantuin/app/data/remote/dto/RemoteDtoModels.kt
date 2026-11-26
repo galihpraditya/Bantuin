@@ -185,7 +185,9 @@ data class CreateBookingRpcParams(
     @SerialName("p_total_cost") val totalCost: Int,
     @SerialName("p_cust_lat") val customerLat: Double,
     @SerialName("p_cust_lng") val customerLng: Double,
-    @SerialName("p_notes") val notes: String? = null,
+    // Tanpa default: serializer encodeDefaults=false tetap mengirim key ini
+    // walau catatan kosong. SQL create_booking membutuhkan argumen p_notes.
+    @SerialName("p_notes") val notes: String,
     @SerialName("p_payment_method") val paymentMethod: String = "CASH"
 )
 

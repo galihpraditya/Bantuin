@@ -148,9 +148,16 @@ class EstimateViewModel(
 
     fun confirmOrder(onSuccess: (String) -> Unit) {
         val state = _uiState.value
-        val provider = state.provider ?: return
-        val service = state.service ?: return
-        val estimate = state.costEstimate ?: return
+        val incomplete = state.provider == null || state.service == null || state.costEstimate == null
+        if (incomplete || state.scheduledDateIso.isBlank()) {
+            _uiState.update {
+                it.copy(errorMessage = "Data order tidak lengkap. Kembali dan pilih layanan serta jadwal lagi.")
+            }
+            return
+        }
+        val provider = state.provider!!
+        val service = state.service!!
+        val estimate = state.costEstimate!!
 
         val draft = OrderDraft(
             categoryId = state.categoryId,

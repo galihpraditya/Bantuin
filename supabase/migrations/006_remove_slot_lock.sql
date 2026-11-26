@@ -24,7 +24,9 @@ create or replace function public.create_booking(
     p_total_cost int,
     p_cust_lat double precision,
     p_cust_lng double precision,
-    p_notes text,
+    -- Default null agar klien boleh mengirim catatan kosong/null tanpa
+    -- membuat PostgREST gagal mencocokkan signature fungsi (PGRST202).
+    p_notes text default null,
     p_payment_method text default 'CASH',
     p_start_at timestamptz default null,
     p_end_at timestamptz default null,
