@@ -393,78 +393,19 @@ class SchedulingConflictDetector {
 4. Kirim pesanan → RPC `create_booking` (mengonsumsi kunci). Bila server menolak (`SLOT_CONFLICT`/`LOCK_EXPIRED`), kembali ke Screen 3.
 5. Meninggalkan alur → RPC `release_slot_lock`.
 
-### 7.4 F4 — Provider Trust Score & Anomaly Analyzer (`TrustScoreUseCase`)
+### 7.4 F4 — Provider Trust Score & Anomaly Analyzer
 
-**Data (jendela 30 hari terakhir, berdasar `finished_at`)**
-- `completed`: pesanan `SELESAI` (butuh `start_at` & `started_at`).
-- `mitraCancelled`: jumlah `DIBATALKAN_MITRA`.
-- `ratings`: rating ulasan (1–5) yang dibuat dalam 30 hari untuk mitra itu.
+Gunakan jendela 30 hari. Waktu referensi pesanan adalah `finished_at` jika tersedia, atau `created_at` untuk pesanan lainnya. Ulasan memakai waktu dibuat.
 
-**Metrik**
-- `Skor Rating` = `rata-rata rating / 5 × 100` (tidak ada ulasan → 70).
-- `On-Time SLA` = `% pesanan SELESAI dengan started_at ≤ start_at + 15 menit` (tidak ada SELESAI → 0).
-- `Cancellation Rate` = `mitraCancelled / (jumlah SELESAI + mitraCancelled) × 100` (penyebut 0 → 0).
-- `tx = jumlah SELESAI + mitraCancelled`.
+- Skor Rating = rata-rata rating / 5 × 100. Tanpa ulasan, nilainya 0.
+- On-Time SLA = jumlah `SELESAI_TEPAT_WAKTU` / semua pesanan selesai × 100. Pesanan lama tanpa konfirmasi memakai toleransi kedatangan 15 menit.
+- Rasio Pembatalan = jumlah pembatalan pelanggan dan mitra / semua pesanan dalam jendela tersebut × 100.
+- Trust Score = 0,45 × Skor Rating + 0,35 × On-Time SLA − 0,20 × Rasio Pembatalan, dibatasi ke 0–100.
+- Anomali berlaku pada Trust Score < 60 atau Rasio Pembatalan > 20%. Ambang dibandingkan sebelum pembulatan tampilan. Penyebut kosong menghasilkan 0. Mitra aman menerima badge Terpercaya dan mitra anomali menerima penalti ×0,7 di F1.
 
-**Rumus (final, direvisi dari laporan awal)**
-```
-Trust Score = 0.45 × Skor Rating + 0.35 × On-Time SLA + 0.20 × (100 − Cancellation Rate)     // 0..100
-```
+Screen 5 menyimpan status penyelesaian dan ulasan, memulihkan data saat pesanan dibuka kembali, serta menyediakan perubahan dan penghapusan ulasan. Penyelesaian dan pembayaran aktual mengikuti alur pesanan yang sudah ada. Screen 6 menampilkan metrik, tren, dan penyebab anomali. Screen 7 menampilkan evaluasi dan dampak pada prioritas rekomendasi.
 
-**Evaluasi**
-- `tx < 5` → **Mitra Baru**: Trust Score = 70, tanpa anomali, `badge = NEW`.
-- `tx ≥ 5`: anomali bila `Trust Score < 60` **atau** `Cancellation Rate > 20` (20 persis **bukan** anomali). Anomali → `flag_anomaly = true`, `badge = NONE`, Alert Card merah di dashboard, penalti ×0.7 di F1. Tidak anomali → `badge = TRUSTED` (hijau).
-- `completion_rate` (untuk F1) = `1 − Cancellation Rate/100` (null jika `tx = 0`).
-- Trust Score dibulatkan 2 desimal (HALF_UP).
-
-```kotlin
-data class CompletedJob(val startAt: kotlinx.datetime.Instant, val startedAt: kotlinx.datetime.Instant)
-data class TrustInput(val completed: List<CompletedJob>, val mitraCancelledCount: Int, val ratings: List<Int>)
-enum class AnomalyReason { LOW_TRUST_SCORE, HIGH_CANCEL_RATE }
-data class TrustResult(
-    val ratingAvg: Double?, val ratingScore: Double, val onTimeRate: Double, val cancelRate: Double,
-    val completionRate: Double?, val trustScore: Double, val txCount: Int,
-    val flagAnomaly: Boolean, val badge: ProviderBadge, val reasons: List<AnomalyReason>
-)
-
-class TrustScoreUseCase {
-    fun calculate(input: TrustInput): TrustResult {
-        val done = input.completed.size
-        val tx = done + input.mitraCancelledCount
-        val ratingAvg = input.ratings.takeIf { it.isNotEmpty() }?.average()
-        val ratingScore = ratingAvg?.let { it / 5.0 * 100.0 } ?: 70.0
-        val tol = kotlin.time.Duration.parse("${BantuinConfig.LATE_TOLERANCE_MIN}m")
-        val onTimeRate = if (done == 0) 0.0
-            else input.completed.count { it.startedAt <= it.startAt + tol } * 100.0 / done
-        val cancelRate = if (tx == 0) 0.0 else input.mitraCancelledCount * 100.0 / tx
-        val completion = if (tx == 0) null else 1.0 - cancelRate / 100.0
-        val computed = BantuinConfig.W_TRUST_RATING * ratingScore +
-            BantuinConfig.W_TRUST_ONTIME * onTimeRate +
-            BantuinConfig.W_TRUST_RELIABILITY * (100.0 - cancelRate)
-        if (tx < BantuinConfig.MIN_TX_FOR_EVALUATION) {
-            return TrustResult(ratingAvg, ratingScore, onTimeRate, cancelRate, completion,
-                BantuinConfig.NEW_PROVIDER_TRUST, tx, false, ProviderBadge.NEW, emptyList())
-        }
-        val score = java.math.BigDecimal(computed).setScale(2, java.math.RoundingMode.HALF_UP).toDouble()
-        val reasons = buildList {
-            if (score < BantuinConfig.TRUST_MIN_THRESHOLD) add(AnomalyReason.LOW_TRUST_SCORE)
-            if (cancelRate > BantuinConfig.CANCEL_RATE_MAX_PCT) add(AnomalyReason.HIGH_CANCEL_RATE)
-        }
-        val flag = reasons.isNotEmpty()
-        return TrustResult(ratingAvg, ratingScore, onTimeRate, cancelRate, completion, score, tx,
-            flag, if (flag) ProviderBadge.NONE else ProviderBadge.TRUSTED, reasons)
-    }
-}
-```
-
-**Kapan dihitung ulang** (orkestrasi di `RecalculateProviderMetricsUseCase`, dijalankan di `Dispatchers.Default`, hasil ditulis lewat RPC `apply_provider_metrics`):
-1. Setelah pelanggan **mengirim ulasan** (aplikasi pelanggan).
-2. Setelah mitra mengubah status ke `SELESAI` atau `DIBATALKAN_MITRA` (aplikasi mitra).
-3. Saat Dashboard Mitra dibuka (refresh).
-
-**UI**
-- **Screen 6 Dashboard Mitra**: kartu Trust Score (angka besar + badge), 3 metrik (rating, on-time, cancel rate), grafik garis riwayat Trust Score (dari `provider_metric_snapshots`, digambar dengan Compose `Canvas`, tanpa library chart), **Alert Card merah** bila `flag_anomaly` (menyebut alasan: "Trust Score di bawah 60" dan/atau "Pembatalan di atas 20%"), banner netral "Mitra Baru: butuh 5 transaksi untuk dinilai" bila `NEW`.
-- **Screen 7 Evaluasi & Prioritas** (layar mitra): badge saat ini, rincian kontribusi tiap komponen, pengali prioritas pada rekomendasi (1.0 atau 0.7), waktu sinkronisasi terakhir, tombol "Hitung ulang".
+Migrasi 005 menghitung metrik di server setelah mutasi pesanan atau ulasan, sebelum transaksi penyimpanan selesai.
 
 ---
 
@@ -505,13 +446,14 @@ Urutan hasil: B (88), A (85), D (68), E (35). `HaversineCalculator`: jarak (−7
 | Masa lalu | hari ini, nowMin = 600 (10:00), mulai 09:00 | `PAST_TIME` |
 
 ### 8.4 F4
+
 | Kasus | Data | Hasil |
 |---|---|---|
-| Sehat | 8 SELESAI (6 tepat waktu, 2 telat), 2 DIBATALKAN_MITRA, 8 ulasan rata-rata 4.5 | rating 90, on-time 75, cancel 20 → **82.75**, bukan anomali (20 tidak > 20), badge TRUSTED |
-| Cancel tinggi | 6 SELESAI (semua tepat), 4 DIBATALKAN_MITRA, rata-rata 4.0 | cancel 40 → skor 83, **anomali** `HIGH_CANCEL_RATE`, badge NONE |
-| Skor rendah | 5 SELESAI (1 tepat waktu), 0 batal, rata-rata 2.0 | 18 + 7 + 20 = **45** → anomali `LOW_TRUST_SCORE` |
-| Mitra baru | tx = 4 | trust **70**, badge NEW, tanpa anomali |
-| Tanpa ulasan | tx ≥ 5, ratings kosong | skor rating = 70 |
+| Sehat | 6 tepat waktu, 2 terlambat, 2 batal, rating 4,5 | Skor **62,75**, pembatalan **20%**, badge Terpercaya |
+| Pembatalan tinggi | 6 tepat waktu, 4 batal, rating 4 | Skor **63**, pembatalan **40%**, anomali pembatalan |
+| Skor rendah | 1 tepat waktu, 4 terlambat, rating 2 | Skor **25**, anomali skor |
+| Satu transaksi selesai | 1 tepat waktu, rating 5 | Skor **80**, badge Terpercaya |
+| Tanpa ulasan | Ulasan kosong | Skor Rating **0** |
 
 ---
 

@@ -107,9 +107,7 @@ class ProviderEvaluationViewModel(
     ) {
         val tier = when {
             result.flagAnomaly -> "Evaluasi Anomali"
-            result.txCount < BantuinConfig.MIN_TX_FOR_EVALUATION -> "Mitra Baru (< 5 Transaksi)"
-            result.trustScore >= 85.0 -> "Mitra Terpercaya (Tier 1)"
-            else -> "Mitra Reguler (Tier 2)"
+            else -> "Mitra Terpercaya"
         }
         val multiplier = if (result.flagAnomaly) {
             String.format(Locale.US, "%.1fx Penalti Visibilitas", BantuinConfig.ANOMALY_PENALTY_FACTOR)

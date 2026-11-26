@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
@@ -39,6 +40,7 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -67,6 +69,8 @@ import id.bantuin.app.core.util.TimeUtils
 import id.bantuin.app.domain.model.BookingEvent
 import id.bantuin.app.domain.model.BookingItem
 import id.bantuin.app.domain.model.BookingStatus
+import id.bantuin.app.domain.model.CompletionOutcome
+import id.bantuin.app.domain.model.reviewOutcomes
 import id.bantuin.app.domain.model.GeoPoint
 import id.bantuin.app.domain.model.PaymentMethod
 import id.bantuin.app.domain.model.PaymentStatus
@@ -155,7 +159,8 @@ fun OrderDetailScreen(
                 LazyColumn(
                     modifier = Modifier
                         .fillMaxSize()
-                        .padding(innerPadding),
+                        .padding(innerPadding)
+                        .imePadding(),
                     contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 24.dp),
                     verticalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
@@ -404,8 +409,8 @@ fun OrderDetailScreen(
                         }
                     }
 
-                    // 6. Formulir Ulasan (Hanya saat Status SELESAI)
-                    if (currentStatus == BookingStatus.SELESAI) {
+                    val outcomes = currentStatus.reviewOutcomes()
+                    if (outcomes.isNotEmpty()) {
                         item {
                             ReviewSectionCard(
                                 rating = uiState.rating,
@@ -413,6 +418,12 @@ fun OrderDetailScreen(
                                 selectedTags = uiState.selectedTags,
                                 isSubmitting = uiState.isSubmittingReview,
                                 isSubmitted = uiState.reviewSubmitted,
+                                outcomes = outcomes,
+                                completion = uiState.completion,
+                                statusMessage = uiState.reviewMessage,
+                                cancelsBooking = currentStatus.isActive,
+                                onCompletionChange = viewModel::setCompletion,
+                                onDelete = viewModel::deleteReview,
                                 onRatingChange = { viewModel.setRating(it) },
                                 onCommentChange = { viewModel.setReviewComment(it) },
                                 onToggleTag = { viewModel.toggleTag(it) },
@@ -682,12 +693,30 @@ private fun ReviewSectionCard(
     selectedTags: Set<String>,
     isSubmitting: Boolean,
     isSubmitted: Boolean,
+    outcomes: List<CompletionOutcome>,
+    completion: CompletionOutcome?,
+    statusMessage: String?,
+    cancelsBooking: Boolean,
+    onCompletionChange: (CompletionOutcome) -> Unit,
+    onDelete: () -> Unit,
     onRatingChange: (Int) -> Unit,
     onCommentChange: (String) -> Unit,
     onToggleTag: (String) -> Unit,
     onSubmit: () -> Unit
 ) {
     val colors = BantuinTheme.colors
+    var showDelete by remember { mutableStateOf(false) }
+    if (showDelete) {
+        AlertDialog(
+            onDismissRequest = { showDelete = false },
+            title = { Text("Hapus ulasan?") },
+            text = { Text("Rating dan komentar akan dihapus dari penilaian mitra.") },
+            confirmButton = {
+                TextButton(onClick = { showDelete = false; onDelete() }) { Text("Hapus") }
+            },
+            dismissButton = { TextButton(onClick = { showDelete = false }) { Text("Batal") } }
+        )
+    }
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(16.dp),
@@ -718,7 +747,7 @@ private fun ReviewSectionCard(
             Spacer(modifier = Modifier.height(10.dp))
 
             Text(
-                text = "Layanan Telah Selesai",
+                text = "Hasil Penyelesaian & Ulasan",
                 style = MaterialTheme.typography.titleLarge,
                 color = colors.textPrimary,
                 fontWeight = FontWeight.Bold
@@ -732,14 +761,28 @@ private fun ReviewSectionCard(
 
             Spacer(modifier = Modifier.height(12.dp))
 
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                CompletionOutcome.entries.forEach { outcome ->
+                    FilterChip(
+                        selected = completion == outcome,
+                        onClick = { onCompletionChange(outcome) },
+                        enabled = outcome in outcomes && !isSubmitting,
+                        label = { Text(outcome.label) }
+                    )
+                }
+            }
+            if (cancelsBooking) {
+                Text("Menyimpan pilihan Dibatalkan akan membatalkan pesanan Anda.")
+            }
+
             Row(
                 horizontalArrangement = Arrangement.spacedBy(4.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 (1..5).forEach { starIndex ->
                     IconButton(
-                        onClick = { if (!isSubmitted) onRatingChange(starIndex) },
-                        enabled = !isSubmitted
+                        onClick = { onRatingChange(starIndex) },
+                        enabled = !isSubmitting
                     ) {
                         Icon(
                             imageVector = if (starIndex <= rating) Icons.Default.Star else Icons.Outlined.StarOutline,
@@ -778,7 +821,7 @@ private fun ReviewSectionCard(
                             .heightIn(min = 48.dp)
                             .clip(RoundedCornerShape(16.dp))
                             .background(if (isSelected) colors.primaryContainer else colors.surfaceSubtle)
-                            .clickable(enabled = !isSubmitted) { onToggleTag(tag) }
+                            .clickable(enabled = !isSubmitting) { onToggleTag(tag) }
                             .padding(horizontal = 12.dp, vertical = 8.dp),
                         contentAlignment = Alignment.Center
                     ) {
@@ -796,8 +839,8 @@ private fun ReviewSectionCard(
 
             OutlinedTextField(
                 value = reviewComment,
-                onValueChange = { if (!isSubmitted) onCommentChange(it) },
-                enabled = !isSubmitted,
+                onValueChange = { onCommentChange(it) },
+                enabled = !isSubmitting,
                 label = { Text("Catatan Ulasan (${reviewComment.length}/300)") },
                 isError = reviewComment.trim().length > 300,
                 modifier = Modifier.fillMaxWidth(),
@@ -806,38 +849,21 @@ private fun ReviewSectionCard(
 
             Spacer(modifier = Modifier.height(16.dp))
 
+            statusMessage?.let { Text(it, color = colors.success) }
+            Button(
+                onClick = onSubmit,
+                enabled = !isSubmitting && completion != null && completion in outcomes,
+                modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)
+            ) {
+                Text(when {
+                    isSubmitting -> "Menyimpan…"
+                    cancelsBooking -> "Batalkan Pesanan & Kirim Ulasan"
+                    isSubmitted -> "Simpan Perubahan"
+                    else -> "Kirim Ulasan"
+                })
+            }
             if (isSubmitted) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .heightIn(min = 48.dp)
-                        .clip(RoundedCornerShape(10.dp))
-                        .background(colors.successContainer)
-                        .padding(horizontal = 16.dp, vertical = 12.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(
-                        text = "Ulasan Terkirim",
-                        style = MaterialTheme.typography.labelLarge,
-                        color = colors.success,
-                        fontWeight = FontWeight.Bold
-                    )
-                }
-            } else {
-                Button(
-                    onClick = onSubmit,
-                    enabled = !isSubmitting,
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = colors.primary,
-                        contentColor = colors.onPrimary
-                    ),
-                    shape = RoundedCornerShape(10.dp),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .heightIn(min = 48.dp)
-                ) {
-                    Text(if (isSubmitting) "Mengirim Ulasan..." else "Kirim Ulasan")
-                }
+                TextButton(onClick = { showDelete = true }, enabled = !isSubmitting) { Text("Hapus Ulasan") }
             }
         }
     }

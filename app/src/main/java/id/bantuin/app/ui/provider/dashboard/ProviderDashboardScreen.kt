@@ -38,6 +38,7 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
@@ -63,6 +64,7 @@ import id.bantuin.app.ui.common.BantuinViewModelFactory
 import id.bantuin.app.ui.common.LoadingView
 import id.bantuin.app.ui.theme.BantuinTheme
 import java.util.Locale
+import kotlinx.coroutines.flow.drop
 
 @Composable
 fun ProviderDashboardScreen(
@@ -73,6 +75,9 @@ fun ProviderDashboardScreen(
     modifier: Modifier = Modifier
 ) {
     val uiState by viewModel.uiState.collectAsState()
+    LaunchedEffect(repository, viewModel) {
+        repository.trustChanges.drop(1).collect { viewModel.loadData() }
+    }
     val colors = BantuinTheme.colors
 
     Scaffold(
@@ -92,13 +97,11 @@ fun ProviderDashboardScreen(
 
         val analytics = uiState.revenueAnalytics
         val activeResult = if (uiState.isSimulationActive) uiState.simResult else uiState.trustResult
-        val trustScore = activeResult?.trustScore ?: 70.0
+        val trustScore = activeResult?.trustScore ?: 0.0
         val cancelRate = activeResult?.cancelRate ?: 0.0
         val onTimeRate = activeResult?.onTimeRate ?: 0.0
         val ratingText = activeResult?.ratingAvg?.let { String.format(Locale.US, "%.2f", it) } ?: "Baru"
-        val isAnomaly = activeResult?.flagAnomaly == true ||
-            (activeResult?.txCount ?: 0) >= BantuinConfig.MIN_TX_FOR_EVALUATION &&
-            (trustScore < BantuinConfig.TRUST_MIN_THRESHOLD || cancelRate > BantuinConfig.CANCEL_RATE_MAX_PCT)
+        val isAnomaly = activeResult?.flagAnomaly == true
 
         LazyColumn(
             modifier = Modifier
@@ -452,7 +455,7 @@ fun ProviderDashboardScreen(
 
                             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                                 Text(
-                                    text = "${trustScore.toInt()}",
+                                    text = activeResult?.let { String.format(Locale.US, "%.2f", it.trustScore) } ?: "—",
                                     style = MaterialTheme.typography.headlineLarge.copy(
                                         fontSize = 32.sp,
                                         fontFeatureSettings = "tnum"
@@ -474,24 +477,14 @@ fun ProviderDashboardScreen(
                                     Text(
                                         text = when {
                                             isAnomaly -> "Evaluasi"
-                                            (activeResult?.txCount ?: 0) < BantuinConfig.MIN_TX_FOR_EVALUATION -> "Mitra Baru"
-                                            trustScore >= 85.0 -> "Sangat Baik"
-                                            else -> "Baik"
+                                            activeResult == null -> "Data belum tersedia"
+                                            else -> "Mitra Terpercaya"
                                         },
                                         style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
                                         color = if (isAnomaly) colors.error else colors.success
                                     )
                                 }
                             }
-                        }
-
-                        if (!isAnomaly && (activeResult?.txCount ?: 0) < BantuinConfig.MIN_TX_FOR_EVALUATION) {
-                            Spacer(modifier = Modifier.height(10.dp))
-                            Text(
-                                text = "Skor awal 70 digunakan untuk Mitra Baru hingga mencapai minimal ${BantuinConfig.MIN_TX_FOR_EVALUATION} transaksi selesai.",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = colors.textMuted
-                            )
                         }
 
                         Spacer(modifier = Modifier.height(16.dp))
@@ -522,7 +515,7 @@ fun ProviderDashboardScreen(
                                 }
                                 Spacer(modifier = Modifier.height(4.dp))
                                 Text(
-                                    text = "45% Rating + 35% Ketepatan SLA + 20% Reliabilitas (Tanpa Pembatalan Mitra).",
+                                    text = "45% Skor Rating + 35% Ketepatan SLA − 20% Rasio Pembatalan.",
                                     style = MaterialTheme.typography.bodySmall,
                                     color = colors.textSecondary
                                 )
@@ -562,7 +555,7 @@ fun ProviderDashboardScreen(
                             icon = Icons.Default.Star,
                             value = ratingText,
                             unit = "Skala 5.0",
-                            subtext = "Skor ${activeResult?.ratingScore?.toInt() ?: 70}%",
+                            subtext = "Skor ${activeResult?.ratingScore?.toInt() ?: 0}%",
                             color = colors.starTint,
                             modifier = Modifier.weight(1f)
                         )
@@ -677,7 +670,7 @@ fun ProviderDashboardScreen(
                                 snapshots.forEachIndexed { idx, snap ->
                                     val isLast = idx == snapshots.lastIndex
                                     Text(
-                                        text = "${snap.label} (${snap.trustScore.toInt()})",
+                                        text = "${snap.label} (${String.format(Locale.US, "%.2f", snap.trustScore)})",
                                         style = MaterialTheme.typography.labelSmall,
                                         color = if (isLast) colors.primary else colors.textMuted,
                                         fontWeight = if (isLast) FontWeight.Bold else FontWeight.Normal
@@ -722,7 +715,8 @@ fun ProviderDashboardScreen(
 
                         Text(
                             text = if (isAnomaly) {
-                                "Trust Score di bawah 60 atau pembatalan mitra di atas 20% menurunkan visibilitas ke faktor pengali 0.7x."
+                                activeResult?.reasons.orEmpty().joinToString("\n") { "• ${it.description}" } +
+                                    "\nPengali skor rekomendasi 0,7×."
                             } else {
                                 "Uji simulasi untuk melihat bagaimana keterlambatan atau pembatalan memengaruhi status prioritas akun."
                             },

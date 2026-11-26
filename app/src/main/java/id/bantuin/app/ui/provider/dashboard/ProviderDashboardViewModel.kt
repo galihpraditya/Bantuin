@@ -162,9 +162,9 @@ class ProviderDashboardViewModel(
 
         val simulatedCompleted = baseInput.completed.mapIndexed { idx, job ->
             if (idx < lateCount) {
-                job.copy(startedAt = job.startAt + tolerance + 5.minutes)
+                job.copy(startedAt = job.startAt + tolerance + 5.minutes, outcome = null)
             } else {
-                job.copy(startedAt = job.startAt)
+                job.copy(startedAt = job.startAt, outcome = null)
             }
         }
 

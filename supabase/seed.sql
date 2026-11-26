@@ -334,3 +334,40 @@ values
   ('00000000-0000-0000-0000-000000000001', now() - interval '14 days', 90.00, 92.00, 95.00, 1.80, 170, false),
   ('00000000-0000-0000-0000-000000000001', now() - interval '7 days', 91.00, 94.00, 96.00, 1.50, 178, false),
   ('00000000-0000-0000-0000-000000000001', now(), 92.00, 96.40, 96.40, 1.00, 184, false);
+
+
+-- Pak Sugeng: transaksi selesai dan ulasan contoh untuk profil demo.
+with demo(n) as (values (10), (11), (12))
+insert into public.bookings (
+  id, customer_id, provider_id, service_id, start_at, end_at, complexity, is_urgent, distance_km,
+  base_fare, base_cost, surge_applied, total_cost, customer_lat, customer_lng, status,
+  expires_at, started_at, finished_at, created_at
+)
+select ('20000000-0000-0000-0000-' || lpad(n::text, 12, '0'))::uuid,
+  'c0000000-0000-0000-0000-000000000001', '00000000-0000-0000-0000-000000000004',
+  '10000000-0000-0000-0000-000000000006', start_time, start_time + interval '1 hour',
+  'RINGAN', false, 1.4, 45000, 47800, false, 48000, -7.9797, 112.6304, 'SELESAI',
+  start_time, start_time + interval '5 minutes', start_time + interval '50 minutes', start_time - interval '1 hour'
+from demo cross join lateral (select now() - (n - 8) * interval '1 day' as start_time) timing
+on conflict (id) do nothing;
+
+with demo(n, stars, comment) as (
+  values (10, 5, 'Datang tepat waktu dan MCB kembali normal.'),
+         (11, 5, 'Instalasi stop kontak rapi dan sudah dites.'),
+         (12, 4, 'Biayanya dijelaskan sebelum pengerjaan.')
+)
+insert into public.reviews (id, booking_id, customer_id, provider_id, rating, comment, created_at)
+select ('30000000-0000-0000-0000-' || lpad(n::text, 12, '0'))::uuid, b.id, b.customer_id,
+       b.provider_id, demo.stars, demo.comment, b.finished_at
+from demo join public.bookings b on b.id = ('20000000-0000-0000-0000-' || lpad(n::text, 12, '0'))::uuid
+on conflict do nothing;
+
+do $$
+declare provider record;
+begin
+    if to_regprocedure('public.refresh_provider_trust(uuid)') is not null then
+        for provider in select user_id from public.provider_profiles order by user_id loop
+            perform public.refresh_provider_trust(provider.user_id);
+        end loop;
+    end if;
+end $$;

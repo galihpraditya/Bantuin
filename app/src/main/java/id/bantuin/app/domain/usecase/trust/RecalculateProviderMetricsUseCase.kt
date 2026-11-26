@@ -12,8 +12,11 @@ class RecalculateProviderMetricsUseCase(
         return when (val inputResult = metricsRepository.trustInput(providerId, 30)) {
             is AppResult.Success -> {
                 val evaluated = trustScoreUseCase.calculate(inputResult.data)
-                metricsRepository.apply(providerId, evaluated)
-                AppResult.Success(evaluated)
+                when (val result = metricsRepository.apply(providerId, evaluated)) {
+                    is AppResult.Success -> AppResult.Success(evaluated)
+                    is AppResult.Error -> result
+                    AppResult.Loading -> AppResult.Loading
+                }
             }
             is AppResult.Error -> AppResult.Error(inputResult.message, inputResult.cause)
             AppResult.Loading -> AppResult.Loading

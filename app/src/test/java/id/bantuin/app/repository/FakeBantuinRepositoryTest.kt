@@ -52,25 +52,26 @@ class FakeBantuinRepositoryTest {
     }
 
     @Test
-    fun submitReview_triggersRecalculateMetrics_andUpdatesProviderList() = runBlocking {
-        val initialResult = repo.candidates(2)
-        assertTrue(initialResult is AppResult.Success<List<ProviderCandidate>>)
-        val initialCandidate = (initialResult as AppResult.Success<List<ProviderCandidate>>).data.first { it.providerId == "p01" }
-        val initialRating = initialCandidate.ratingAvg ?: 0.0
+    fun reviewMutations_refreshTrustWithoutDuplicatingTheReview() = runBlocking {
+        repo.signIn("pelanggan2@bantuin.test", "Demo12345!")
+        suspend fun currentScore() = (repo.history("p01") as AppResult.Success).data.last().trustScore
+        suspend fun storedReviews() = (repo.reviewsOf("p01") as AppResult.Success).data
+        val originalScore = currentScore()
 
-        repo.submitReview(
-            bookingId = "b01",
-            providerId = "p01",
-            rating = 5,
-            comment = "Layanan istimewa dan cepat",
-            tags = listOf("Cepat", "Rapi")
-        )
+        assertTrue(repo.submitReview("b00_qris", "p01", 1, "Perlu perbaikan", emptyList()) is AppResult.Success)
+        val initialReview = storedReviews().single { it.bookingId == "b00_qris" }
+        val lowScore = currentScore()
+        assertTrue(lowScore < originalScore)
 
-        val updatedResult = repo.candidates(2)
-        assertTrue(updatedResult is AppResult.Success<List<ProviderCandidate>>)
-        val updatedCandidate = (updatedResult as AppResult.Success<List<ProviderCandidate>>).data.first { it.providerId == "p01" }
-        assertNotNull(updatedCandidate.ratingAvg)
-        assertTrue(updatedCandidate.ratingAvg!! >= initialRating)
+        assertTrue(repo.submitReview("b00_qris", "p01", 3, "Sudah ditindaklanjuti", emptyList()) is AppResult.Success)
+        val editedReview = storedReviews().single { it.bookingId == "b00_qris" }
+        assertEquals(initialReview.id, editedReview.id)
+        assertEquals(initialReview.createdAt, editedReview.createdAt)
+        assertTrue(currentScore() > lowScore)
+
+        assertTrue(repo.deleteReview("b00_qris") is AppResult.Success)
+        assertTrue(storedReviews().none { it.bookingId == "b00_qris" })
+        assertEquals(originalScore, currentScore(), 0.001)
     }
 
     @Test
@@ -225,7 +226,8 @@ class FakeBantuinRepositoryTest {
         assertTrue(updatedUser?.roles?.contains("provider") == true)
         val profile = (customerRepo.providerProfile("user_demo_dimas") as AppResult.Success).data
         assertNotNull(profile)
-        assertEquals(ProviderBadge.NEW, profile?.badge)
+        assertEquals(ProviderBadge.NONE, profile?.badge)
+        assertTrue(profile?.flagAnomaly == true)
     }
 
     @Test

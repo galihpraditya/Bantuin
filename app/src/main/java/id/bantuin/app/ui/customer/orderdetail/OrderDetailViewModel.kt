@@ -6,6 +6,8 @@ import id.bantuin.app.core.result.AppResult
 import id.bantuin.app.domain.model.BookingEvent
 import id.bantuin.app.domain.model.BookingItem
 import id.bantuin.app.domain.model.BookingStatus
+import id.bantuin.app.domain.model.CompletionOutcome
+import id.bantuin.app.domain.model.reviewOutcomes
 import id.bantuin.app.domain.repository.BookingRepository
 import id.bantuin.app.domain.repository.ReviewRepository
 import kotlinx.coroutines.Job
@@ -26,6 +28,8 @@ data class OrderDetailUiState(
     val selectedTags: Set<String> = setOf("Tepat Waktu", "Pekerjaan Rapi"),
     val isSubmittingReview: Boolean = false,
     val reviewSubmitted: Boolean = false,
+    val completion: CompletionOutcome? = null,
+    val reviewMessage: String? = null,
     val isUpdatingStatus: Boolean = false,
     val errorMessage: String? = null
 )
@@ -42,7 +46,10 @@ class OrderDetailViewModel(
 
     fun observeBooking(bookingId: String) {
         observeJob?.cancel()
-        _uiState.update { it.copy(bookingId = bookingId, isLoading = true, errorMessage = null) }
+        _uiState.update {
+            if (it.bookingId == bookingId) it.copy(isLoading = it.booking == null, errorMessage = null)
+            else OrderDetailUiState(bookingId = bookingId, isLoading = true)
+        }
         observeJob = viewModelScope.launch {
             bookingRepository.expirePending()
             bookingRepository.myBookingsCustomer()
@@ -57,12 +64,19 @@ class OrderDetailViewModel(
                     val eventsRes = bookingRepository.events(bookingId)
                     val events = if (eventsRes is AppResult.Success) eventsRes.data else emptyList()
                     _uiState.update {
-                        it.copy(
-                            booking = item,
-                            events = events,
-                            isLoading = false,
-                            reviewSubmitted = item?.review != null
+                        val review = item?.review
+                        val oldBooking = it.booking
+                        val loaded = it.copy(
+                            booking = item, events = events, isLoading = false, reviewSubmitted = review != null
                         )
+                        if (oldBooking == null || oldBooking.review != review ||
+                            oldBooking.completionOutcome != item?.completionOutcome || oldBooking.status != item?.status
+                        ) loaded.copy(
+                            rating = review?.rating ?: 5,
+                            reviewComment = review?.comment.orEmpty(),
+                            selectedTags = review?.tags.orEmpty().toSet(),
+                            completion = item?.completionOutcome ?: item?.status?.reviewOutcomes()?.singleOrNull()
+                        ) else loaded
                     }
                 }
         }
@@ -78,6 +92,10 @@ class OrderDetailViewModel(
                 _uiState.update { it.copy(events = eventsRes.data) }
             }
         }
+    }
+
+    fun setCompletion(completion: CompletionOutcome) {
+        _uiState.update { it.copy(completion = completion, errorMessage = null, reviewMessage = null) }
     }
 
     fun setRating(rating: Int) {
@@ -103,6 +121,12 @@ class OrderDetailViewModel(
     fun submitReview(onSuccess: () -> Unit = {}) {
         val state = _uiState.value
         val booking = state.booking ?: return
+        if (state.isSubmittingReview) return
+        val completion = state.completion?.takeIf { it in booking.status.reviewOutcomes() }
+        if (completion == null) {
+            _uiState.update { it.copy(errorMessage = "Pilih status penyelesaian pesanan.") }
+            return
+        }
         val trimmedComment = state.reviewComment.trim()
         if (state.rating !in 1..5) {
             _uiState.update { it.copy(errorMessage = "Pilih rating antara 1 hingga 5 bintang.") }
@@ -113,24 +137,40 @@ class OrderDetailViewModel(
             return
         }
 
+        _uiState.update { it.copy(isSubmittingReview = true, errorMessage = null, reviewMessage = null) }
         viewModelScope.launch {
-            _uiState.update { it.copy(isSubmittingReview = true, errorMessage = null) }
             val res = reviewRepository.submitReview(
                 bookingId = state.bookingId,
                 providerId = booking.providerId,
                 rating = state.rating,
                 comment = trimmedComment.ifBlank { null },
-                tags = state.selectedTags.toList()
+                tags = state.selectedTags.toList(),
+                completion = completion
             )
             when (res) {
                 is AppResult.Success -> {
-                    _uiState.update { it.copy(isSubmittingReview = false, reviewSubmitted = true) }
+                    _uiState.update { it.copy(isSubmittingReview = false, reviewSubmitted = true, reviewMessage = "Ulasan tersimpan") }
                     onSuccess()
                 }
                 is AppResult.Error -> {
                     _uiState.update { it.copy(isSubmittingReview = false, errorMessage = res.message) }
                 }
-                is AppResult.Loading -> {}
+                is AppResult.Loading -> _uiState.update { it.copy(isSubmittingReview = false) }
+            }
+        }
+    }
+
+    fun deleteReview() {
+        val state = _uiState.value
+        if (state.booking?.review == null || state.isSubmittingReview) return
+        _uiState.update { it.copy(isSubmittingReview = true, errorMessage = null, reviewMessage = null) }
+        viewModelScope.launch {
+            when (val result = reviewRepository.deleteReview(state.bookingId)) {
+                is AppResult.Success -> _uiState.update {
+                    it.copy(isSubmittingReview = false, reviewSubmitted = false, reviewMessage = "Ulasan dihapus")
+                }
+                is AppResult.Error -> _uiState.update { it.copy(isSubmittingReview = false, errorMessage = result.message) }
+                AppResult.Loading -> _uiState.update { it.copy(isSubmittingReview = false) }
             }
         }
     }

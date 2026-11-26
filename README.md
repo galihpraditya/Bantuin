@@ -38,7 +38,10 @@ Aplikasi mengimplementasikan empat logika perhitungan di layer domain:
    - `supabase/migrations/001_init.sql`
    - `supabase/migrations/002_fix_auth_and_grants.sql`
    - `supabase/migrations/003_security_hardening.sql`
+   - `supabase/migrations/004_ux_chat_payment_wallet.sql`
+   - `supabase/migrations/005_review_outcomes_and_trust.sql`
    - `supabase/seed.sql` (opsional, untuk menanamkan akun & riwayat demo)
+   Jika migrasi 001–004 sudah diterapkan, jalankan 005 sebelum memasang versi aplikasi terbaru. Migrasi 005 mengaktifkan RPC ulasan baru dan rekalkulasi metrik dalam transaksi yang sama.
 2. Tambahkan kredensial pada `local.properties` (jangan commit ke Git):
    ```properties
    SUPABASE_URL=https://<project-id>.supabase.co

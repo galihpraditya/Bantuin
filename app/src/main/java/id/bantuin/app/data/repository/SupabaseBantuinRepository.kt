@@ -10,7 +10,6 @@ import id.bantuin.app.data.remote.dto.*
 import id.bantuin.app.domain.model.*
 import id.bantuin.app.domain.repository.BantuinRepository
 import id.bantuin.app.domain.repository.UserProfile
-import id.bantuin.app.domain.usecase.trust.RecalculateProviderMetricsUseCase
 import id.bantuin.app.domain.usecase.wallet.BuildWalletTransactionsUseCase
 import id.bantuin.app.domain.usecase.wallet.CalculateProviderRevenueUseCase
 import io.github.jan.supabase.SupabaseClient
@@ -36,6 +35,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
@@ -64,13 +64,13 @@ class SupabaseBantuinRepository(
     private val enableRealtime: Boolean = SupabaseClientProvider.isConfigured
 ) : BantuinRepository {
 
-    private val recalculateMetricsUseCase by lazy {
-        RecalculateProviderMetricsUseCase(this)
-    }
+
     private val calculateRevenueUseCase = CalculateProviderRevenueUseCase()
     private val buildWalletTransactionsUseCase = BuildWalletTransactionsUseCase()
 
     private val realtimeScope = CoroutineScope(SupervisorJob() + ioDispatcher)
+    private val trustRevision = MutableStateFlow(0L)
+    override val trustChanges: Flow<Long> = trustRevision
     private val customerBookingsFlow = MutableStateFlow<List<BookingItem>>(emptyList())
     private val providerBookingsFlow = MutableStateFlow<List<BookingItem>>(emptyList())
     private val acceptingOrdersFlow = MutableStateFlow<Map<String, Boolean>>(emptyMap())
@@ -132,6 +132,12 @@ class SupabaseBantuinRepository(
                     refreshMessagesForKnownBookings()
                 }.launchIn(this)
 
+                channel.postgresChangeFlow<PostgresAction>(schema = "public") {
+                    table = "provider_profiles"
+                }.onEach {
+                    trustRevision.update { it + 1 }
+                }.launchIn(this)
+
                 channel.subscribe()
                 refreshBookingsForCurrentUser()
             } catch (ce: CancellationException) {
@@ -145,6 +151,7 @@ class SupabaseBantuinRepository(
             try {
                 client.realtime.status.collect { status ->
                     if (status == Realtime.Status.CONNECTED && activeRealtimeUserId == userId) {
+                        trustRevision.update { it + 1 }
                         refreshBookingsForCurrentUser()
                     }
                 }
@@ -685,11 +692,6 @@ class SupabaseBantuinRepository(
                 )
             )
             refreshBookingsForCurrentUser()
-            val targetBooking = (customerBookingsFlow.value + providerBookingsFlow.value)
-                .find { it.id == bookingId }
-            if (targetBooking != null) {
-                recalculateMetricsUseCase(targetBooking.providerId)
-            }
             AppResult.Success(Unit)
         } catch (e: Exception) {
             mapSupabaseError(e, "Gagal menyelesaikan pesanan")
@@ -706,13 +708,6 @@ class SupabaseBantuinRepository(
                 )
             )
             refreshBookingsForCurrentUser()
-            if (newStatus in setOf(BookingStatus.SELESAI, BookingStatus.DIBATALKAN_MITRA)) {
-                val targetBooking = (customerBookingsFlow.value + providerBookingsFlow.value)
-                    .find { it.id == bookingId }
-                if (targetBooking != null) {
-                    recalculateMetricsUseCase(targetBooking.providerId)
-                }
-            }
             AppResult.Success(Unit)
         } catch (e: Exception) {
             mapSupabaseError(e, "Gagal memperbarui status pesanan")
@@ -822,34 +817,41 @@ class SupabaseBantuinRepository(
     // =========================================================================
 
     override suspend fun submitReview(
-        bookingId: String,
-        providerId: String,
-        rating: Int,
-        comment: String?,
-        tags: List<String>
+        bookingId: String, providerId: String, rating: Int, comment: String?,
+        tags: List<String>, completion: CompletionOutcome?
     ): AppResult<Unit> = withContext(ioDispatcher) {
         try {
-            val currentUserId = currentUidOrNull()
-                ?: return@withContext AppResult.Error("Sesi login berakhir, silakan masuk kembali")
-            val reviewDto = ReviewDto(
-                id = UUID.randomUUID().toString(),
-                bookingId = bookingId,
-                customerId = currentUserId,
-                providerId = providerId,
-                rating = rating,
-                comment = comment?.takeIf { it.isNotBlank() }
-            )
-            client.postgrest["reviews"].insert(reviewDto)
-
-            // Jalankan feedback loop rekalkulasi metrik mitra (F4 -> F1)
-            recalculateMetricsUseCase(providerId)
-            refreshBookingsForCurrentUser()
-
-            AppResult.Success(Unit)
+            client.postgrest.rpc("save_booking_review", buildJsonObject {
+                put("p_booking", bookingId)
+                put("p_rating", rating)
+                put("p_comment", comment)
+                putJsonArray("p_tags") { tags.forEach { add(it) } }
+                put("p_outcome", completion?.name)
+            })
+            trustRevision.update { it + 1 }
+            refreshCustomerAfterReview()
         } catch (e: Exception) {
-            mapSupabaseError(e, "Gagal mengirim ulasan")
+            if (e is kotlinx.coroutines.CancellationException) throw e
+            mapSupabaseError(e, "Gagal menyimpan ulasan")
         }
     }
+
+    override suspend fun deleteReview(bookingId: String): AppResult<Unit> = withContext(ioDispatcher) {
+        try {
+            client.postgrest.rpc("delete_booking_review", buildJsonObject { put("p_booking", bookingId) })
+            trustRevision.update { it + 1 }
+            refreshCustomerAfterReview()
+        } catch (e: Exception) {
+            if (e is kotlinx.coroutines.CancellationException) throw e
+            mapSupabaseError(e, "Gagal menghapus ulasan")
+        }
+    }
+
+    private suspend fun refreshCustomerAfterReview(): AppResult<Unit> =
+        when (myBookingsCustomer()) {
+            is AppResult.Success -> AppResult.Success(Unit)
+            else -> AppResult.Error("Perubahan tersimpan. Buka ulang detail pesanan untuk memuat data terbaru.")
+        }
 
     override suspend fun reviewsOf(providerId: String): AppResult<List<ReviewItem>> = withContext(ioDispatcher) {
         try {
@@ -877,8 +879,9 @@ class SupabaseBantuinRepository(
                     customerName = profilesMap[dto.customerId]?.fullName ?: "Pelanggan",
                     rating = dto.rating,
                     comment = dto.comment,
-                    tags = emptyList(),
-                    createdAtText = dto.createdAt?.take(10) ?: "Baru saja"
+                    tags = dto.tags,
+                    createdAtText = dto.createdAt?.take(10) ?: "Baru saja",
+                    createdAt = parseInstantOrNull(dto.createdAt)
                 )
             }
             AppResult.Success(reviews)
@@ -893,7 +896,8 @@ class SupabaseBantuinRepository(
 
     override suspend fun trustInput(providerId: String, sinceDays: Int): AppResult<TrustInput> = withContext(ioDispatcher) {
         try {
-            val cutoff = Clock.System.now() - sinceDays.days
+            val now = Clock.System.now()
+            val cutoff = now - sinceDays.days
             val cutoffIso = cutoff.toString()
 
             val reviewsDto = client.postgrest["reviews"]
@@ -901,6 +905,7 @@ class SupabaseBantuinRepository(
                     filter {
                         eq("provider_id", providerId)
                         gte("created_at", cutoffIso)
+                        lte("created_at", now.toString())
                     }
                 }
                 .decodeList<ReviewDto>()
@@ -911,26 +916,21 @@ class SupabaseBantuinRepository(
                 TrustBookingsRpcParams(providerId = providerId, cutoffIso = cutoffIso)
             ).decodeList<TrustBookingDto>()
 
-            val recentBookings = bookingsDto.filter { b ->
-                val refIso = b.finishedAt ?: b.createdAt ?: b.startAt
-                val refInstant = parseInstantOrNull(refIso)
-                refInstant == null || refInstant >= cutoff
-            }
-
-            val finished = recentBookings.filter { it.status == "SELESAI" }
-            val cancelledByProvider = recentBookings.filter { it.status == "DIBATALKAN_MITRA" }
+            val finished = bookingsDto.filter { it.status == "SELESAI" }
+            val cancelled = bookingsDto.count { it.status in setOf("DIBATALKAN_MITRA", "DIBATALKAN_PELANGGAN") }
 
             val jobs = finished.map { b ->
                 val startInstant = parseInstantOrNull(b.startAt) ?: Clock.System.now()
                 val startedInstant = b.startedAt?.let { parseInstantOrNull(it) } ?: startInstant
-                CompletedJob(startAt = startInstant, startedAt = startedInstant)
+                CompletedJob(startInstant, startedInstant, CompletionOutcome.entries.find { it.name == b.completionOutcome })
             }
 
             AppResult.Success(
                 TrustInput(
                     completed = jobs,
-                    mitraCancelledCount = cancelledByProvider.size,
-                    ratings = ratings
+                    mitraCancelledCount = cancelled,
+                    ratings = ratings,
+                    otherOrderCount = bookingsDto.size - finished.size - cancelled
                 )
             )
         } catch (e: Exception) {
@@ -967,6 +967,7 @@ class SupabaseBantuinRepository(
                 .select {
                     filter {
                         eq("provider_id", providerId)
+                        eq("formula_version", 2)
                     }
                     order(column = "computed_at", order = Order.ASCENDING)
                 }
@@ -1555,8 +1556,9 @@ class SupabaseBantuinRepository(
                         customerName = customerProfile?.fullName ?: "Pelanggan",
                         rating = r.rating,
                         comment = r.comment,
-                        tags = emptyList(),
-                        createdAtText = r.createdAt?.take(10) ?: "Baru saja"
+                        tags = r.tags,
+                        createdAtText = r.createdAt?.take(10) ?: "Baru saja",
+                        createdAt = parseInstantOrNull(r.createdAt)
                     )
                 },
                 expiresAt = parseInstantOrNull(dto.expiresAt),
@@ -1571,7 +1573,8 @@ class SupabaseBantuinRepository(
                     .getOrDefault(PaymentMethod.CASH),
                 paymentStatus = runCatching { PaymentStatus.valueOf(dto.paymentStatus) }
                     .getOrDefault(PaymentStatus.UNPAID),
-                completionNote = dto.completionNote
+                completionNote = dto.completionNote,
+                completionOutcome = CompletionOutcome.entries.find { it.name == dto.completionOutcome }
             )
         }
     }

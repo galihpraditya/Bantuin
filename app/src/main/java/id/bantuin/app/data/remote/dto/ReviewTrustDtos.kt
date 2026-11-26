@@ -9,7 +9,8 @@ data class TrustBookingDto(
     @SerialName("start_at") val startAt: String,
     @SerialName("started_at") val startedAt: String? = null,
     @SerialName("finished_at") val finishedAt: String? = null,
-    @SerialName("created_at") val createdAt: String? = null
+    @SerialName("created_at") val createdAt: String? = null,
+    @SerialName("completion_outcome") val completionOutcome: String? = null
 )
 
 @Serializable

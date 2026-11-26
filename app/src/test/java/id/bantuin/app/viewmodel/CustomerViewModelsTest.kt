@@ -6,6 +6,7 @@ import id.bantuin.app.core.theme.ThemeMode
 import id.bantuin.app.data.fake.FakeData
 import id.bantuin.app.data.repository.FakeBantuinRepository
 import id.bantuin.app.domain.model.BookingStatus
+import id.bantuin.app.domain.model.CompletionOutcome
 import id.bantuin.app.domain.model.Complexity
 import id.bantuin.app.domain.model.GeoPoint
 import id.bantuin.app.domain.repository.UserProfile
@@ -213,21 +214,36 @@ class CustomerViewModelsTest {
     }
 
     @Test
-    fun orderDetailViewModel_observesAndSubmitsReview() = runTest {
+    fun orderDetailViewModel_savesReopensEditsAndDeletesReview() = runTest {
+        repository.signIn("pelanggan2@bantuin.test", "Demo12345!")
         val vm = OrderDetailViewModel(repository, repository)
-        vm.observeBooking("b01")
+        vm.observeBooking("b00_qris")
+        testDispatcher.scheduler.advanceUntilIdle()
+        vm.setCompletion(CompletionOutcome.TERLAMBAT)
+        vm.setRating(1)
+        vm.setReviewComment("Perlu perbaikan")
+        vm.submitReview()
         testDispatcher.scheduler.advanceUntilIdle()
 
-        vm.setRating(5)
-        vm.setReviewComment("Sangat memuaskan")
-        vm.toggleTag("Tepat Waktu")
-
-        var reviewDone = false
-        vm.submitReview { reviewDone = true }
+        val reopened = OrderDetailViewModel(repository, repository)
+        reopened.observeBooking("b00_qris")
         testDispatcher.scheduler.advanceUntilIdle()
+        assertTrue(reopened.uiState.value.reviewSubmitted)
+        assertEquals(1, reopened.uiState.value.rating)
+        assertEquals("Perlu perbaikan", reopened.uiState.value.reviewComment)
+        assertEquals(CompletionOutcome.TERLAMBAT, reopened.uiState.value.completion)
 
-        assertTrue(reviewDone)
-        assertTrue(vm.uiState.value.reviewSubmitted)
+        reopened.setCompletion(CompletionOutcome.SELESAI_TEPAT_WAKTU)
+        reopened.setRating(5)
+        reopened.submitReview()
+        testDispatcher.scheduler.advanceUntilIdle()
+        assertEquals(5, reopened.uiState.value.booking?.review?.rating)
+
+        reopened.deleteReview()
+        testDispatcher.scheduler.advanceUntilIdle()
+        assertTrue(!reopened.uiState.value.reviewSubmitted)
+        assertEquals(null, reopened.uiState.value.booking?.review)
+        assertEquals(CompletionOutcome.SELESAI_TEPAT_WAKTU, reopened.uiState.value.completion)
     }
 
     @Test
@@ -314,6 +330,10 @@ class CustomerViewModelsTest {
         )
 
         // Komentar melebihi 300 karakter harus ditolak sebelum submit
+        repository.signIn("pelanggan2@bantuin.test", "Demo12345!")
+        vm.observeBooking("b00_qris")
+        testDispatcher.scheduler.advanceUntilIdle()
+        vm.setCompletion(CompletionOutcome.SELESAI_TEPAT_WAKTU)
         vm.setReviewComment("a".repeat(301))
         var reviewSubmitted = false
         vm.submitReview { reviewSubmitted = true }

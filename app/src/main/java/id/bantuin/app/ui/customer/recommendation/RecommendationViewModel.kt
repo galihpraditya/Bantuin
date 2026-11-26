@@ -14,6 +14,7 @@ import id.bantuin.app.domain.repository.CatalogRepository
 import id.bantuin.app.domain.usecase.matchmaking.MatchmakingUseCase
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -61,16 +62,9 @@ class RecommendationViewModel(
     private val _uiState = MutableStateFlow(RecommendationUiState())
     val uiState: StateFlow<RecommendationUiState> = _uiState.asStateFlow()
 
-    private var loadedCategoryId: Int? = null
-    private var loadedLocation: GeoPoint? = null
+    private var loadJob: Job? = null
 
     fun initialize(categoryId: Int, customerLocation: GeoPoint) {
-        if (loadedCategoryId == categoryId &&
-            loadedLocation == customerLocation &&
-            _uiState.value.rawCandidates.isNotEmpty()
-        ) {
-            return
-        }
         _uiState.update {
             it.copy(
                 categoryId = categoryId,
@@ -84,7 +78,8 @@ class RecommendationViewModel(
         categoryId: Int = _uiState.value.categoryId,
         customerLocation: GeoPoint = _uiState.value.customerLocation
     ) {
-        viewModelScope.launch {
+        loadJob?.cancel()
+        loadJob = viewModelScope.launch {
             _uiState.update { it.copy(isLoading = true, errorMessage = null) }
             coroutineScope {
                 val catsDeferred = async { catalogRepository.categories() }
@@ -97,8 +92,6 @@ class RecommendationViewModel(
 
                 when (val res = candDeferred.await()) {
                     is AppResult.Success -> {
-                        loadedCategoryId = categoryId
-                        loadedLocation = customerLocation
                         recomputeRankings(
                             category = resolvedCategory,
                             candidates = res.data,
