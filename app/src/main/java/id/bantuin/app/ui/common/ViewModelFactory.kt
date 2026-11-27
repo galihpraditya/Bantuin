@@ -9,7 +9,6 @@ import id.bantuin.app.core.theme.ThemePreferenceStore
 import id.bantuin.app.domain.repository.BantuinRepository
 import id.bantuin.app.domain.usecase.bookmark.BookmarkUseCase
 import id.bantuin.app.domain.usecase.matchmaking.DynamicRadiusExpansionUseCase
-import id.bantuin.app.domain.usecase.voucher.VoucherEngine
 import id.bantuin.app.ui.auth.AuthViewModel
 import id.bantuin.app.ui.chat.ChatListViewModel
 import id.bantuin.app.ui.chat.ChatRoomViewModel
@@ -63,10 +62,7 @@ class BantuinViewModelFactory(
             modelClass.isAssignableFrom(ScheduleViewModel::class.java) ->
                 ScheduleViewModel(repository, repository) as T
             modelClass.isAssignableFrom(EstimateViewModel::class.java) ->
-                EstimateViewModel(
-                    bookingRepository = repository,
-                    voucherEngine = VoucherEngine()
-                ) as T
+                EstimateViewModel(repository) as T
             modelClass.isAssignableFrom(OrderDetailViewModel::class.java) ->
                 OrderDetailViewModel(repository, repository) as T
             modelClass.isAssignableFrom(CustomerOrdersViewModel::class.java) ->

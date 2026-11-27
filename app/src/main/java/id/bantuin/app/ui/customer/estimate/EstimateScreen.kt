@@ -3,9 +3,7 @@ package id.bantuin.app.ui.customer.estimate
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -27,7 +25,6 @@ import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.filled.CalendarToday
 import androidx.compose.material.icons.filled.EditNote
-import androidx.compose.material.icons.filled.LocalOffer
 import androidx.compose.material.icons.filled.Payments
 import androidx.compose.material.icons.filled.QrCode2
 import androidx.compose.material.icons.filled.Receipt
@@ -36,13 +33,10 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilterChip
-import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.RadioButtonDefaults
@@ -50,7 +44,6 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
@@ -71,7 +64,6 @@ import id.bantuin.app.core.util.CurrencyUtils
 import id.bantuin.app.core.util.TimeUtils
 import id.bantuin.app.domain.model.Complexity
 import id.bantuin.app.domain.model.PaymentMethod
-import id.bantuin.app.domain.model.VoucherResult
 import id.bantuin.app.domain.repository.BantuinRepository
 import id.bantuin.app.domain.usecase.matchmaking.HaversineCalculator
 import id.bantuin.app.domain.usecase.pricing.CostEstimatorUseCase
@@ -216,9 +208,8 @@ fun EstimateScreen(
                             style = MaterialTheme.typography.bodySmall,
                             color = colors.textMuted
                         )
-                        val displayTotal = (uiState.voucherResult as? VoucherResult.Valid)?.finalTotal ?: estimate.total
                         Text(
-                            text = CurrencyUtils.formatRupiah(displayTotal),
+                            text = CurrencyUtils.formatRupiah(estimate.total),
                             style = MaterialTheme.typography.titleLarge.copy(fontSize = 20.sp),
                             color = colors.primary,
                             fontWeight = FontWeight.Bold
@@ -629,19 +620,10 @@ fun EstimateScreen(
                             )
                         }
 
-                        val validVoucher = uiState.voucherResult as? VoucherResult.Valid
-                        if (validVoucher != null) {
-                            CostRow(
-                                label = "Promo (${validVoucher.voucher.code})",
-                                amount = "- ${CurrencyUtils.formatRupiah(validVoucher.discountAmount)}"
-                            )
-                        }
-
                         Spacer(modifier = Modifier.height(8.dp))
                         HorizontalDivider(color = colors.borderSubtle)
                         Spacer(modifier = Modifier.height(8.dp))
 
-                        val displayTotal = validVoucher?.finalTotal ?: estimate.total
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceBetween,
@@ -661,136 +643,11 @@ fun EstimateScreen(
                                 )
                             }
                             Text(
-                                text = CurrencyUtils.formatRupiah(displayTotal),
+                                text = CurrencyUtils.formatRupiah(estimate.total),
                                 style = MaterialTheme.typography.headlineSmall,
                                 color = colors.primary,
                                 fontWeight = FontWeight.Bold
                             )
-                        }
-                    }
-                }
-            }
-
-            // 5b. Kode Promo / Voucher Transparan (Scale Feature)
-            item {
-                var showAvailableVouchers by remember { mutableStateOf(false) }
-                val availableVouchers = remember { viewModel.availableVouchers() }
-
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(14.dp),
-                    colors = CardDefaults.cardColors(containerColor = colors.surface),
-                    border = CardDefaults.outlinedCardBorder().copy(
-                        brush = androidx.compose.ui.graphics.SolidColor(colors.borderSubtle)
-                    )
-                ) {
-                    Column(modifier = Modifier.padding(14.dp)) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Icon(
-                                    imageVector = Icons.Default.LocalOffer,
-                                    contentDescription = null,
-                                    tint = colors.primary,
-                                    modifier = Modifier.size(18.dp)
-                                )
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Text(
-                                    text = "Kode Promo / Voucher",
-                                    style = MaterialTheme.typography.titleSmall,
-                                    color = colors.textPrimary
-                                )
-                            }
-                            TextButton(
-                                onClick = { showAvailableVouchers = !showAvailableVouchers },
-                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp)
-                            ) {
-                                Text(
-                                    text = if (showAvailableVouchers) "Tutup Promo" else "Lihat Promo",
-                                    style = MaterialTheme.typography.labelMedium,
-                                    color = colors.primary
-                                )
-                            }
-                        }
-
-                        if (showAvailableVouchers) {
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .horizontalScroll(rememberScrollState()),
-                                horizontalArrangement = Arrangement.spacedBy(8.dp)
-                            ) {
-                                availableVouchers.forEach { voucher ->
-                                    FilterChip(
-                                        selected = uiState.voucherCode.equals(voucher.code, ignoreCase = true),
-                                        onClick = {
-                                            viewModel.onVoucherCodeChanged(voucher.code)
-                                            viewModel.applyVoucher()
-                                        },
-                                        label = { Text(voucher.code) },
-                                        colors = FilterChipDefaults.filterChipColors(
-                                            selectedContainerColor = colors.primaryContainer,
-                                            selectedLabelColor = colors.onPrimaryContainer
-                                        )
-                                    )
-                                }
-                            }
-                            Spacer(modifier = Modifier.height(6.dp))
-                        }
-
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            OutlinedTextField(
-                                value = uiState.voucherCode,
-                                onValueChange = { viewModel.onVoucherCodeChanged(it) },
-                                placeholder = { Text("Masukkan kode promo (mis. BANTUIN10)") },
-                                singleLine = true,
-                                modifier = Modifier.weight(1f)
-                            )
-                            if (uiState.voucherResult is VoucherResult.Valid) {
-                                OutlinedButton(
-                                    onClick = { viewModel.clearVoucher() },
-                                    shape = RoundedCornerShape(10.dp)
-                                ) {
-                                    Text("Hapus")
-                                }
-                            } else {
-                                Button(
-                                    onClick = { viewModel.applyVoucher() },
-                                    enabled = uiState.voucherCode.isNotBlank(),
-                                    colors = ButtonDefaults.buttonColors(containerColor = colors.primary),
-                                    shape = RoundedCornerShape(10.dp)
-                                ) {
-                                    Text("Terapkan")
-                                }
-                            }
-                        }
-
-                        when (val res = uiState.voucherResult) {
-                            is VoucherResult.Valid -> {
-                                Spacer(modifier = Modifier.height(6.dp))
-                                Text(
-                                    text = "${res.voucher.description} • Hemat ${CurrencyUtils.formatRupiah(res.discountAmount)}",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = colors.success,
-                                    fontWeight = FontWeight.Medium
-                                )
-                            }
-                            is VoucherResult.Invalid -> {
-                                Spacer(modifier = Modifier.height(6.dp))
-                                Text(
-                                    text = res.reason,
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = colors.error
-                                )
-                            }
-                            VoucherResult.Empty -> {}
                         }
                     }
                 }

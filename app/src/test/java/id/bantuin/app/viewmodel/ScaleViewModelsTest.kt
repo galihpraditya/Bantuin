@@ -2,12 +2,9 @@ package id.bantuin.app.viewmodel
 
 import id.bantuin.app.data.fake.FakeData
 import id.bantuin.app.data.repository.FakeBantuinRepository
-import id.bantuin.app.domain.model.Complexity
 import id.bantuin.app.domain.model.GeoPoint
 import id.bantuin.app.domain.model.RadiusExpansionState
-import id.bantuin.app.domain.model.VoucherResult
 import id.bantuin.app.domain.usecase.bookmark.BookmarkUseCase
-import id.bantuin.app.ui.customer.estimate.EstimateViewModel
 import id.bantuin.app.ui.customer.providerdetail.ProviderDetailViewModel
 import id.bantuin.app.ui.customer.recommendation.RecommendationViewModel
 import kotlinx.coroutines.Dispatchers
@@ -100,42 +97,5 @@ class ScaleViewModelsTest {
         assertTrue(vm.uiState.value.isBookmarked)
         vm.toggleBookmark(categoryId = 2)
         assertFalse(vm.uiState.value.isBookmarked)
-    }
-
-    @Test
-    fun estimateViewModel_applyClearAndRevalidateVoucher() = runTest {
-        val repo = FakeBantuinRepository()
-        val vm = EstimateViewModel(bookingRepository = repo)
-        val provider = FakeData.providers.first()
-        val service = FakeData.services.first { it.providerId == provider.providerId }
-
-        vm.initialize(
-            categoryId = 2,
-            provider = provider,
-            service = service,
-            customerLocation = GeoPoint(-7.9797, 112.6304),
-            customerAddress = "Jl. Ijen No. 25, Malang",
-            scheduledDateIso = "2026-12-01",
-            scheduledStartMin = 600,
-            scheduledDurationMin = 90,
-            distanceKm = 2.0
-        )
-
-        val baseTotal = vm.uiState.value.costEstimate!!.total
-        vm.onVoucherCodeChanged("WEEKEND5K")
-        vm.applyVoucher()
-
-        val valid = vm.uiState.value.voucherResult as? VoucherResult.Valid
-        assertTrue(valid != null)
-        assertEquals((baseTotal - 5_000).coerceAtLeast(0), vm.finalTotal)
-
-        // Mengubah kompleksitas harus otomatis menghitung ulang voucher
-        vm.setComplexity(Complexity.BERAT)
-        val updatedTotal = vm.uiState.value.costEstimate!!.total
-        assertEquals((updatedTotal - 5_000).coerceAtLeast(0), vm.finalTotal)
-
-        vm.clearVoucher()
-        assertEquals(VoucherResult.Empty, vm.uiState.value.voucherResult)
-        assertEquals(updatedTotal, vm.finalTotal)
     }
 }
