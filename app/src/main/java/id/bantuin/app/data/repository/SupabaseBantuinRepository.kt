@@ -1,6 +1,9 @@
 package id.bantuin.app.data.repository
 
 import android.util.Log
+import id.bantuin.app.core.chat.ChatReadStore
+import id.bantuin.app.core.chat.InMemoryChatReadStore
+import id.bantuin.app.core.chat.chatReadKey
 import id.bantuin.app.core.config.BantuinConfig
 import id.bantuin.app.core.result.AppResult
 import id.bantuin.app.core.session.UserSessionStore
@@ -61,7 +64,8 @@ class SupabaseBantuinRepository(
     private val client: SupabaseClient = SupabaseClientProvider.client,
     private val sessionStore: UserSessionStore,
     private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
-    private val enableRealtime: Boolean = SupabaseClientProvider.isConfigured
+    private val enableRealtime: Boolean = SupabaseClientProvider.isConfigured,
+    private val chatReadStore: ChatReadStore = InMemoryChatReadStore()
 ) : BantuinRepository {
 
 
@@ -1205,8 +1209,9 @@ class SupabaseBantuinRepository(
             customerBookingsFlow,
             providerBookingsFlow,
             chatMessagesFlow,
-            sessionStore.currentUser
-        ) { customerList, providerList, msgMap, user ->
+            sessionStore.currentUser,
+            chatReadStore.lastReadAt
+        ) { customerList, providerList, msgMap, user, readMap ->
             val userId = user?.id ?: return@combine emptyList()
             val source = if (role == "provider") providerList else customerList
             source.mapNotNull { b ->
@@ -1215,7 +1220,10 @@ class SupabaseBantuinRepository(
                 val last = msgs.lastOrNull()
                 val counterpartyId = if (role == "provider") b.customerId else b.providerId
                 val counterpartyName = if (role == "provider") b.customerName else b.providerName
-                val unreadCount = if (last != null && last.senderId != userId) 1 else 0
+                val lastReadAt = readMap[chatReadKey(userId, b.id)]
+                val unreadCount = msgs.count { msg ->
+                    msg.senderId != userId && (lastReadAt == null || msg.createdAt > lastReadAt)
+                }
                 ChatThreadSummary(
                     bookingId = b.id,
                     counterpartyId = counterpartyId,
@@ -1248,6 +1256,11 @@ class SupabaseBantuinRepository(
 
     override suspend fun retryMessages(bookingId: String): AppResult<Unit> =
         refreshMessagesForBooking(bookingId)
+
+    override suspend fun markThreadRead(bookingId: String) {
+        val uid = currentUidOrNull() ?: return
+        chatReadStore.markRead(uid, bookingId)
+    }
 
     override suspend fun sendMessage(bookingId: String, text: String): AppResult<Unit> = withContext(ioDispatcher) {
         val trimmed = text.trim()
@@ -1570,6 +1583,16 @@ class SupabaseBantuinRepository(
         return AppResult.Error(mapped, e)
     }
 
+    private fun humanAddress(raw: String?): String? {
+        val trimmed = raw?.trim().orEmpty()
+        if (trimmed.isBlank()) return null
+        // Alamat lama hasil fallback geocoding berisi koordinat; jangan ditampilkan.
+        if (trimmed.startsWith("Titik GPS", ignoreCase = true) ||
+            trimmed.startsWith("Lokasi terpilih di peta", ignoreCase = true)
+        ) return null
+        return trimmed
+    }
+
     private suspend fun enrichBookingDtos(dtoList: List<BookingDto>): List<BookingItem> {
         if (dtoList.isEmpty()) return emptyList()
 
@@ -1644,7 +1667,7 @@ class SupabaseBantuinRepository(
                 ),
                 totalCost = dto.totalCost,
                 status = status,
-                address = String.format(Locale.US, "%.4f, %.4f", dto.customerLat, dto.customerLng),
+                address = humanAddress(customerProfile?.defaultAddress) ?: "Lokasi layanan",
                 createdAt = parseInstantOrNull(dto.createdAt) ?: Clock.System.now(),
                 notes = dto.notes,
                 review = reviewDto?.let { r ->

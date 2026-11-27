@@ -35,7 +35,8 @@ data class NavTabItem(
     val selectedIcon: ImageVector,
     val unselectedIcon: ImageVector,
     val hasBadge: Boolean = false,
-    val badgeCount: Int = 0
+    val badgeCount: Int = 0,
+    val badgeDotOnly: Boolean = false
 )
 
 fun customerNavTabs(unreadChatCount: Int = 0): List<NavTabItem> = listOf(
@@ -57,7 +58,8 @@ fun customerNavTabs(unreadChatCount: Int = 0): List<NavTabItem> = listOf(
         selectedIcon = BantuinUiIcons.ChatFilled,
         unselectedIcon = BantuinUiIcons.ChatOutline,
         hasBadge = unreadChatCount > 0,
-        badgeCount = unreadChatCount
+        badgeCount = unreadChatCount,
+        badgeDotOnly = true
     ),
     NavTabItem(
         route = Routes.CUSTOMER_PROFILE,
@@ -149,7 +151,9 @@ fun BantuinBottomBar(
                                     enter = if (reducedMotion) fadeIn() else scaleIn(BantuinMotion.bouncySpring()) + fadeIn(),
                                     exit = if (reducedMotion) fadeOut() else scaleOut() + fadeOut()
                                 ) {
-                                    if (item.badgeCount > 0) {
+                                    if (item.badgeDotOnly) {
+                                        Badge(containerColor = colors.primary)
+                                    } else if (item.badgeCount > 0) {
                                         Badge(
                                             containerColor = colors.primary,
                                             contentColor = colors.onPrimary

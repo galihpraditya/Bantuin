@@ -1,5 +1,6 @@
 package id.bantuin.app.viewmodel
 
+import id.bantuin.app.core.chat.InMemoryChatReadStore
 import id.bantuin.app.core.result.AppResult
 import id.bantuin.app.data.fake.FakeData
 import id.bantuin.app.data.repository.FakeBantuinRepository
@@ -18,6 +19,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.datetime.Instant
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runTest
@@ -199,5 +201,24 @@ class ChatAndPaymentViewModelTest {
         testDispatcher.scheduler.advanceUntilIdle()
         assertEquals("Masih gagal memuat percakapan", vm.uiState.value.errorMessage)
         assertFalse(vm.uiState.value.isLoading)
+    }
+
+    @Test
+    fun chatUnread_disappearsAfterMarkingThreadRead() = runTest {
+        val readStore = InMemoryChatReadStore()
+        val repoWithReadStore = FakeBantuinRepository(chatReadStore = readStore)
+
+        val before = repoWithReadStore.observeChatThreads("customer").first()
+        val threadBefore = before.first { it.bookingId == "b01" }
+        assertTrue(threadBefore.unreadCount > 0)
+
+        repoWithReadStore.markThreadRead("b01")
+        val after = repoWithReadStore.observeChatThreads("customer").first()
+        assertEquals(0, after.first { it.bookingId == "b01" }.unreadCount)
+
+        // Mundurkan marker: pesan lama jadi "belum dibaca" lagi
+        readStore.markRead("user_demo_rani", "b01", Instant.fromEpochMilliseconds(0))
+        val newer = repoWithReadStore.observeChatThreads("customer").first()
+        assertTrue(newer.first { it.bookingId == "b01" }.unreadCount > 0)
     }
 }

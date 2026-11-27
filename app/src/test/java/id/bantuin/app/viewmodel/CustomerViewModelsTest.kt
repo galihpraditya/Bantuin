@@ -198,7 +198,12 @@ class CustomerViewModelsTest {
 
     @Test
     fun scheduleViewModel_validatesSlotBeforeProceeding() = runTest {
-        val vm = ScheduleViewModel(repository, repository)
+        // Jam 08:00 WIB agar slot 10:00 masih tampil (dan bentrok dengan blok demo)
+        val vm = ScheduleViewModel(
+            repository,
+            repository,
+            nowProvider = { java.time.LocalTime.of(8, 0) }
+        )
         val provider = FakeData.providers.first { it.providerId == "p01" }
         val service = FakeData.services.first { it.providerId == "p01" }
 

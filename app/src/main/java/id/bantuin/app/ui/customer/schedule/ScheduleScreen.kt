@@ -52,6 +52,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import id.bantuin.app.core.util.DistanceUtils
 import id.bantuin.app.core.util.TimeUtils
 import id.bantuin.app.domain.model.AvailabilityMode
 import id.bantuin.app.domain.model.ConflictReason
@@ -305,7 +306,7 @@ fun ScheduleScreen(
                                     color = colors.textPrimary
                                 )
                                 Text(
-                                    text = "${String.format(Locale.US, "%.1f", distanceKm)} km dari lokasimu • ${service.name}",
+                                    text = "${DistanceUtils.formatKm(distanceKm)} dari lokasimu • ${service.name}",
                                     style = MaterialTheme.typography.bodySmall,
                                     color = colors.textSecondary
                                 )

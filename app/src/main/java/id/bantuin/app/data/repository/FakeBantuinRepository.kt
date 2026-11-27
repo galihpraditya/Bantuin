@@ -1,5 +1,8 @@
 package id.bantuin.app.data.repository
 
+import id.bantuin.app.core.chat.ChatReadStore
+import id.bantuin.app.core.chat.InMemoryChatReadStore
+import id.bantuin.app.core.chat.chatReadKey
 import id.bantuin.app.core.config.BantuinConfig
 import id.bantuin.app.core.result.AppResult
 import id.bantuin.app.core.session.InMemorySessionStore
@@ -53,7 +56,8 @@ import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Duration.Companion.seconds
 
 class FakeBantuinRepository(
-    private val sessionStore: UserSessionStore = InMemorySessionStore()
+    private val sessionStore: UserSessionStore = InMemorySessionStore(),
+    private val chatReadStore: ChatReadStore = InMemoryChatReadStore()
 ) : BantuinRepository {
 
     private val recalculateMetricsUseCase by lazy {
@@ -359,6 +363,7 @@ class FakeBantuinRepository(
             expiresAt = now + BantuinConfig.PENDING_EXPIRY_MINUTES.minutes,
             customerLat = draft.customerLocation.lat,
             customerLng = draft.customerLocation.lng,
+            distanceKm = draft.distanceKm,
             providerLocation = draft.provider.location,
             customerPhone = user?.phone,
             paymentMethod = draft.paymentMethod,
@@ -850,7 +855,12 @@ class FakeBantuinRepository(
 
     // ================= CHAT REPOSITORY =================
     override fun observeChatThreads(role: String): Flow<List<ChatThreadSummary>> {
-        return combine(bookingsFlow, chatMessagesFlow, sessionStore.currentUser) { bookings, msgMap, user ->
+        return combine(
+            bookingsFlow,
+            chatMessagesFlow,
+            sessionStore.currentUser,
+            chatReadStore.lastReadAt
+        ) { bookings, msgMap, user, readMap ->
             val userId = user?.id ?: return@combine emptyList()
             val filtered = bookings.filter { b ->
                 if (role == "provider") b.providerId == userId else b.customerId == userId
@@ -861,7 +871,10 @@ class FakeBantuinRepository(
                 val last = msgs.lastOrNull()
                 val counterpartyId = if (role == "provider") b.customerId else b.providerId
                 val counterpartyName = if (role == "provider") b.customerName else b.providerName
-                val unreadCount = if (last != null && last.senderId != userId) 1 else 0
+                val lastReadAt = readMap[chatReadKey(userId, b.id)]
+                val unreadCount = msgs.count { msg ->
+                    msg.senderId != userId && (lastReadAt == null || msg.createdAt > lastReadAt)
+                }
                 ChatThreadSummary(
                     bookingId = b.id,
                     counterpartyId = counterpartyId,
@@ -880,6 +893,11 @@ class FakeBantuinRepository(
         return chatMessagesFlow.map { map ->
             map[bookingId].orEmpty().sortedBy { it.createdAt }
         }
+    }
+
+    override suspend fun markThreadRead(bookingId: String) {
+        val uid = sessionStore.currentUserValue?.id ?: return
+        chatReadStore.markRead(uid, bookingId)
     }
 
     override suspend fun sendMessage(bookingId: String, text: String): AppResult<Unit> {

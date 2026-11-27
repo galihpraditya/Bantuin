@@ -1,6 +1,7 @@
 package id.bantuin.app
 
 import android.app.Application
+import id.bantuin.app.core.chat.SharedPreferencesChatReadStore
 import id.bantuin.app.core.session.SharedPreferencesSessionStore
 import id.bantuin.app.core.session.UserSessionStore
 import id.bantuin.app.core.settings.SettingsPreferenceStore
@@ -28,6 +29,9 @@ class BantuinApp : Application() {
     lateinit var repository: BantuinRepository
         private set
 
+    lateinit var chatReadStore: id.bantuin.app.core.chat.ChatReadStore
+        private set
+
     override fun onCreate() {
         super.onCreate()
         instance = this
@@ -39,6 +43,7 @@ class BantuinApp : Application() {
 
         sessionStore = SharedPreferencesSessionStore(this)
         themeStore = SharedPreferencesThemeStore(this)
+        chatReadStore = SharedPreferencesChatReadStore(this)
 
         // Aktifkan sesi Supabase yang persisten sebelum client pertama kali dibuat.
         SupabaseClientProvider.initialize(this)
@@ -47,10 +52,14 @@ class BantuinApp : Application() {
         repository = if (SupabaseClientProvider.isConfigured) {
             SupabaseBantuinRepository(
                 client = SupabaseClientProvider.client,
-                sessionStore = sessionStore
+                sessionStore = sessionStore,
+                chatReadStore = chatReadStore
             )
         } else {
-            FakeBantuinRepository(sessionStore = sessionStore)
+            FakeBantuinRepository(
+                sessionStore = sessionStore,
+                chatReadStore = chatReadStore
+            )
         }
     }
 

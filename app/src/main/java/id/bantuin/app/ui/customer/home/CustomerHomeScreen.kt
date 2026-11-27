@@ -71,6 +71,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import id.bantuin.app.core.util.CurrencyUtils
+import id.bantuin.app.core.util.DistanceUtils
 import id.bantuin.app.domain.model.BookingItem
 import id.bantuin.app.domain.model.ProviderBadge
 import id.bantuin.app.domain.model.RankedProvider
@@ -972,7 +973,7 @@ private fun NearbyProvidersSection(
                                     text = if (ranked.distanceKm < 0.1) {
                                         "< 0.1 km"
                                     } else {
-                                        String.format(Locale.US, "%.1f km", ranked.distanceKm)
+                                        DistanceUtils.formatKm(ranked.distanceKm)
                                     },
                                     style = MaterialTheme.typography.bodySmall,
                                     color = colors.textSecondary

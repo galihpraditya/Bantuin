@@ -70,6 +70,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import id.bantuin.app.core.util.CurrencyUtils
+import id.bantuin.app.core.util.DistanceUtils
 import id.bantuin.app.domain.model.BookingItem
 import id.bantuin.app.domain.model.BookingStatus
 import id.bantuin.app.domain.model.PaymentMethod
@@ -615,7 +616,7 @@ private fun PriorityOrderCard(
                         color = colors.textSecondary
                     )
                     Text(
-                        text = order.address,
+                        text = DistanceUtils.formatWithAddress(order.distanceKm, order.address),
                         style = MaterialTheme.typography.bodySmall,
                         color = colors.textMuted,
                         maxLines = 2,
@@ -741,18 +742,10 @@ private fun OperationalShortcutItem(
             if (badgeCount > 0) {
                 Box(
                     modifier = Modifier
-                        .size(22.dp)
+                        .size(9.dp)
                         .clip(CircleShape)
-                        .background(colors.primary),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(
-                        text = badgeCount.toString(),
-                        style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
-                        color = colors.onPrimary,
-                        fontWeight = FontWeight.Bold
-                    )
-                }
+                        .background(colors.primary)
+                )
                 Spacer(modifier = Modifier.width(6.dp))
             }
             Icon(

@@ -216,11 +216,7 @@ private fun ProviderOrderActionCard(
             )
 
             Text(
-                text = if (booking.distanceKm > 0.0) {
-                    "Jarak: ${DistanceUtils.formatKm(booking.distanceKm)}"
-                } else {
-                    "Lokasi: ${booking.address}"
-                },
+                text = "Lokasi: ${DistanceUtils.formatWithAddress(booking.distanceKm, booking.address)}",
                 style = MaterialTheme.typography.bodySmall,
                 color = colors.textMuted
             )

@@ -61,6 +61,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import id.bantuin.app.core.util.CurrencyUtils
+import id.bantuin.app.core.util.DistanceUtils
 import id.bantuin.app.core.util.TimeUtils
 import id.bantuin.app.domain.model.Complexity
 import id.bantuin.app.domain.model.PaymentMethod
@@ -595,7 +596,7 @@ fun EstimateScreen(
 
                         CostRow(label = "Tarif Dasar Jasa", amount = CurrencyUtils.formatRupiah(estimate.baseFare))
                         CostRow(
-                            label = "Biaya Jarak (${estimate.distanceKm} km x Rp2.000)",
+                            label = "Biaya Jarak (${DistanceUtils.formatKm(estimate.distanceKm)} x Rp2.000)",
                             amount = CurrencyUtils.formatRupiah(estimate.distanceCost)
                         )
                         CostRow(

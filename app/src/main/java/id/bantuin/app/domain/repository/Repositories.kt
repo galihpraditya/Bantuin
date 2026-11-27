@@ -110,6 +110,9 @@ interface ChatRepository {
 
     /** Paksa muat ulang pesan setelah gagal. */
     suspend fun retryMessages(bookingId: String): AppResult<Unit> = AppResult.Success(Unit)
+
+    /** Tandai percakapan telah dibaca sehingga badge unread hilang. */
+    suspend fun markThreadRead(bookingId: String) = Unit
 }
 
 interface WalletRepository {

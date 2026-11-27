@@ -62,6 +62,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import id.bantuin.app.core.util.CurrencyUtils
+import id.bantuin.app.core.util.DistanceUtils
 import id.bantuin.app.core.util.TimeUtils
 import id.bantuin.app.domain.model.BookingEvent
 import id.bantuin.app.domain.model.BookingItem
@@ -256,7 +257,7 @@ fun OrderDetailScreen(
                                             color = colors.textSecondary
                                         )
                                         Text(
-                                            text = booking.address,
+                                            text = DistanceUtils.formatWithAddress(booking.distanceKm, booking.address),
                                             style = MaterialTheme.typography.bodySmall,
                                             color = colors.textMuted
                                         )

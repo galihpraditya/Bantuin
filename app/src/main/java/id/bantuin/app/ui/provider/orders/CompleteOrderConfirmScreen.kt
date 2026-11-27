@@ -51,6 +51,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import id.bantuin.app.core.util.CurrencyUtils
+import id.bantuin.app.core.util.DistanceUtils
 import id.bantuin.app.domain.model.PaymentMethod
 import id.bantuin.app.domain.model.PaymentStatus
 import id.bantuin.app.domain.repository.BantuinRepository
@@ -154,7 +155,7 @@ fun CompleteOrderConfirmScreen(
                                 color = colors.textPrimary
                             )
                             Text(
-                                text = "Lokasi: ${booking.address}",
+                                text = "Lokasi: ${DistanceUtils.formatWithAddress(booking.distanceKm, booking.address)}",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = colors.textSecondary
                             )

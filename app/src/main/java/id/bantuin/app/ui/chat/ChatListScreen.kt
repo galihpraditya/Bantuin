@@ -287,18 +287,10 @@ private fun ChatThreadCard(
                         Spacer(modifier = Modifier.width(8.dp))
                         Box(
                             modifier = Modifier
-                                .size(22.dp)
+                                .size(9.dp)
                                 .clip(CircleShape)
-                                .background(colors.primary),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Text(
-                                text = thread.unreadCount.toString(),
-                                style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
-                                color = colors.onPrimary,
-                                fontWeight = FontWeight.Bold
-                            )
-                        }
+                                .background(colors.primary)
+                        )
                     }
                 }
             }

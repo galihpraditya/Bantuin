@@ -110,7 +110,12 @@ object LocationHelper {
         }
     }
 
+    /**
+     * Fallback teks saat reverse geocoding gagal. Koordinat sengaja tidak
+     * ditampilkan karena tidak relevan bagi pengguna dan bisa ikut tersimpan
+     * sebagai alamat lalu muncul di various card pesanan.
+     */
     fun formatCoordinateFallback(point: GeoPoint): String {
-        return String.format(Locale.US, "Titik GPS (%.4f, %.4f)", point.lat, point.lng)
+        return "Lokasi terpilih di peta"
     }
 }

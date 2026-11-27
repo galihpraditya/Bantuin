@@ -78,6 +78,7 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import id.bantuin.app.core.config.BantuinConfig
 import id.bantuin.app.core.util.CurrencyUtils
+import id.bantuin.app.core.util.DistanceUtils
 import id.bantuin.app.domain.model.ProviderCandidate
 import id.bantuin.app.domain.model.RadiusExpansionState
 import id.bantuin.app.domain.model.RankedProvider
@@ -798,7 +799,7 @@ private fun ProviderRecommendationCard(
                         color = colors.textMuted
                     )
                     Text(
-                        text = String.format(Locale.US, "%.1f km", ranked.distanceKm),
+                        text = DistanceUtils.formatKm(ranked.distanceKm),
                         style = MaterialTheme.typography.labelMedium.copy(fontFeatureSettings = "tnum"),
                         color = colors.textPrimary,
                         fontWeight = FontWeight.Bold

@@ -147,6 +147,10 @@ class ChatRoomViewModel(
                 errorMessage = null
             )
         }
+        // Membuka percakapan menandai semua pesan yang sudah tampil sebagai dibaca.
+        viewModelScope.launch {
+            chatRepository.markThreadRead(bookingId)
+        }
         errorObserveJob = viewModelScope.launch {
             chatRepository.observeChatError(bookingId).collect { error ->
                 if (!error.isNullOrBlank()) {
