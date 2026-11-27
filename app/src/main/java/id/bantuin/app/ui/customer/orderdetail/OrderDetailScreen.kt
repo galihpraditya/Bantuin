@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.height
@@ -56,6 +57,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -850,8 +852,15 @@ private fun TimelineStepItem(
         isCompleted -> colors.success
         else -> colors.borderSubtle
     }
-    Row(modifier = Modifier.fillMaxWidth()) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(IntrinsicSize.Min)
+    ) {
+        Column(
+            modifier = Modifier.fillMaxHeight(),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
             Box(
                 modifier = Modifier
                     .size(24.dp)
@@ -876,10 +885,12 @@ private fun TimelineStepItem(
             }
 
             if (!isLast) {
+                // Garis mengisi sisa tinggi baris agar selalu menyentuh
+                // lingkaran berikutnya meski teks riwayat membungkus 2-3 baris.
                 Box(
                     modifier = Modifier
                         .width(2.dp)
-                        .height(36.dp)
+                        .weight(1f)
                         .background(dotColor)
                 )
             }
