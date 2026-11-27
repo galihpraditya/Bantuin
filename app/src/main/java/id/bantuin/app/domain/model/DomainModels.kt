@@ -130,8 +130,6 @@ enum class CompletionOutcome(val label: String) {
 
 fun BookingStatus.reviewOutcomes(): List<CompletionOutcome> = when (this) {
     BookingStatus.SELESAI -> listOf(CompletionOutcome.SELESAI_TEPAT_WAKTU, CompletionOutcome.TERLAMBAT)
-    BookingStatus.PENDING, BookingStatus.DIKONFIRMASI, BookingStatus.DIBATALKAN_PELANGGAN,
-    BookingStatus.DIBATALKAN_MITRA -> listOf(CompletionOutcome.DIBATALKAN)
     else -> emptyList()
 }
 
@@ -257,37 +255,6 @@ data class BookmarkedProvider(
     val categoryId: Int,
     val savedAt: Instant
 )
-
-// ═══════════════════════════════════════════════════════════════
-// SCALE FEATURE: Promo / Voucher Engine Transparan
-// ═══════════════════════════════════════════════════════════════
-
-enum class VoucherType(val label: String) {
-    PERCENT("Potongan Persen"),
-    FLAT("Potongan Langsung")
-}
-
-data class PromoVoucher(
-    val code: String,
-    val type: VoucherType,
-    /** Jika PERCENT: nilai 0-100 (persen). Jika FLAT: nilai dalam Rupiah. */
-    val value: Int,
-    val minOrderAmount: Int = 0,
-    val maxDiscount: Int = Int.MAX_VALUE,
-    val description: String,
-    val expiresAt: Instant? = null,
-    val isActive: Boolean = true
-)
-
-sealed class VoucherResult {
-    data class Valid(
-        val voucher: PromoVoucher,
-        val discountAmount: Int,
-        val finalTotal: Int
-    ) : VoucherResult()
-    data class Invalid(val reason: String) : VoucherResult()
-    data object Empty : VoucherResult()
-}
 
 // ═══════════════════════════════════════════════════════════════
 // SCALE FEATURE: Dynamic Radius Expansion

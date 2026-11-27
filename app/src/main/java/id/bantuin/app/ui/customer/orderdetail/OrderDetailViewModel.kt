@@ -122,6 +122,10 @@ class OrderDetailViewModel(
         val state = _uiState.value
         val booking = state.booking ?: return
         if (state.isSubmittingReview) return
+        if (booking.status != BookingStatus.SELESAI) {
+            _uiState.update { it.copy(errorMessage = "Ulasan hanya dapat diberikan setelah transaksi selesai.") }
+            return
+        }
         val completion = state.completion?.takeIf { it in booking.status.reviewOutcomes() }
         if (completion == null) {
             _uiState.update { it.copy(errorMessage = "Pilih status penyelesaian pesanan.") }
