@@ -4,6 +4,7 @@ import id.bantuin.app.core.config.BantuinConfig
 import id.bantuin.app.domain.model.GeoPoint
 import id.bantuin.app.domain.model.MatchResult
 import id.bantuin.app.domain.model.ProviderCandidate
+import id.bantuin.app.domain.model.RadiusExpansionState
 import id.bantuin.app.domain.model.RankedProvider
 import kotlin.math.asin
 import kotlin.math.cos
@@ -74,5 +75,67 @@ class MatchmakingUseCase {
                 .thenBy { it.distanceKm }
         )
         return MatchResult(ranked, out.map { it.first })
+    }
+}
+
+/**
+ * Hasil matchmaking dengan dukungan ekspansi radius dinamis.
+ */
+data class ExpandedMatchResult(
+    val matchResult: MatchResult,
+    val effectiveRadiusKm: Double,
+    val expansionState: RadiusExpansionState,
+    val potentialCountIfExpanded: Int
+)
+
+/**
+ * SCALE FEATURE: Dynamic Radius Expansion (F1 Extension)
+ *
+ * Jika jumlah mitra dalam radius default kurang dari [BantuinConfig.MIN_PROVIDERS_BEFORE_EXPAND],
+ * periksa apakah ada mitra dalam radius diperluas ([BantuinConfig.MAX_RADIUS_KM_EXPANDED]).
+ * Jika pengguna sudah menyetujui ekspansi (`allowExpanded = true`), jalankan matchmaking pada radius diperluas.
+ */
+class DynamicRadiusExpansionUseCase(
+    private val matchmakingUseCase: MatchmakingUseCase = MatchmakingUseCase()
+) {
+    operator fun invoke(
+        customer: GeoPoint,
+        candidates: List<ProviderCandidate>,
+        defaultRadiusKm: Double = BantuinConfig.MAX_RADIUS_KM_DEFAULT,
+        expandedRadiusKm: Double = BantuinConfig.MAX_RADIUS_KM_EXPANDED,
+        allowExpanded: Boolean = false
+    ): ExpandedMatchResult {
+        if (allowExpanded) {
+            val expanded = matchmakingUseCase(customer, candidates, radiusKm = expandedRadiusKm)
+            return ExpandedMatchResult(
+                matchResult = expanded,
+                effectiveRadiusKm = expandedRadiusKm,
+                expansionState = RadiusExpansionState.EXPANDED,
+                potentialCountIfExpanded = 0
+            )
+        }
+
+        val normal = matchmakingUseCase(customer, candidates, radiusKm = defaultRadiusKm)
+        if (normal.ranked.size >= BantuinConfig.MIN_PROVIDERS_BEFORE_EXPAND) {
+            return ExpandedMatchResult(
+                matchResult = normal,
+                effectiveRadiusKm = defaultRadiusKm,
+                expansionState = RadiusExpansionState.NORMAL,
+                potentialCountIfExpanded = 0
+            )
+        }
+
+        val expandedPreview = matchmakingUseCase(customer, candidates, radiusKm = expandedRadiusKm)
+        val state = if (expandedPreview.ranked.size > normal.ranked.size) {
+            RadiusExpansionState.SUGGESTING_EXPANSION
+        } else {
+            RadiusExpansionState.NORMAL
+        }
+        return ExpandedMatchResult(
+            matchResult = normal,
+            effectiveRadiusKm = defaultRadiusKm,
+            expansionState = state,
+            potentialCountIfExpanded = expandedPreview.ranked.size
+        )
     }
 }
