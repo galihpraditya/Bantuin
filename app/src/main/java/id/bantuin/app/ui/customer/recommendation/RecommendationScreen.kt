@@ -28,6 +28,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.automirrored.filled.Sort
+import androidx.compose.material.icons.filled.Bookmark
+import androidx.compose.material.icons.filled.BookmarkBorder
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.LocationOn
@@ -298,6 +300,21 @@ fun RecommendationScreen(
                                 colors = chipColors,
                                 modifier = Modifier.heightIn(min = 40.dp)
                             )
+
+                            FilterChip(
+                                selected = uiState.onlyBookmarked,
+                                onClick = { viewModel.setOnlyBookmarked(!uiState.onlyBookmarked) },
+                                leadingIcon = {
+                                    Icon(
+                                        imageVector = if (uiState.onlyBookmarked) Icons.Default.Bookmark else Icons.Default.BookmarkBorder,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                },
+                                label = { Text("Favorit") },
+                                colors = chipColors,
+                                modifier = Modifier.heightIn(min = 40.dp)
+                            )
                         }
                     }
 
@@ -333,6 +350,8 @@ fun RecommendationScreen(
                         items(filteredList, key = { it.candidate.providerId }) { ranked ->
                             ProviderRecommendationCard(
                                 ranked = ranked,
+                                isBookmarked = uiState.bookmarkedProviderIds.contains(ranked.candidate.providerId),
+                                onToggleBookmark = { viewModel.toggleBookmark(ranked.candidate) },
                                 onSelect = {
                                     orderFlow.selectedProvider = ranked.candidate
                                     onSelectProvider(ranked.candidate)
@@ -682,6 +701,8 @@ private fun SelectableOptionPill(
 @Composable
 private fun ProviderRecommendationCard(
     ranked: RankedProvider,
+    isBookmarked: Boolean = false,
+    onToggleBookmark: () -> Unit = {},
     onSelect: () -> Unit
 ) {
     val colors = BantuinTheme.colors
@@ -745,6 +766,17 @@ private fun ProviderRecommendationCard(
                     RatingDisplay(
                         rating = candidate.ratingAvg,
                         reviewCount = candidate.reviewCount
+                    )
+                }
+
+                IconButton(
+                    onClick = onToggleBookmark,
+                    modifier = Modifier.size(40.dp)
+                ) {
+                    Icon(
+                        imageVector = if (isBookmarked) Icons.Default.Bookmark else Icons.Default.BookmarkBorder,
+                        contentDescription = if (isBookmarked) "Hapus dari Favorit" else "Simpan ke Favorit",
+                        tint = if (isBookmarked) colors.primary else colors.textMuted
                     )
                 }
             }

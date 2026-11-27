@@ -55,6 +55,7 @@ data class RecommendationUiState(
     val expansionState: RadiusExpansionState = RadiusExpansionState.NORMAL,
     val potentialCountIfExpanded: Int = 0,
     // ── SCALE: Bookmark / Mitra Favorit ──────────────────────────
+    val onlyBookmarked: Boolean = false,
     val bookmarkedProviderIds: Set<String> = emptySet(),
     val bookmarkList: List<BookmarkedProvider> = emptyList()
 ) {
@@ -62,7 +63,8 @@ data class RecommendationUiState(
         get() = listOf(
             (maxDistanceFilter < BantuinConfig.MAX_RADIUS_KM),
             minRatingFilter > 0.0,
-            onlyTrusted
+            onlyTrusted,
+            onlyBookmarked
         ).count { it }
 
     val hasActiveFilterOrSort: Boolean
@@ -180,6 +182,11 @@ class RecommendationViewModel(
         recomputeFiltered()
     }
 
+    fun setOnlyBookmarked(onlyBookmarked: Boolean) {
+        _uiState.update { it.copy(onlyBookmarked = onlyBookmarked) }
+        recomputeFiltered()
+    }
+
     fun setSortOption(sortOption: ProviderSortOption) {
         _uiState.update { it.copy(sortOption = sortOption) }
         recomputeFiltered()
@@ -203,7 +210,12 @@ class RecommendationViewModel(
     }
 
     fun resetFilters() {
-        _uiState.update { it.copy(expansionState = RadiusExpansionState.NORMAL) }
+        _uiState.update {
+            it.copy(
+                expansionState = RadiusExpansionState.NORMAL,
+                onlyBookmarked = false
+            )
+        }
         applyFiltersAndSort(
             maxDistance = BantuinConfig.MAX_RADIUS_KM,
             minRating = 0.0,
@@ -241,6 +253,9 @@ class RecommendationViewModel(
     fun toggleBookmark(candidate: ProviderCandidate) {
         bookmarkUseCase.toggle(currentCustomerId, candidate, _uiState.value.categoryId)
         refreshBookmarks()
+        if (_uiState.value.onlyBookmarked) {
+            recomputeFiltered()
+        }
     }
 
     fun isBookmarked(providerId: String): Boolean =
@@ -275,7 +290,14 @@ class RecommendationViewModel(
         )
         val matchResult = expandedResult.matchResult
         val filteredAndSorted = sortRanked(
-            filterRanked(matchResult.ranked, expandedResult.effectiveRadiusKm, minRating, onlyTrusted),
+            filterRanked(
+                ranked = matchResult.ranked,
+                maxDistance = expandedResult.effectiveRadiusKm,
+                minRating = minRating,
+                onlyTrusted = onlyTrusted,
+                onlyBookmarked = _uiState.value.onlyBookmarked,
+                bookmarkedIds = _uiState.value.bookmarkedProviderIds
+            ),
             sortOption
         )
         _uiState.update {
@@ -312,13 +334,16 @@ class RecommendationViewModel(
         ranked: List<RankedProvider>,
         maxDistance: Double,
         minRating: Double,
-        onlyTrusted: Boolean
+        onlyTrusted: Boolean,
+        onlyBookmarked: Boolean = false,
+        bookmarkedIds: Set<String> = emptySet()
     ): List<RankedProvider> {
         return ranked.filter { item ->
             val distPass = item.distanceKm <= maxDistance
             val ratingPass = (item.candidate.ratingAvg ?: 0.0) >= minRating
             val trustedPass = !onlyTrusted || item.candidate.badge == ProviderBadge.TRUSTED
-            distPass && ratingPass && trustedPass
+            val bookmarkPass = !onlyBookmarked || bookmarkedIds.contains(item.candidate.providerId)
+            distPass && ratingPass && trustedPass && bookmarkPass
         }
     }
 
