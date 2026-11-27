@@ -16,12 +16,13 @@ gen/
 out/
 build/
 app/build/
+app/release/
 dist/
 
 # Gradle files
 .gradle/
 
-# Local configuration file (SDK path, keys, etc.)
+# Local configuration file (SDK path, Supabase keys, etc.)
 local.properties
 
 # Proguard / captures
@@ -31,19 +32,13 @@ captures/
 # IntelliJ IDEA / Android Studio
 *.iml
 .idea/
-.idea/caches
-.idea/libraries
-.idea/modules.xml
-.idea/workspace.xml
-.idea/shelf
-.idea/assetWizardSettings.xml
 .vscode/
 
 # Kotlin
 .kotlin/
 
 # Native build cache
-.externalNativeBuild
+.externalNativeBuild/
 .cxx/
 
 # OS generated files
@@ -55,19 +50,29 @@ captures/
 ehthumbs.db
 Thumbs.db
 
-# Memory & profiler dumps
+# Memory, logs & temporary files
 *.hprof
+*.log
+*.tmp
+*.bak
+*.orig
 
-# Superpowers scratch
+# AI agent scratch, plans & audit outputs
 .superpowers/
+.agent/
+.claude/
+.codex/
+anti-slop/
 
-# Design mockups & raw reference assets
-docs/design/
+# Local project docs, PRD & reference materials
+PRD.md
+docs/
 
 # Android signing keys
 *.jks
 *.keystore
-gradle.properties
 
 # Environment variables
 .env
+.env.*
+!.env.example
