@@ -47,4 +47,11 @@ object BantuinConfig {
     const val MIN_PAYOUT_AMOUNT = 20_000
     const val PAYOUT_ADMIN_FEE = 2_500
     const val MAX_CHAT_MESSAGE_LENGTH = 1_000
+
+    // Scale: Dynamic Radius Expansion & Voucher Engine
+    const val MAX_RADIUS_KM_DEFAULT = MAX_RADIUS_KM
+    const val MAX_RADIUS_KM_EXPANDED = 20.0
+    const val MIN_PROVIDERS_BEFORE_EXPAND = 1
+    const val VOUCHER_CODE_MAX_LENGTH = 20
+    const val VOUCHER_MAX_PERCENT = 100
 }
