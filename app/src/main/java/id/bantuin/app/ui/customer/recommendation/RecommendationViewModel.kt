@@ -4,13 +4,17 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import id.bantuin.app.core.config.BantuinConfig
 import id.bantuin.app.core.result.AppResult
+import id.bantuin.app.domain.model.BookmarkedProvider
 import id.bantuin.app.domain.model.GeoPoint
 import id.bantuin.app.domain.model.MatchResult
 import id.bantuin.app.domain.model.ProviderBadge
 import id.bantuin.app.domain.model.ProviderCandidate
+import id.bantuin.app.domain.model.RadiusExpansionState
 import id.bantuin.app.domain.model.RankedProvider
 import id.bantuin.app.domain.model.ServiceCategory
 import id.bantuin.app.domain.repository.CatalogRepository
+import id.bantuin.app.domain.usecase.bookmark.BookmarkUseCase
+import id.bantuin.app.domain.usecase.matchmaking.DynamicRadiusExpansionUseCase
 import id.bantuin.app.domain.usecase.matchmaking.MatchmakingUseCase
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -45,7 +49,14 @@ data class RecommendationUiState(
     val matchResult: MatchResult = MatchResult(emptyList(), emptyList()),
     val filteredList: List<RankedProvider> = emptyList(),
     val isLoading: Boolean = false,
-    val errorMessage: String? = null
+    val errorMessage: String? = null,
+    // ── SCALE: Dynamic Radius Expansion ──────────────────────────
+    val effectiveRadius: Double = BantuinConfig.MAX_RADIUS_KM_DEFAULT,
+    val expansionState: RadiusExpansionState = RadiusExpansionState.NORMAL,
+    val potentialCountIfExpanded: Int = 0,
+    // ── SCALE: Bookmark / Mitra Favorit ──────────────────────────
+    val bookmarkedProviderIds: Set<String> = emptySet(),
+    val bookmarkList: List<BookmarkedProvider> = emptyList()
 ) {
     val activeFilterCount: Int
         get() = listOf(
@@ -60,15 +71,23 @@ data class RecommendationUiState(
 
 class RecommendationViewModel(
     private val catalogRepository: CatalogRepository,
-    private val matchmakingUseCase: MatchmakingUseCase = MatchmakingUseCase()
+    private val matchmakingUseCase: MatchmakingUseCase = MatchmakingUseCase(),
+    private val expansionUseCase: DynamicRadiusExpansionUseCase = DynamicRadiusExpansionUseCase(),
+    private val bookmarkUseCase: BookmarkUseCase = BookmarkUseCase()
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(RecommendationUiState())
     val uiState: StateFlow<RecommendationUiState> = _uiState.asStateFlow()
 
     private var loadJob: Job? = null
+    private var currentCustomerId: String = "user_demo"
 
-    fun initialize(categoryId: Int, customerLocation: GeoPoint) {
+    fun initialize(
+        categoryId: Int,
+        customerLocation: GeoPoint,
+        customerId: String = "user_demo"
+    ) {
+        currentCustomerId = customerId
         _uiState.update {
             it.copy(
                 categoryId = categoryId,
@@ -76,6 +95,7 @@ class RecommendationViewModel(
             )
         }
         loadCandidates(categoryId, customerLocation)
+        refreshBookmarks()
     }
 
     fun loadCandidates(
@@ -183,6 +203,7 @@ class RecommendationViewModel(
     }
 
     fun resetFilters() {
+        _uiState.update { it.copy(expansionState = RadiusExpansionState.NORMAL) }
         applyFiltersAndSort(
             maxDistance = BantuinConfig.MAX_RADIUS_KM,
             minRating = 0.0,
@@ -199,6 +220,42 @@ class RecommendationViewModel(
         return filterRanked(_uiState.value.matchResult.ranked, maxDistance, minRating, onlyTrusted).size
     }
 
+    fun acceptRadiusExpansion() {
+        val state = _uiState.value
+        if (state.expansionState != RadiusExpansionState.SUGGESTING_EXPANSION) return
+        _uiState.update {
+            it.copy(
+                maxDistanceFilter = BantuinConfig.MAX_RADIUS_KM_EXPANDED,
+                expansionState = RadiusExpansionState.EXPANDED
+            )
+        }
+        recomputeFiltered(allowExpanded = true)
+    }
+
+    fun dismissRadiusExpansion() {
+        _uiState.update {
+            it.copy(expansionState = RadiusExpansionState.NORMAL)
+        }
+    }
+
+    fun toggleBookmark(candidate: ProviderCandidate) {
+        bookmarkUseCase.toggle(currentCustomerId, candidate, _uiState.value.categoryId)
+        refreshBookmarks()
+    }
+
+    fun isBookmarked(providerId: String): Boolean =
+        _uiState.value.bookmarkedProviderIds.contains(providerId)
+
+    fun refreshBookmarks() {
+        val bookmarks = bookmarkUseCase.getBookmarks(currentCustomerId)
+        _uiState.update {
+            it.copy(
+                bookmarkedProviderIds = bookmarks.map { b -> b.providerId }.toSet(),
+                bookmarkList = bookmarks
+            )
+        }
+    }
+
     private fun recomputeRankings(
         category: ServiceCategory,
         candidates: List<ProviderCandidate>,
@@ -206,11 +263,19 @@ class RecommendationViewModel(
         maxDistance: Double,
         minRating: Double,
         onlyTrusted: Boolean,
-        sortOption: ProviderSortOption
+        sortOption: ProviderSortOption,
+        allowExpanded: Boolean = _uiState.value.expansionState == RadiusExpansionState.EXPANDED
     ) {
-        val matchResult = matchmakingUseCase(location, candidates, radiusKm = maxDistance)
+        val expandedResult = expansionUseCase(
+            customer = location,
+            candidates = candidates,
+            defaultRadiusKm = maxDistance,
+            expandedRadiusKm = BantuinConfig.MAX_RADIUS_KM_EXPANDED,
+            allowExpanded = allowExpanded
+        )
+        val matchResult = expandedResult.matchResult
         val filteredAndSorted = sortRanked(
-            filterRanked(matchResult.ranked, maxDistance, minRating, onlyTrusted),
+            filterRanked(matchResult.ranked, expandedResult.effectiveRadiusKm, minRating, onlyTrusted),
             sortOption
         )
         _uiState.update {
@@ -219,12 +284,17 @@ class RecommendationViewModel(
                 rawCandidates = candidates,
                 matchResult = matchResult,
                 filteredList = filteredAndSorted,
+                effectiveRadius = expandedResult.effectiveRadiusKm,
+                expansionState = expandedResult.expansionState,
+                potentialCountIfExpanded = expandedResult.potentialCountIfExpanded,
                 isLoading = false
             )
         }
     }
 
-    private fun recomputeFiltered() {
+    private fun recomputeFiltered(
+        allowExpanded: Boolean = _uiState.value.expansionState == RadiusExpansionState.EXPANDED
+    ) {
         val state = _uiState.value
         recomputeRankings(
             category = state.category,
@@ -233,7 +303,8 @@ class RecommendationViewModel(
             maxDistance = state.maxDistanceFilter,
             minRating = state.minRatingFilter,
             onlyTrusted = state.onlyTrusted,
-            sortOption = state.sortOption
+            sortOption = state.sortOption,
+            allowExpanded = allowExpanded
         )
     }
 
