@@ -1,8 +1,5 @@
 package id.bantuin.app.ui.customer.orderdetail
 
-import android.content.Intent
-import android.net.Uri
-import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -27,7 +24,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Chat
-import androidx.compose.material.icons.filled.Call
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.QrCode2
@@ -60,7 +56,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -99,7 +94,6 @@ fun OrderDetailScreen(
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val colors = BantuinTheme.colors
-    val context = LocalContext.current
     var showCancelDialog by remember { mutableStateOf(false) }
 
     LaunchedEffect(bookingId) {
@@ -343,38 +337,6 @@ fun OrderDetailScreen(
                                         )
                                         Spacer(modifier = Modifier.width(6.dp))
                                         Text("Chat Mitra", fontWeight = FontWeight.SemiBold)
-                                    }
-
-                                    OutlinedButton(
-                                        onClick = {
-                                            val phone = booking.providerPhone
-                                            if (!phone.isNullOrBlank()) {
-                                                val intent = Intent(Intent.ACTION_DIAL, Uri.parse("tel:$phone"))
-                                                context.startActivity(intent)
-                                            } else {
-                                                Toast.makeText(
-                                                    context,
-                                                    "Nomor telepon mitra belum tersedia.",
-                                                    Toast.LENGTH_SHORT
-                                                ).show()
-                                            }
-                                        },
-                                        border = ButtonDefaults.outlinedButtonBorder(enabled = true).copy(
-                                            brush = androidx.compose.ui.graphics.SolidColor(colors.outline)
-                                        ),
-                                        shape = RoundedCornerShape(10.dp),
-                                        modifier = Modifier
-                                            .weight(1f)
-                                            .heightIn(min = 48.dp)
-                                    ) {
-                                        Icon(
-                                            imageVector = Icons.Default.Call,
-                                            contentDescription = null,
-                                            tint = colors.primary,
-                                            modifier = Modifier.size(16.dp)
-                                        )
-                                        Spacer(modifier = Modifier.width(6.dp))
-                                        Text("Telepon", color = colors.textPrimary)
                                     }
                                 }
                             }
