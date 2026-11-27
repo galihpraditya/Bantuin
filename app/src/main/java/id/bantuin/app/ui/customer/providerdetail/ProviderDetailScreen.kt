@@ -25,6 +25,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.AccessTime
+import androidx.compose.material.icons.filled.Bookmark
+import androidx.compose.material.icons.filled.BookmarkBorder
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.Button
@@ -101,6 +103,19 @@ fun ProviderDetailScreen(
                             contentDescription = "Kembali",
                             tint = colors.textPrimary
                         )
+                    }
+                },
+                actions = {
+                    if (uiState.provider != null) {
+                        IconButton(
+                            onClick = { viewModel.toggleBookmark(categoryId = orderFlow.selectedCategoryId) }
+                        ) {
+                            Icon(
+                                imageVector = if (uiState.isBookmarked) Icons.Default.Bookmark else Icons.Default.BookmarkBorder,
+                                contentDescription = if (uiState.isBookmarked) "Hapus dari Favorit" else "Simpan ke Favorit",
+                                tint = if (uiState.isBookmarked) colors.primary else colors.textSecondary
+                            )
+                        }
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = colors.background)
