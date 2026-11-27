@@ -10,8 +10,10 @@ import id.bantuin.app.domain.model.OrderDraft
 import id.bantuin.app.domain.model.PaymentMethod
 import id.bantuin.app.domain.model.ProviderCandidate
 import id.bantuin.app.domain.model.ServiceItem
+import id.bantuin.app.domain.model.VoucherResult
 import id.bantuin.app.domain.repository.BookingRepository
 import id.bantuin.app.domain.usecase.pricing.CostEstimatorUseCase
+import id.bantuin.app.domain.usecase.voucher.VoucherEngine
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -35,12 +37,17 @@ data class EstimateUiState(
     val costEstimate: CostEstimate? = null,
     val isSubmitting: Boolean = false,
     val createdBookingId: String? = null,
-    val errorMessage: String? = null
+    val errorMessage: String? = null,
+    // ── SCALE: Voucher Engine ─────────────────────────────────────
+    val voucherCode: String = "",
+    val voucherResult: VoucherResult = VoucherResult.Empty,
+    val isValidatingVoucher: Boolean = false
 )
 
 class EstimateViewModel(
     private val bookingRepository: BookingRepository,
-    private val costEstimator: CostEstimatorUseCase = CostEstimatorUseCase()
+    private val costEstimator: CostEstimatorUseCase = CostEstimatorUseCase(),
+    private val voucherEngine: VoucherEngine = VoucherEngine()
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(EstimateUiState())
@@ -117,6 +124,7 @@ class EstimateViewModel(
                 errorMessage = null
             )
         }
+        revalidateVoucherIfActive(newEstimate.total)
     }
 
     fun setUrgent(isUrgent: Boolean) {
@@ -136,6 +144,7 @@ class EstimateViewModel(
                 errorMessage = null
             )
         }
+        revalidateVoucherIfActive(newEstimate.total)
     }
 
     fun setNotes(notes: String) {
@@ -145,6 +154,47 @@ class EstimateViewModel(
     fun setPaymentMethod(method: PaymentMethod) {
         _uiState.update { it.copy(paymentMethod = method, errorMessage = null) }
     }
+
+    fun onVoucherCodeChanged(code: String) {
+        _uiState.update { it.copy(voucherCode = code, voucherResult = VoucherResult.Empty) }
+    }
+
+    fun applyVoucher() {
+        val state = _uiState.value
+        val code = state.voucherCode.trim()
+        val orderTotal = state.costEstimate?.total ?: return
+        _uiState.update { it.copy(isValidatingVoucher = true) }
+        val result = voucherEngine.apply(code, orderTotal)
+        _uiState.update { it.copy(voucherResult = result, isValidatingVoucher = false) }
+    }
+
+    fun clearVoucher() {
+        _uiState.update {
+            it.copy(
+                voucherCode = "",
+                voucherResult = VoucherResult.Empty
+            )
+        }
+    }
+
+    fun availableVouchers() = voucherEngine.getAvailableVouchers()
+
+    private fun revalidateVoucherIfActive(newTotal: Int) {
+        val state = _uiState.value
+        if (state.voucherCode.isBlank()) return
+        val result = voucherEngine.apply(state.voucherCode, newTotal)
+        _uiState.update { it.copy(voucherResult = result) }
+    }
+
+    val finalTotal: Int
+        get() {
+            val state = _uiState.value
+            val baseTotal = state.costEstimate?.total ?: 0
+            return when (val result = state.voucherResult) {
+                is VoucherResult.Valid -> result.finalTotal
+                else -> baseTotal
+            }
+        }
 
     fun confirmOrder(onSuccess: (String) -> Unit) {
         val state = _uiState.value
@@ -158,6 +208,10 @@ class EstimateViewModel(
         val provider = state.provider!!
         val service = state.service!!
         val estimate = state.costEstimate!!
+        val effectiveTotal = finalTotal
+        val effectiveEstimate = if (effectiveTotal != estimate.total) {
+            estimate.copy(total = effectiveTotal)
+        } else estimate
 
         val draft = OrderDraft(
             categoryId = state.categoryId,
@@ -172,7 +226,7 @@ class EstimateViewModel(
             customerLocation = state.customerLocation,
             customerAddress = state.customerAddress,
             distanceKm = state.distanceKm,
-            costEstimate = estimate,
+            costEstimate = effectiveEstimate,
             paymentMethod = state.paymentMethod
         )
 
