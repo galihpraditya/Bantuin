@@ -6,8 +6,8 @@ import id.bantuin.app.core.result.AppResult
 import id.bantuin.app.domain.model.Complexity
 import id.bantuin.app.domain.model.CostEstimate
 import id.bantuin.app.domain.model.GeoPoint
-import id.bantuin.app.domain.model.LockInfo
 import id.bantuin.app.domain.model.OrderDraft
+import id.bantuin.app.domain.model.PaymentMethod
 import id.bantuin.app.domain.model.ProviderCandidate
 import id.bantuin.app.domain.model.ServiceItem
 import id.bantuin.app.domain.repository.BookingRepository
@@ -22,19 +22,17 @@ data class EstimateUiState(
     val categoryId: Int = 2,
     val provider: ProviderCandidate? = null,
     val service: ServiceItem? = null,
-    val customerLocation: GeoPoint = GeoPoint(-7.9797, 112.6304),
+    val customerLocation: GeoPoint = id.bantuin.app.core.config.BantuinConfig.MALANG_CENTER,
     val customerAddress: String = "",
     val scheduledDateIso: String = "",
     val scheduledStartMin: Int = 540,
     val scheduledDurationMin: Int = 90,
-    val lockInfo: LockInfo? = null,
     val distanceKm: Double = 1.8,
     val complexity: Complexity = Complexity.SEDANG,
     val isUrgent: Boolean = false,
     val notes: String = "",
+    val paymentMethod: PaymentMethod = PaymentMethod.CASH,
     val costEstimate: CostEstimate? = null,
-    val remainingLockSeconds: Long = 600L,
-    val isLockExpired: Boolean = false,
     val isSubmitting: Boolean = false,
     val createdBookingId: String? = null,
     val errorMessage: String? = null
@@ -57,12 +55,22 @@ class EstimateViewModel(
         scheduledDateIso: String,
         scheduledStartMin: Int,
         scheduledDurationMin: Int,
-        lockInfo: LockInfo?,
         distanceKm: Double,
         initialComplexity: Complexity = Complexity.SEDANG,
         initialUrgent: Boolean = false,
-        initialNotes: String = ""
+        initialNotes: String = "",
+        initialPaymentMethod: PaymentMethod = PaymentMethod.CASH
     ) {
+        val current = _uiState.value
+        if (current.provider?.providerId == provider.providerId &&
+            current.service?.id == service.id &&
+            current.scheduledDateIso == scheduledDateIso &&
+            current.scheduledStartMin == scheduledStartMin &&
+            current.costEstimate != null
+        ) {
+            return
+        }
+
         val initialEstimate = costEstimator(
             baseFare = service.baseFare,
             distanceKm = distanceKm,
@@ -81,12 +89,13 @@ class EstimateViewModel(
                 scheduledDateIso = scheduledDateIso,
                 scheduledStartMin = scheduledStartMin,
                 scheduledDurationMin = scheduledDurationMin,
-                lockInfo = lockInfo,
                 distanceKm = distanceKm,
                 complexity = initialComplexity,
                 isUrgent = initialUrgent,
                 notes = initialNotes,
-                costEstimate = initialEstimate
+                paymentMethod = initialPaymentMethod,
+                costEstimate = initialEstimate,
+                errorMessage = null
             )
         }
     }
@@ -104,7 +113,8 @@ class EstimateViewModel(
         _uiState.update {
             it.copy(
                 complexity = complexity,
-                costEstimate = newEstimate
+                costEstimate = newEstimate,
+                errorMessage = null
             )
         }
     }
@@ -122,41 +132,32 @@ class EstimateViewModel(
         _uiState.update {
             it.copy(
                 isUrgent = isUrgent,
-                costEstimate = newEstimate
+                costEstimate = newEstimate,
+                errorMessage = null
             )
         }
     }
 
     fun setNotes(notes: String) {
-        _uiState.update { it.copy(notes = notes) }
+        _uiState.update { it.copy(notes = notes.take(500)) }
     }
 
-    /** Melepas kunci saat pengguna keluar dari alur sebelum pesanan dibuat. */
-    fun releaseLockIfPending(lockId: String) {
-        if (_uiState.value.createdBookingId != null) return
-        viewModelScope.launch {
-            bookingRepository.releaseLock(lockId)
-        }
-    }
-
-    fun updateLockCountdown(seconds: Long) {
-        _uiState.update {
-            it.copy(
-                remainingLockSeconds = seconds.coerceAtLeast(0L),
-                isLockExpired = seconds <= 0L
-            )
-        }
+    fun setPaymentMethod(method: PaymentMethod) {
+        _uiState.update { it.copy(paymentMethod = method, errorMessage = null) }
     }
 
     fun confirmOrder(onSuccess: (String) -> Unit) {
         val state = _uiState.value
-        if (state.isLockExpired) {
-            _uiState.update { it.copy(errorMessage = "Waktu reservasi slot telah kedaluwarsa. Silakan pilih kembali jadwal.") }
+        val incomplete = state.provider == null || state.service == null || state.costEstimate == null
+        if (incomplete || state.scheduledDateIso.isBlank()) {
+            _uiState.update {
+                it.copy(errorMessage = "Data order tidak lengkap. Kembali dan pilih layanan serta jadwal lagi.")
+            }
             return
         }
-        val provider = state.provider ?: return
-        val service = state.service ?: return
-        val estimate = state.costEstimate ?: return
+        val provider = state.provider!!
+        val service = state.service!!
+        val estimate = state.costEstimate!!
 
         val draft = OrderDraft(
             categoryId = state.categoryId,
@@ -167,12 +168,12 @@ class EstimateViewModel(
             durationMin = state.scheduledDurationMin,
             complexity = state.complexity,
             isUrgent = state.isUrgent,
-            notes = state.notes,
+            notes = state.notes.trim(),
             customerLocation = state.customerLocation,
             customerAddress = state.customerAddress,
             distanceKm = state.distanceKm,
             costEstimate = estimate,
-            lockInfo = state.lockInfo
+            paymentMethod = state.paymentMethod
         )
 
         viewModelScope.launch {
@@ -189,10 +190,7 @@ class EstimateViewModel(
                 }
                 is AppResult.Error -> {
                     _uiState.update {
-                        it.copy(
-                            isSubmitting = false,
-                            errorMessage = res.message
-                        )
+                        it.copy(isSubmitting = false, errorMessage = res.message)
                     }
                 }
                 is AppResult.Loading -> {}

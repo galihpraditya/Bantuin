@@ -1,5 +1,8 @@
 package id.bantuin.app.ui.provider.profile
 
+import android.Manifest
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -12,6 +15,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -21,17 +25,19 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.LocationOn
+import androidx.compose.material.icons.filled.GpsFixed
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
@@ -43,28 +49,24 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.key
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import id.bantuin.app.core.location.LocationHelper
 import id.bantuin.app.domain.model.GeoPoint
 import id.bantuin.app.domain.repository.BantuinRepository
 import id.bantuin.app.ui.common.BantuinViewModelFactory
+import id.bantuin.app.ui.common.LoadingView
 import id.bantuin.app.ui.common.OsmMapView
-import id.bantuin.app.ui.theme.BorderSubtle
-import id.bantuin.app.ui.theme.NeutralBackground
-import id.bantuin.app.ui.theme.NeutralSurface
-import id.bantuin.app.ui.theme.OrangePrimary
-import id.bantuin.app.ui.theme.RedError
-import id.bantuin.app.ui.theme.TextMuted
-import id.bantuin.app.ui.theme.TextPrimary
-import id.bantuin.app.ui.theme.TextSecondary
+import id.bantuin.app.ui.theme.BantuinTheme
+import kotlinx.coroutines.launch
+import kotlin.math.abs
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -75,6 +77,9 @@ fun ProviderProfileEditScreen(
     modifier: Modifier = Modifier
 ) {
     val uiState by viewModel.uiState.collectAsState()
+    val colors = BantuinTheme.colors
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
     val snackbarHostState = remember { SnackbarHostState() }
 
     LaunchedEffect(Unit) {
@@ -84,7 +89,34 @@ fun ProviderProfileEditScreen(
     LaunchedEffect(uiState.isSaved) {
         if (uiState.isSaved) {
             snackbarHostState.showSnackbar("Profil mitra berhasil diperbarui")
-            viewModel.resetSaved()
+        }
+    }
+
+    fun fetchHardwareGps() {
+        viewModel.setDetectingGps(true)
+        scope.launch {
+            val detected = LocationHelper.getCurrentLocation(context)
+            if (detected != null) {
+                viewModel.onLocationChange(detected.point)
+                viewModel.onAddressChange(
+                    detected.address ?: LocationHelper.formatCoordinateFallback(detected.point)
+                )
+                viewModel.setDetectingGps(false)
+            } else {
+                viewModel.setGpsError("Lokasi GPS tidak tersedia. Ketuk peta atau pilih preset area.")
+            }
+        }
+    }
+
+    val permissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions()
+    ) { grants ->
+        val granted = grants[Manifest.permission.ACCESS_FINE_LOCATION] == true ||
+            grants[Manifest.permission.ACCESS_COARSE_LOCATION] == true
+        if (granted) {
+            fetchHardwareGps()
+        } else {
+            viewModel.setGpsError("Izin lokasi ditolak. Ketuk peta untuk menentukan titik pangkalan.")
         }
     }
 
@@ -104,32 +136,38 @@ fun ProviderProfileEditScreen(
                     Text(
                         text = "Edit Profil & Pangkalan",
                         style = MaterialTheme.typography.titleLarge,
-                        color = TextPrimary
+                        color = colors.textPrimary
                     )
                 },
                 navigationIcon = {
-                    IconButton(
-                        onClick = onNavigateBack,
-                        modifier = Modifier.size(48.dp)
-                    ) {
+                    IconButton(onClick = onNavigateBack) {
                         Icon(
                             imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                             contentDescription = "Kembali",
-                            tint = TextPrimary
+                            tint = colors.textPrimary
                         )
                     }
                 },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = NeutralBackground)
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = colors.background)
             )
         },
         snackbarHost = { SnackbarHost(snackbarHostState) },
-        containerColor = NeutralBackground,
+        containerColor = colors.background,
         modifier = modifier
     ) { innerPadding ->
+        if (uiState.isLoading && uiState.name.isBlank()) {
+            LoadingView(
+                message = "Memuat profil mitra...",
+                modifier = Modifier.padding(innerPadding)
+            )
+            return@Scaffold
+        }
+
         LazyColumn(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(innerPadding),
+                .padding(innerPadding)
+                .imePadding(),
             contentPadding = PaddingValues(16.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
@@ -137,8 +175,10 @@ fun ProviderProfileEditScreen(
                 Card(
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(14.dp),
-                    colors = CardDefaults.cardColors(containerColor = NeutralSurface),
-                    border = CardDefaults.outlinedCardBorder().copy(brush = androidx.compose.ui.graphics.SolidColor(BorderSubtle))
+                    colors = CardDefaults.cardColors(containerColor = colors.surface),
+                    border = CardDefaults.outlinedCardBorder().copy(
+                        brush = androidx.compose.ui.graphics.SolidColor(colors.borderSubtle)
+                    )
                 ) {
                     Column(
                         modifier = Modifier.padding(16.dp),
@@ -147,7 +187,7 @@ fun ProviderProfileEditScreen(
                         Text(
                             text = "Informasi Biodata Mitra",
                             style = MaterialTheme.typography.titleMedium,
-                            color = TextPrimary
+                            color = colors.textPrimary
                         )
 
                         OutlinedTextField(
@@ -155,7 +195,6 @@ fun ProviderProfileEditScreen(
                             onValueChange = { viewModel.onNameChange(it) },
                             label = { Text("Nama Lengkap & Gelar") },
                             singleLine = true,
-                            isError = uiState.errorMessage != null && uiState.name.isBlank(),
                             modifier = Modifier.fillMaxWidth()
                         )
 
@@ -170,7 +209,7 @@ fun ProviderProfileEditScreen(
                         OutlinedTextField(
                             value = uiState.phone,
                             onValueChange = { viewModel.onPhoneChange(it) },
-                            label = { Text("Nomor Kontak WhatsApp") },
+                            label = { Text("Nomor Kontak WhatsApp (contoh: 0812...)") },
                             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
                             singleLine = true,
                             modifier = Modifier.fillMaxWidth()
@@ -183,8 +222,10 @@ fun ProviderProfileEditScreen(
                 Card(
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(14.dp),
-                    colors = CardDefaults.cardColors(containerColor = NeutralSurface),
-                    border = CardDefaults.outlinedCardBorder().copy(brush = androidx.compose.ui.graphics.SolidColor(BorderSubtle))
+                    colors = CardDefaults.cardColors(containerColor = colors.surface),
+                    border = CardDefaults.outlinedCardBorder().copy(
+                        brush = androidx.compose.ui.graphics.SolidColor(colors.borderSubtle)
+                    )
                 ) {
                     Column(
                         modifier = Modifier.padding(16.dp),
@@ -193,18 +234,59 @@ fun ProviderProfileEditScreen(
                         Text(
                             text = "Pangkalan & Titik Lokasi Layanan",
                             style = MaterialTheme.typography.titleMedium,
-                            color = TextPrimary
+                            color = colors.textPrimary
                         )
                         Text(
                             text = "Titik ini menjadi dasar penghitungan jarak Haversine ke lokasi pelanggan (F1 & F2).",
                             style = MaterialTheme.typography.bodySmall,
-                            color = TextSecondary
+                            color = colors.textSecondary
                         )
 
+                        OutlinedButton(
+                            onClick = {
+                                if (LocationHelper.hasLocationPermission(context)) {
+                                    fetchHardwareGps()
+                                } else {
+                                    permissionLauncher.launch(
+                                        arrayOf(
+                                            Manifest.permission.ACCESS_FINE_LOCATION,
+                                            Manifest.permission.ACCESS_COARSE_LOCATION
+                                        )
+                                    )
+                                }
+                            },
+                            enabled = !uiState.isDetectingGps,
+                            border = ButtonDefaults.outlinedButtonBorder(enabled = true).copy(
+                                brush = androidx.compose.ui.graphics.SolidColor(colors.primary)
+                            ),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .heightIn(min = 48.dp)
+                        ) {
+                            if (uiState.isDetectingGps) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(16.dp),
+                                    strokeWidth = 2.dp,
+                                    color = colors.primary
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text("Mendeteksi GPS...", color = colors.primary)
+                            } else {
+                                Icon(
+                                    imageVector = Icons.Default.GpsFixed,
+                                    contentDescription = null,
+                                    tint = colors.primary,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text("Gunakan Titik GPS Saat Ini", color = colors.primary)
+                            }
+                        }
+
                         Text(
-                            text = "Preset Pangkalan di Malang:",
+                            text = "Preset Area Cepat / Ketuk Peta:",
                             style = MaterialTheme.typography.labelSmall,
-                            color = TextPrimary
+                            color = colors.textPrimary
                         )
 
                         Row(
@@ -214,8 +296,8 @@ fun ProviderProfileEditScreen(
                             horizontalArrangement = Arrangement.spacedBy(6.dp)
                         ) {
                             presets.forEach { (pName, point, pAddr) ->
-                                val isSelected = Math.abs(uiState.location.lat - point.lat) < 0.001 &&
-                                        Math.abs(uiState.location.lng - point.lng) < 0.001
+                                val isSelected = abs(uiState.location.lat - point.lat) < 0.001 &&
+                                    abs(uiState.location.lng - point.lng) < 0.001
                                 FilterChip(
                                     selected = isSelected,
                                     onClick = {
@@ -224,8 +306,8 @@ fun ProviderProfileEditScreen(
                                     },
                                     label = { Text(pName) },
                                     colors = FilterChipDefaults.filterChipColors(
-                                        selectedContainerColor = OrangePrimary,
-                                        selectedLabelColor = Color.White
+                                        selectedContainerColor = colors.primaryContainer,
+                                        selectedLabelColor = colors.onPrimaryContainer
                                     ),
                                     modifier = Modifier.heightIn(min = 48.dp)
                                 )
@@ -235,15 +317,26 @@ fun ProviderProfileEditScreen(
                         Box(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .height(160.dp)
+                                .height(170.dp)
                                 .clip(RoundedCornerShape(8.dp))
                         ) {
-                            key(uiState.location) {
-                                OsmMapView(
-                                    centerPoint = uiState.location,
-                                    zoomLevel = 14.0
-                                )
-                            }
+                            OsmMapView(
+                                centerPoint = uiState.location,
+                                markerTitle = "Titik Pangkalan Mitra",
+                                zoomLevel = 14.5,
+                                isInteractive = true,
+                                onLocationSelected = { tappedPoint ->
+                                    viewModel.onLocationChange(tappedPoint)
+                                    scope.launch {
+                                        val addr = LocationHelper.reverseGeocode(
+                                            context,
+                                            tappedPoint.lat,
+                                            tappedPoint.lng
+                                        ) ?: LocationHelper.formatCoordinateFallback(tappedPoint)
+                                        viewModel.onAddressChange(addr)
+                                    }
+                                }
+                            )
                         }
 
                         OutlinedTextField(
@@ -256,25 +349,35 @@ fun ProviderProfileEditScreen(
                 }
             }
 
-            if (uiState.errorMessage != null) {
+            if (!uiState.errorMessage.isNullOrBlank()) {
                 item {
-                    Text(
-                        text = uiState.errorMessage!!,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = RedError
-                    )
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(10.dp),
+                        colors = CardDefaults.cardColors(containerColor = colors.errorContainer)
+                    ) {
+                        Text(
+                            text = uiState.errorMessage ?: "",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = colors.error,
+                            modifier = Modifier.padding(12.dp)
+                        )
+                    }
                 }
             }
 
             item {
                 Button(
                     onClick = { viewModel.saveProfile() },
-                    enabled = !uiState.isSaving && !uiState.isLoading,
-                    colors = ButtonDefaults.buttonColors(containerColor = OrangePrimary),
+                    enabled = !uiState.isSaving,
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = colors.primary,
+                        contentColor = colors.onPrimary
+                    ),
                     shape = RoundedCornerShape(12.dp),
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(48.dp)
+                        .heightIn(min = 48.dp)
                 ) {
                     Text(if (uiState.isSaving) "Menyimpan..." else "Simpan Perubahan Profil")
                 }

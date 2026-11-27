@@ -56,14 +56,20 @@ class AuthViewModel(
 
     fun signIn(onSuccess: (UserProfile?) -> Unit) {
         val state = _uiState.value
-        if (state.email.isBlank() || state.password.isBlank()) {
+        val email = state.email.trim()
+        val password = state.password
+        if (email.isBlank() || password.isBlank()) {
             _uiState.update { it.copy(errorMessage = "Email dan password wajib diisi") }
+            return
+        }
+        if (!EMAIL_REGEX.matches(email)) {
+            _uiState.update { it.copy(errorMessage = "Format email tidak valid") }
             return
         }
 
         viewModelScope.launch {
             _uiState.update { it.copy(isLoading = true, errorMessage = null) }
-            when (val result = authRepository.signIn(state.email, state.password)) {
+            when (val result = authRepository.signIn(email, password)) {
                 is AppResult.Success -> {
                     val user = authRepository.currentUser().firstOrNull()
                     _uiState.update { it.copy(isLoading = false, isSuccess = true) }
@@ -73,7 +79,7 @@ class AuthViewModel(
                     _uiState.update { it.copy(isLoading = false, errorMessage = result.message) }
                 }
                 is AppResult.Loading -> {
-                    // Tidak perlu melakukan apa pun
+                    // Sedang diproses
                 }
             }
         }
@@ -81,18 +87,37 @@ class AuthViewModel(
 
     fun signUp(onSuccess: (UserProfile?) -> Unit) {
         val state = _uiState.value
-        if (state.name.isBlank() || state.email.isBlank() || state.password.isBlank()) {
+        val name = state.name.trim()
+        val email = state.email.trim()
+        val password = state.password
+        val normalizedPhone = normalizePhone(state.phone)
+
+        if (name.isBlank() || email.isBlank() || password.isBlank()) {
             _uiState.update { it.copy(errorMessage = "Nama, email, dan password wajib diisi") }
+            return
+        }
+        if (!EMAIL_REGEX.matches(email)) {
+            _uiState.update { it.copy(errorMessage = "Format email tidak valid") }
+            return
+        }
+        if (password.length < 8) {
+            _uiState.update { it.copy(errorMessage = "Kata sandi minimal 8 karakter") }
+            return
+        }
+        if (normalizedPhone.isNotBlank() && !INDONESIA_PHONE_REGEX.matches(normalizedPhone)) {
+            _uiState.update {
+                it.copy(errorMessage = "Nomor telepon Indonesia tidak valid (contoh: 081234567890)")
+            }
             return
         }
 
         viewModelScope.launch {
             _uiState.update { it.copy(isLoading = true, errorMessage = null) }
             val result = authRepository.signUp(
-                name = state.name,
-                email = state.email,
-                pass = state.password,
-                phone = state.phone,
+                name = name,
+                email = email,
+                pass = password,
+                phone = normalizedPhone,
                 isProvider = state.isProvider
             )
             when (result) {
@@ -105,9 +130,18 @@ class AuthViewModel(
                     _uiState.update { it.copy(isLoading = false, errorMessage = result.message) }
                 }
                 is AppResult.Loading -> {
-                    // Tidak perlu melakukan apa pun
+                    // Sedang diproses
                 }
             }
         }
+    }
+
+    private fun normalizePhone(raw: String): String {
+        return raw.trim().replace(" ", "").replace("-", "")
+    }
+
+    companion object {
+        private val EMAIL_REGEX = Regex("^[A-Za-z0-9+_.-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}$")
+        private val INDONESIA_PHONE_REGEX = Regex("^(\\+62|62|0)8[1-9][0-9]{7,11}$")
     }
 }

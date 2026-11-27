@@ -12,10 +12,8 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
-import id.bantuin.app.ui.theme.TextMuted
-import id.bantuin.app.ui.theme.TextPrimary
+import id.bantuin.app.ui.theme.BantuinTheme
 import java.util.Locale
 
 @Composable
@@ -24,6 +22,7 @@ fun RatingDisplay(
     reviewCount: Int? = null,
     modifier: Modifier = Modifier
 ) {
+    val colors = BantuinTheme.colors
     Row(
         modifier = modifier,
         verticalAlignment = Alignment.CenterVertically
@@ -31,21 +30,21 @@ fun RatingDisplay(
         Icon(
             imageVector = Icons.Default.Star,
             contentDescription = null,
-            tint = Color(0xFFF59E0B),
+            tint = colors.starTint,
             modifier = Modifier.size(15.dp)
         )
         Spacer(modifier = Modifier.width(3.dp))
         Text(
             text = if (rating != null) String.format(Locale.US, "%.1f", rating) else "Baru",
             style = MaterialTheme.typography.labelMedium,
-            color = TextPrimary
+            color = colors.textPrimary
         )
         if (reviewCount != null && reviewCount > 0) {
             Spacer(modifier = Modifier.width(3.dp))
             Text(
                 text = "($reviewCount)",
                 style = MaterialTheme.typography.bodySmall,
-                color = TextMuted
+                color = colors.textMuted
             )
         }
     }

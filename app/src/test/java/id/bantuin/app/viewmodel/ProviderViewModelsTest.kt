@@ -1,23 +1,23 @@
 package id.bantuin.app.viewmodel
 
-import id.bantuin.app.core.dispatcher.AppDispatchers
 import id.bantuin.app.core.session.InMemorySessionStore
 import id.bantuin.app.data.repository.FakeBantuinRepository
-import id.bantuin.app.domain.model.CompletionStatus
 import id.bantuin.app.domain.model.AvailabilityMode
 import id.bantuin.app.domain.model.BookingStatus
 import id.bantuin.app.domain.model.GeoPoint
 import id.bantuin.app.domain.model.ServiceItem
 import id.bantuin.app.domain.repository.UserProfile
 import id.bantuin.app.ui.provider.calendar.ProviderCalendarViewModel
+import id.bantuin.app.ui.provider.calendar.WeeklyScheduleTemplate
 import id.bantuin.app.ui.provider.dashboard.ProviderDashboardViewModel
+import id.bantuin.app.ui.provider.evaluation.ProviderEvaluationViewModel
 import id.bantuin.app.ui.provider.home.ProviderHomeViewModel
 import id.bantuin.app.ui.provider.orders.ProviderOrdersViewModel
 import id.bantuin.app.ui.provider.profile.ProviderProfileEditViewModel
 import id.bantuin.app.ui.provider.services.ProviderServicesViewModel
+import java.util.UUID
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runTest
@@ -38,7 +38,7 @@ class ProviderViewModelsTest {
     @Before
     fun setUp() {
         Dispatchers.setMain(testDispatcher)
-        repository = FakeBantuinRepository(calculationDispatcher = testDispatcher)
+        repository = FakeBantuinRepository()
     }
 
     @After
@@ -61,21 +61,6 @@ class ProviderViewModelsTest {
     }
 
     @Test
-    fun providerHomeViewModel_loadsDataAndSwitchesToCustomer() = runTest {
-        val vm = ProviderHomeViewModel(repository, repository, repository, repository)
-        testDispatcher.scheduler.advanceUntilIdle()
-
-        assertNotNull(vm.uiState.value.provider)
-
-        var switched = false
-        vm.switchToCustomer { switched = true }
-        testDispatcher.scheduler.advanceUntilIdle()
-
-        assertTrue(switched)
-        assertEquals("customer", repository.activeRole().first())
-    }
-
-    @Test
     fun providerHomeViewModel_usesLoggedInMitra_notBudisProfile() = runTest {
         val mitraRepository = mitraRepository("p02", "Ahmad Fauzi")
         val vm = ProviderHomeViewModel(mitraRepository, mitraRepository, mitraRepository)
@@ -83,6 +68,7 @@ class ProviderViewModelsTest {
 
         assertEquals("p02", vm.uiState.value.provider?.providerId)
         assertEquals("Ahmad Fauzi", vm.uiState.value.user?.fullName)
+        assertTrue(vm.uiState.value.isAcceptingOrders)
     }
 
     @Test
@@ -101,7 +87,7 @@ class ProviderViewModelsTest {
 
     @Test
     fun providerCalendarViewModel_validatesOperatingHours() = runTest {
-        val vm = ProviderCalendarViewModel(repository)
+        val vm = ProviderCalendarViewModel(repository, repository)
         testDispatcher.scheduler.advanceUntilIdle()
 
         assertTrue(vm.uiState.value.availabilities.isNotEmpty())
@@ -117,7 +103,8 @@ class ProviderViewModelsTest {
 
     @Test
     fun providerServicesViewModel_savesService() = runTest {
-        val vm = ProviderServicesViewModel(repository)
+        val mitraRepository = mitraRepository("p01", "Budi Santoso, S.T.")
+        val vm = ProviderServicesViewModel(mitraRepository, mitraRepository)
         testDispatcher.scheduler.advanceUntilIdle()
 
         val newService = ServiceItem(
@@ -138,7 +125,7 @@ class ProviderViewModelsTest {
 
     @Test
     fun providerProfileEditViewModel_updatesProfile() = runTest {
-        val vm = ProviderProfileEditViewModel(repository)
+        val vm = ProviderProfileEditViewModel(repository, repository)
         vm.loadProfile("p01")
         testDispatcher.scheduler.advanceUntilIdle()
 
@@ -163,25 +150,170 @@ class ProviderViewModelsTest {
     }
 
     @Test
-    fun providerDashboardViewModel_evaluatesTheSelectedProvidersHistory() = runTest {
-        val vm = ProviderDashboardViewModel(repository, dispatchers = AppDispatchers(
-            io = testDispatcher, default = testDispatcher
-        ))
-        vm.loadData("p01")
+    fun providerDashboardViewModel_evaluatesTrustAndSimulatesAnomaly() = runTest {
+        val mitraRepository = mitraRepository("p02", "Ahmad Fauzi")
+        val vm = ProviderDashboardViewModel(mitraRepository, mitraRepository, mitraRepository)
         testDispatcher.scheduler.advanceUntilIdle()
+
         assertNotNull(vm.uiState.value.trustResult)
-        assertTrue(vm.uiState.value.trustResult?.flagAnomaly == false)
+        val initialTrust = vm.uiState.value.trustResult?.trustScore ?: 0.0
+        assertTrue(initialTrust >= 60.0)
 
-        vm.loadData("p05")
+        // Simulasikan rating anjlok ke 1.0 dan cancel rate tinggi
+        vm.updateSimulation(rating = 1.0, lateCount = 10, cancelCount = 15)
         testDispatcher.scheduler.advanceUntilIdle()
-        assertEquals("p05", vm.uiState.value.providerId)
-        assertTrue(vm.uiState.value.trustResult?.flagAnomaly == true)
-        assertTrue(vm.uiState.value.transactions.any { it.status == CompletionStatus.DIBATALKAN })
 
-        vm.filterHistory(CompletionStatus.DIBATALKAN)
-        assertEquals(CompletionStatus.DIBATALKAN, vm.uiState.value.historyFilter)
-        vm.refresh()
+        assertTrue(vm.uiState.value.isSimulationActive)
+        val simTrust = vm.uiState.value.simResult?.trustScore ?: 100.0
+        assertTrue(simTrust < 60.0)
+        assertTrue(vm.uiState.value.simResult?.flagAnomaly == true)
+    }
+
+    @Test
+    fun providerHomeViewModel_computesLiveTrustScoreAndSpecialty() = runTest {
+        val mitraRepo = mitraRepository("p01", "Budi Santoso, S.T.")
+        val vm = ProviderHomeViewModel(mitraRepo, mitraRepo, mitraRepo)
         testDispatcher.scheduler.advanceUntilIdle()
-        assertTrue(vm.uiState.value.snapshots.isNotEmpty())
+
+        assertNotNull(vm.uiState.value.trustResult)
+        assertTrue(vm.uiState.value.specialtyLabel.isNotBlank())
+    }
+
+    @Test
+    fun providerEvaluationViewModel_showsNewPartnerStateForAccountWithoutTransactions() = runTest {
+        val mitraRepository = mitraRepository("mitra_baru_tanpa_transaksi", "Mitra Baru")
+        val vm = ProviderEvaluationViewModel(mitraRepository, mitraRepository)
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        val state = vm.uiState.value
+        assertNotNull(state.trustResult)
+        assertEquals(70.0, state.trustResult?.trustScore ?: 0.0, 0.001)
+        assertEquals(false, state.trustResult?.flagAnomaly)
+        assertEquals("Mitra Baru", state.tierTitle)
+        assertEquals(null, state.errorMessage)
+    }
+
+    @Test
+    fun providerOrdersViewModel_runsExpirePendingAndObservesFlow() = runTest {
+        val vm = ProviderOrdersViewModel(repository)
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        assertTrue(vm.uiState.value.hasSyncedPendingExpiry)
+    }
+
+    @Test
+    fun providerCalendarViewModel_loadsUpcomingBookings() = runTest {
+        val mitraRepo = mitraRepository("p01", "Budi Santoso, S.T.")
+        val vm = ProviderCalendarViewModel(mitraRepo, mitraRepo)
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        assertTrue(vm.uiState.value.upcomingBookingsLoaded)
+    }
+
+    @Test
+    fun providerServicesViewModel_createsUuidServiceAndAllowsZeroFare() = runTest {
+        val mitraRepo = mitraRepository("p01", "Budi Santoso, S.T.")
+        val vm = ProviderServicesViewModel(mitraRepo, mitraRepo)
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        vm.saveServiceFromForm(
+            existing = null,
+            name = "Survei Lokasi Awal",
+            description = "Kunjungan pengecekan awal",
+            categoryId = 2,
+            baseFareText = "0",
+            durationText = "30"
+        )
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        val created = vm.uiState.value.services.firstOrNull { it.name == "Survei Lokasi Awal" }
+        assertNotNull(created)
+        assertEquals(0, created?.baseFare)
+        // Harus UUID valid untuk kolom PostgreSQL uuid
+        UUID.fromString(created!!.id)
+    }
+
+    @Test
+    fun providerProfileEditViewModel_validatesInvalidPhone() = runTest {
+        val mitraRepo = mitraRepository("p01", "Budi Santoso, S.T.")
+        val vm = ProviderProfileEditViewModel(mitraRepo, mitraRepo)
+        vm.loadProfile("p01")
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        vm.onPhoneChange("abc123")
+        vm.saveProfile()
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        assertEquals(
+            "Nomor telepon Indonesia tidak valid (contoh: 081234567890)",
+            vm.uiState.value.errorMessage
+        )
+    }
+
+    @Test
+    fun providerDashboardViewModel_loadsRevenueAnalyticsAlongWithTrustResult() = runTest {
+        val mitraRepo = mitraRepository("p01", "Budi Santoso, S.T.")
+        val vm = ProviderDashboardViewModel(
+            metricsRepository = mitraRepo,
+            authRepository = mitraRepo,
+            catalogRepository = mitraRepo,
+            walletRepository = mitraRepo
+        )
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        assertNotNull(vm.uiState.value.trustResult)
+        assertEquals(185_000, vm.uiState.value.revenueAnalytics.totalCombinedRevenue)
+        assertEquals(120_000, vm.uiState.value.revenueAnalytics.availableBalance)
+    }
+
+    @Test
+    fun providerEvaluationViewModel_loadsAndRecalculatesTrustMetrics() = runTest {
+        val mitraRepo = mitraRepository("p01", "Budi Santoso, S.T.")
+        val vm = ProviderEvaluationViewModel(mitraRepo, mitraRepo)
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        assertNotNull(vm.uiState.value.trustResult)
+        vm.recalculate()
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        assertTrue(vm.uiState.value.recalculatedRecently)
+        assertTrue(vm.uiState.value.lastSyncLabel.isNotBlank())
+    }
+
+    @Test
+    fun providerProfileEditViewModel_preservesUnsavedEditsAcrossReload() = runTest {
+        val mitraRepo = mitraRepository("p01", "Budi Santoso, S.T.")
+        val vm = ProviderProfileEditViewModel(mitraRepo, mitraRepo)
+        vm.loadProfile("p01")
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        vm.onBioChange("Edit sementara sebelum rotasi")
+        // Simulasikan LaunchedEffect(Unit) terpanggil ulang saat rotasi
+        vm.loadProfile("p01")
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        assertEquals("Edit sementara sebelum rotasi", vm.uiState.value.bio)
+    }
+
+    @Test
+    fun providerCalendarViewModel_appliesTemplatesAndCopiesSchedule() = runTest {
+        val mitraRepo = mitraRepository("p01", "Budi Santoso, S.T.")
+        val vm = ProviderCalendarViewModel(mitraRepo, mitraRepo)
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        vm.applyWeeklyTemplate(WeeklyScheduleTemplate.WEEKDAYS_OFFICE)
+        assertTrue(vm.uiState.value.hasUnsavedChanges)
+        assertEquals(AvailabilityMode.ON, vm.uiState.value.availabilities.first { it.dayOfWeek == 1 }.mode)
+        assertEquals(AvailabilityMode.OFF, vm.uiState.value.availabilities.first { it.dayOfWeek == 7 }.mode)
+
+        vm.updateOperatingHours(1, 540, 1080)
+        vm.copyDayToWeekdays(1)
+        assertTrue((1..5).all { dow ->
+            val d = vm.uiState.value.availabilities.first { it.dayOfWeek == dow }
+            d.openMin == 540 && d.closeMin == 1080
+        })
+
+        vm.applyWeeklyTemplate(WeeklyScheduleTemplate.ALWAYS_ON_24_7)
+        assertTrue(vm.uiState.value.availabilities.all { it.mode == AvailabilityMode.ALWAYS_ON })
     }
 }

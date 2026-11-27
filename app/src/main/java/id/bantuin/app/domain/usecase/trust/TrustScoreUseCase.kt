@@ -5,55 +5,79 @@ import id.bantuin.app.domain.model.AnomalyReason
 import id.bantuin.app.domain.model.ProviderBadge
 import id.bantuin.app.domain.model.TrustInput
 import id.bantuin.app.domain.model.TrustResult
+import id.bantuin.app.domain.model.CompletionOutcome
+import kotlin.time.Duration.Companion.minutes
 
 class TrustScoreUseCase {
     operator fun invoke(input: TrustInput): TrustResult = calculate(input)
 
     fun calculate(input: TrustInput): TrustResult {
-        val completed = input.onTimeCount + input.lateCount
-        val total = input.transactionCount
-        val ratingAvg = input.ratingCount.takeIf { it > 0 }?.let { input.ratingTotal.toDouble() / it }
-        val ratingScore = (ratingAvg ?: 0.0) / 5.0 * 100.0
-        val onTimeRate = percentage(input.onTimeCount, completed)
-        val cancelRate = percentage(input.cancelledCount, total)
-        // Compare the weighted fractions before division so exact thresholds stay exact.
-        val ratingDenominator = input.ratingCount.coerceAtLeast(1).toBigDecimal()
-        val slaDenominator = completed.coerceAtLeast(1).toBigDecimal()
-        val cancelDenominator = total.coerceAtLeast(1).toBigDecimal()
-        val denominator = ratingDenominator * slaDenominator * cancelDenominator
-        val ratingPoints = input.ratingTotal.toBigDecimal() * RATING_WEIGHT * slaDenominator * cancelDenominator
-        val slaPoints = input.onTimeCount.toBigDecimal() * SLA_WEIGHT * ratingDenominator * cancelDenominator
-        val cancellationPoints = input.cancelledCount.toBigDecimal() * CANCELLATION_WEIGHT * ratingDenominator * slaDenominator
-        val numerator = ratingPoints + slaPoints - cancellationPoints
-        val score = (numerator.toDouble() / denominator.toDouble()).coerceIn(0.0, 100.0)
+        val done = input.completed.size
+        val cancelled = input.mitraCancelledCount
+        val total = done + cancelled + input.otherOrderCount
+        if (total == 0) {
+            // Mitra benar-benar baru belum punya riwayat; gunakan skor awal agar
+            // tidak dianggap anomali dan tidak kena penalti visibilitas 0.7x.
+            return TrustResult(
+                ratingAvg = null,
+                ratingScore = 0.0,
+                onTimeRate = 0.0,
+                cancelRate = 0.0,
+                completionRate = null,
+                trustScore = BantuinConfig.TRUST_NEW_PROVIDER_SCORE,
+                txCount = 0,
+                flagAnomaly = false,
+                badge = ProviderBadge.NEW,
+                reasons = emptyList()
+            )
+        }
+        val onTime = input.completed.count { job ->
+            job.outcome?.let { it == CompletionOutcome.SELESAI_TEPAT_WAKTU }
+                ?: (job.startedAt <= job.startAt + BantuinConfig.LATE_TOLERANCE_MIN.minutes)
+        }
+        val average = input.ratings.takeIf { it.isNotEmpty() }?.average()
+        val ratingScore = (average ?: 0.0) * 20
+        val onTimeRate = if (done == 0) 0.0 else 100.0 * onTime / done
+        val cancelRate = if (total == 0) 0.0 else 100.0 * cancelled / total
+
+        // Mitra sudah punya transaksi tetapi belum pernah dirating user:
+        // jangan anggap skor rendah (LOW_TRUST_SCORE) karena rating memang belum ada;
+        // hanya tandai anomali bila rasio pembatalan melebihi batas (> 20%).
+        if (input.ratings.isEmpty()) {
+            val highCancel = 5L * cancelled > total
+            val reasons = if (highCancel) listOf(AnomalyReason.HIGH_CANCEL_RATE) else emptyList()
+            return TrustResult(
+                ratingAvg = null,
+                ratingScore = 0.0,
+                onTimeRate = onTimeRate,
+                cancelRate = cancelRate,
+                completionRate = (done + cancelled).takeIf { it > 0 }?.let { done.toDouble() / it },
+                trustScore = BantuinConfig.TRUST_NEW_PROVIDER_SCORE,
+                txCount = total,
+                flagAnomaly = highCancel,
+                badge = if (highCancel) ProviderBadge.NONE else ProviderBadge.NEW,
+                reasons = reasons
+            )
+        }
+
+        // Compare the exact weighted fractions before dividing so 60 and 20 remain strict thresholds.
+        val ratingsDen = input.ratings.size.coerceAtLeast(1).toBigDecimal()
+        val slaDen = done.coerceAtLeast(1).toBigDecimal()
+        val cancelDen = total.coerceAtLeast(1).toBigDecimal()
+        val denominator = ratingsDen * slaDen * cancelDen
+        val numerator = (BantuinConfig.W_TRUST_RATING.toBigDecimal() * 20.toBigDecimal()) * input.ratings.sumOf { it.toLong() }.toBigDecimal() * slaDen * cancelDen +
+            (BantuinConfig.W_TRUST_ONTIME.toBigDecimal() * 100.toBigDecimal()) * onTime.toBigDecimal() * ratingsDen * cancelDen -
+            (BantuinConfig.W_TRUST_CANCELLATION.toBigDecimal() * 100.toBigDecimal()) * cancelled.toBigDecimal() * ratingsDen * slaDen
+        val score = numerator.toDouble().div(denominator.toDouble()).coerceIn(0.0, 100.0)
         val reasons = buildList {
-            if (numerator < BantuinConfig.TRUST_MIN_THRESHOLD.toBigDecimal() * denominator) {
-                add(AnomalyReason.LOW_TRUST_SCORE)
-            }
-            if (input.cancelledCount * 100L > total * BantuinConfig.CANCEL_RATE_MAX_PCT.toLong()) {
-                add(AnomalyReason.HIGH_CANCEL_RATE)
-            }
+            if (numerator < 60.toBigDecimal() * denominator) add(AnomalyReason.LOW_TRUST_SCORE)
+            if (5L * cancelled > total) add(AnomalyReason.HIGH_CANCEL_RATE)
         }
         return TrustResult(
-            ratingAvg = ratingAvg,
-            ratingScore = ratingScore,
-            onTimeRate = onTimeRate,
-            cancelRate = cancelRate,
-            completionRate = total.takeIf { it > 0 }?.let { completed.toDouble() / it },
-            trustScore = score,
-            txCount = total,
-            flagAnomaly = reasons.isNotEmpty(),
-            badge = if (reasons.isEmpty()) ProviderBadge.TRUSTED else ProviderBadge.NONE,
-            reasons = reasons
+            ratingAvg = average, ratingScore = ratingScore, onTimeRate = onTimeRate, cancelRate = cancelRate,
+            completionRate = (done + cancelled).takeIf { it > 0 }?.let { done.toDouble() / it },
+            trustScore = score, txCount = total, flagAnomaly = reasons.isNotEmpty(),
+            badge = if (reasons.isEmpty()) ProviderBadge.TRUSTED else ProviderBadge.NONE, reasons = reasons
         )
     }
-
-    private companion object {
-        val RATING_WEIGHT = BantuinConfig.W_TRUST_RATING.toBigDecimal() * 20.toBigDecimal()
-        val SLA_WEIGHT = BantuinConfig.W_TRUST_ONTIME.toBigDecimal() * 100.toBigDecimal()
-        val CANCELLATION_WEIGHT = BantuinConfig.W_TRUST_CANCELLATION.toBigDecimal() * 100.toBigDecimal()
-    }
-
-    private fun percentage(count: Int, total: Int): Double =
-        if (total == 0) 0.0 else count * 100.0 / total
 }

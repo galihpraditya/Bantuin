@@ -14,7 +14,7 @@ values
   (3, 'Tukang Bangunan', 'construction', 180),
   (4, 'Jasa Kebersihan', 'cleaning_services', 120),
   (5, 'Angkut Barang', 'local_shipping', 120),
-  (6, 'Pengajar Privat', 'school', 90)
+  (6, 'Pipa & Pompa Air', 'plumbing', 90)
 on conflict (id) do update set
   name = excluded.name,
   icon = excluded.icon,
@@ -27,12 +27,10 @@ select setval('public.service_categories_id_seq', (select max(id) from public.se
 -- Catatan: Password terenkripsi bcrypt untuk 'Demo12345!'
 insert into auth.users (id, instance_id, aud, role, email, encrypted_password, email_confirmed_at, raw_app_meta_data, raw_user_meta_data, created_at, updated_at)
 values
-  -- Pelanggan Demo
-  ('c0000000-0000-0000-0000-000000000000', '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated', 'user@bantuin.test', crypt('Demo123!', gen_salt('bf')), now(), '{"provider":"email","providers":["email"]}', '{"full_name":"Rani Wijaya","phone":"081234567890","roles":["customer"]}', now(), now()),
+  -- 2 Pelanggan Demo
   ('c0000000-0000-0000-0000-000000000001', '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated', 'pelanggan1@bantuin.test', crypt('Demo12345!', gen_salt('bf')), now(), '{"provider":"email","providers":["email"]}', '{"full_name":"Rani Wijaya","phone":"081234567890","roles":["customer"]}', now(), now()),
   ('c0000000-0000-0000-0000-000000000002', '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated', 'pelanggan2@bantuin.test', crypt('Demo12345!', gen_salt('bf')), now(), '{"provider":"email","providers":["email"]}', '{"full_name":"Dimas Arya","phone":"081234567891","roles":["customer"]}', now(), now()),
-  -- Mitra Demo
-  ('00000000-0000-0000-0000-000000000000', '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated', 'mitra@bantuin.test', crypt('Demo123!', gen_salt('bf')), now(), '{"provider":"email","providers":["email"]}', '{"full_name":"Budi Santoso, S.T.","phone":"081200000001","roles":["provider"]}', now(), now()),
+  -- 15 Mitra Demo
   ('00000000-0000-0000-0000-000000000001', '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated', 'mitra01@bantuin.test', crypt('Demo12345!', gen_salt('bf')), now(), '{"provider":"email","providers":["email"]}', '{"full_name":"Budi Santoso, S.T.","phone":"081200000001","roles":["provider"]}', now(), now()),
   ('00000000-0000-0000-0000-000000000002', '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated', 'mitra02@bantuin.test', crypt('Demo12345!', gen_salt('bf')), now(), '{"provider":"email","providers":["email"]}', '{"full_name":"Ahmad Fauzi","phone":"081200000002","roles":["provider"]}', now(), now()),
   ('00000000-0000-0000-0000-000000000003', '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated', 'mitra03@bantuin.test', crypt('Demo12345!', gen_salt('bf')), now(), '{"provider":"email","providers":["email"]}', '{"full_name":"Surya Citra Teknik","phone":"081200000003","roles":["provider"]}', now(), now()),
@@ -45,7 +43,7 @@ values
   ('00000000-0000-0000-0000-000000000010', '00000000-0000-0000-0000-000000000010', 'authenticated', 'authenticated', 'mitra10@bantuin.test', crypt('Demo12345!', gen_salt('bf')), now(), '{"provider":"email","providers":["email"]}', '{"full_name":"Bu Siti Deep Clean","phone":"081200000010","roles":["provider"]}', now(), now()),
   ('00000000-0000-0000-0000-000000000011', '00000000-0000-0000-0000-000000000011', 'authenticated', 'authenticated', 'mitra11@bantuin.test', crypt('Demo12345!', gen_salt('bf')), now(), '{"provider":"email","providers":["email"]}', '{"full_name":"Klin Kos Ceria","phone":"081200000011","roles":["provider"]}', now(), now()),
   ('00000000-0000-0000-0000-000000000012', '00000000-0000-0000-0000-000000000012', 'authenticated', 'authenticated', 'mitra12@bantuin.test', crypt('Demo12345!', gen_salt('bf')), now(), '{"provider":"email","providers":["email"]}', '{"full_name":"Dimas Pick-up Angkut","phone":"081200000012","roles":["provider"]}', now(), now()),
-  ('00000000-0000-0000-0000-000000000013', '00000000-0000-0000-0000-000000000013', 'authenticated', 'authenticated', 'mitra13@bantuin.test', crypt('Demo12345!', gen_salt('bf')), now(), '{"provider":"email","providers":["email"]}', '{"full_name":"Anisa Rahmawati, S.Si.","phone":"081200000013","roles":["provider"]}', now(), now()),
+  ('00000000-0000-0000-0000-000000000013', '00000000-0000-0000-0000-000000000013', 'authenticated', 'authenticated', 'mitra13@bantuin.test', crypt('Demo12345!', gen_salt('bf')), now(), '{"provider":"email","providers":["email"]}', '{"full_name":"Hendra Sanjaya","phone":"081200000013","roles":["provider"]}', now(), now()),
   ('00000000-0000-0000-0000-000000000014', '00000000-0000-0000-0000-000000000014', 'authenticated', 'authenticated', 'mitra14@bantuin.test', crypt('Demo12345!', gen_salt('bf')), now(), '{"provider":"email","providers":["email"]}', '{"full_name":"Teknisi Kepanjen Mandiri","phone":"081200000014","roles":["provider"]}', now(), now()),
   ('00000000-0000-0000-0000-000000000015', '00000000-0000-0000-0000-000000000015', 'authenticated', 'authenticated', 'mitra15@bantuin.test', crypt('Demo12345!', gen_salt('bf')), now(), '{"provider":"email","providers":["email"]}', '{"full_name":"Bambang Libur Service","phone":"081200000015","roles":["provider"]}', now(), now())
 on conflict (id) do nothing;
@@ -106,7 +104,7 @@ values
   ('00000000-0000-0000-0000-000000000010', 'Bu Siti Deep Clean', '081200000010', array['provider']),
   ('00000000-0000-0000-0000-000000000011', 'Klin Kos Ceria', '081200000011', array['provider']),
   ('00000000-0000-0000-0000-000000000012', 'Dimas Pick-up Angkut', '081200000012', array['provider']),
-  ('00000000-0000-0000-0000-000000000013', 'Anisa Rahmawati, S.Si.', '081200000013', array['provider']),
+  ('00000000-0000-0000-0000-000000000013', 'Hendra Sanjaya', '081200000013', array['provider']),
   ('00000000-0000-0000-0000-000000000014', 'Teknisi Kepanjen Mandiri', '081200000014', array['provider']),
   ('00000000-0000-0000-0000-000000000015', 'Bambang Libur Service', '081200000015', array['provider'])
 on conflict (id) do update set
@@ -116,45 +114,55 @@ on conflict (id) do update set
 
 -- ===== 4. Profil Spesifik 15 Mitra (public.provider_profiles) =====
 insert into public.provider_profiles (
-  user_id, bio, address, lat, lng, is_suspended
+  user_id, bio, address, lat, lng, is_suspended,
+  rating_avg, completion_rate, on_time_rate, cancel_rate, trust_score, tx_count_30d, flag_anomaly, badge, metrics_updated_at
 )
 values
   -- 1. Pak Budi Santoso (AC - Terpercaya, rujukan F1-F4)
-  ('00000000-0000-0000-0000-000000000001', 'Teknisi AC Berlisensi BNSP dengan 7+ tahun pengalaman.', 'Jl. Kaliurang No. 14, Lowokwaru, Malang', -7.9650, 112.6320, false),
+  ('00000000-0000-0000-0000-000000000001', 'Teknisi AC Berlisensi BNSP dengan 7+ tahun pengalaman.', 'Jl. Kaliurang No. 14, Lowokwaru, Malang', -7.9650, 112.6320, false, 4.90, 0.9900, 96.40, 1.00, 92.00, 184, false, 'TRUSTED', now()),
   -- 2. Ahmad Fauzi (AC - Terpercaya)
-  ('00000000-0000-0000-0000-000000000002', 'Spesialis pendingin ruangan dan elektronik rumah tangga.', 'Jl. Soekarno Hatta No. 88, Malang', -7.9520, 112.6250, false),
+  ('00000000-0000-0000-0000-000000000002', 'Spesialis pendingin ruangan dan elektronik rumah tangga.', 'Jl. Soekarno Hatta No. 88, Malang', -7.9520, 112.6250, false, 4.80, 0.9700, 95.00, 2.00, 89.00, 92, false, 'TRUSTED', now()),
   -- 3. Surya Citra Teknik (AC - Terpercaya)
-  ('00000000-0000-0000-0000-000000000003', 'Solusi Cepat AC Split, Multi-split & Inverter.', 'Jl. Danau Toba G9/E12, Sawojajar, Malang', -7.9300, 112.6400, false),
+  ('00000000-0000-0000-0000-000000000003', 'Solusi Cepat AC Split, Multi-split & Inverter.', 'Jl. Danau Toba G9/E12, Sawojajar, Malang', -7.9300, 112.6400, false, 4.70, 0.9500, 93.00, 3.00, 86.00, 64, false, 'TRUSTED', now()),
   -- 4. Pak Sugeng W. (Listrik - Terpercaya)
-  ('00000000-0000-0000-0000-000000000004', 'Spesialis Listrik Arus Kuat & Lemah, instalasi MCB rumah/kos.', 'Jl. Ijen No. 25, Klojen, Malang', -7.9750, 112.6310, false),
+  ('00000000-0000-0000-0000-000000000004', 'Spesialis Listrik Arus Kuat & Lemah, instalasi MCB rumah/kos.', 'Jl. Ijen No. 25, Klojen, Malang', -7.9750, 112.6310, false, 4.90, 0.9800, 97.00, 1.50, 94.00, 128, false, 'TRUSTED', now()),
   -- 5. Joko Hendro (Listrik - Anomali Cancel > 20%)
-  ('00000000-0000-0000-0000-000000000005', 'Perbaikan lampu dan kelistrikan darurat.', 'Jl. Bondowoso No. 4, Malang', -7.9700, 112.6200, false),
+  ('00000000-0000-0000-0000-000000000005', 'Perbaikan lampu dan kelistrikan darurat.', 'Jl. Bondowoso No. 4, Malang', -7.9700, 112.6200, false, 4.10, 0.7500, 90.00, 25.00, 62.00, 20, true, 'NONE', now()),
   -- 6. Rudi Hartono (Listrik - Anomali Trust Score < 60)
-  ('00000000-0000-0000-0000-000000000006', 'Layanan instalasi listrik kos.', 'Jl. Sulfat No. 12, Blimbing, Malang', -7.9600, 112.6450, false),
-  -- 7. Rian Pratama (Listrik - Mitra Baru)
-  ('00000000-0000-0000-0000-000000000007', 'Teknisi muda bersertifikasi vokasi.', 'Jl. Kawi No. 10, Klojen, Malang', -7.9850, 112.6350, false),
+  ('00000000-0000-0000-0000-000000000006', 'Layanan instalasi listrik kos.', 'Jl. Sulfat No. 12, Blimbing, Malang', -7.9600, 112.6450, false, 2.40, 0.8500, 80.00, 15.00, 54.00, 15, true, 'NONE', now()),
+  -- 7. Rian Pratama (Listrik - Mitra Baru < 5 tx)
+  ('00000000-0000-0000-0000-000000000007', 'Teknisi muda bersertifikasi vokasi.', 'Jl. Kawi No. 10, Klojen, Malang', -7.9850, 112.6350, false, null, null, null, 0.00, 70.00, 2, false, 'NEW', now()),
   -- 8. Pak Slamet Renovasi (Bangunan - Terpercaya)
-  ('00000000-0000-0000-0000-000000000008', 'Ahli perbaikan kebocoran atap dan instalasi kran sanitasi.', 'Jl. MT Haryono No. 50, Dinoyo, Malang', -7.9550, 112.6100, false),
+  ('00000000-0000-0000-0000-000000000008', 'Ahli perbaikan kebocoran atap dan instalasi kran sanitasi.', 'Jl. MT Haryono No. 50, Dinoyo, Malang', -7.9550, 112.6100, false, 4.80, 0.9600, 94.00, 2.00, 88.00, 55, false, 'TRUSTED', now()),
   -- 9. Tukang Siaga 24 Jam (Bangunan - ALWAYS_ON)
-  ('00000000-0000-0000-0000-000000000009', 'Siap meluncur 24 jam untuk kondisi kebocoran pipa darurat.', 'Jl. Veteran No. 1, Klojen, Malang', -7.9700, 112.6350, false),
+  ('00000000-0000-0000-0000-000000000009', 'Siap meluncur 24 jam untuk kondisi kebocoran pipa darurat.', 'Jl. Veteran No. 1, Klojen, Malang', -7.9700, 112.6350, false, 4.60, 0.9400, 92.00, 3.00, 84.00, 78, false, 'TRUSTED', now()),
   -- 10. Bu Siti Deep Clean (Kebersihan - Terpercaya)
-  ('00000000-0000-0000-0000-000000000010', 'Pembersihan total kamar mandi berkerak dan kamar kos.', 'Jl. Gajayana No. 22, Lowokwaru, Malang', -7.9620, 112.6150, false),
+  ('00000000-0000-0000-0000-000000000010', 'Pembersihan total kamar mandi berkerak dan kamar kos.', 'Jl. Gajayana No. 22, Lowokwaru, Malang', -7.9620, 112.6150, false, 4.90, 0.9800, 96.00, 1.00, 93.00, 110, false, 'TRUSTED', now()),
   -- 11. Klin Kos Ceria (Kebersihan - Baru < 5 tx)
-  ('00000000-0000-0000-0000-000000000011', 'Jasa kebersihan higienis untuk kos mahasiswa.', 'Jl. Semeru No. 3, Klojen, Malang', -7.9780, 112.6280, false),
+  ('00000000-0000-0000-0000-000000000011', 'Jasa kebersihan higienis untuk kos mahasiswa.', 'Jl. Semeru No. 3, Klojen, Malang', -7.9780, 112.6280, false, null, null, null, 0.00, 70.00, 1, false, 'NEW', now()),
   -- 12. Dimas Pick-up Angkut (Angkut - Terpercaya)
-  ('00000000-0000-0000-0000-000000000012', 'Armada bersih, terpal aman, bantu angkat barang sampai kamar.', 'Jl. Tlogomas No. 15, Malang', -7.9400, 112.6200, false),
-  -- 13. Anisa Rahmawati, S.Si. (Privat - Terpercaya)
-  ('00000000-0000-0000-0000-000000000013', 'Tutor Sains & Matematika, alumni UB berprestasi.', 'Jl. Bandung No. 8, Klojen, Malang', -7.9720, 112.6350, false),
+  ('00000000-0000-0000-0000-000000000012', 'Armada bersih, terpal aman, bantu angkat barang sampai kamar.', 'Jl. Tlogomas No. 15, Malang', -7.9400, 112.6200, false, 4.80, 0.9500, 93.00, 2.50, 87.00, 42, false, 'TRUSTED', now()),
+  -- 13. Hendra Sanjaya (Pipa & Pompa Air - Terpercaya)
+  ('00000000-0000-0000-0000-000000000013', 'Ahli instalasi pipa, perbaikan pompa air & kuras tandon bersih.', 'Jl. Bandung No. 8, Klojen, Malang', -7.9720, 112.6350, false, 5.00, 1.0000, 99.00, 0.00, 96.00, 35, false, 'TRUSTED', now()),
   -- 14. Teknisi Kepanjen Mandiri (Luar Radius 17 km)
-  ('00000000-0000-0000-0000-000000000014', 'Layanan spesialis wilayah Malang Selatan.', 'Jl. Panji No. 80, Kepanjen, Malang', -8.1300, 112.5700, false),
+  ('00000000-0000-0000-0000-000000000014', 'Layanan spesialis wilayah Malang Selatan.', 'Jl. Panji No. 80, Kepanjen, Malang', -8.1300, 112.5700, false, 4.70, 0.9500, 91.00, 2.00, 82.00, 18, false, 'TRUSTED', now()),
   -- 15. Bambang Libur Service (Semua Hari OFF)
-  ('00000000-0000-0000-0000-000000000015', 'Sedang cuti operasional sementara.', 'Jl. Merdeka Barat, Malang', -7.9780, 112.6300, false)
+  ('00000000-0000-0000-0000-000000000015', 'Sedang cuti operasional sementara.', 'Jl. Merdeka Barat, Malang', -7.9780, 112.6300, false, 4.50, 0.9000, 88.00, 4.00, 75.00, 10, false, 'NONE', now())
 on conflict (user_id) do update set
   bio = excluded.bio,
   address = excluded.address,
   lat = excluded.lat,
   lng = excluded.lng,
-  is_suspended = excluded.is_suspended;
+  is_suspended = excluded.is_suspended,
+  rating_avg = excluded.rating_avg,
+  completion_rate = excluded.completion_rate,
+  on_time_rate = excluded.on_time_rate,
+  cancel_rate = excluded.cancel_rate,
+  trust_score = excluded.trust_score,
+  tx_count_30d = excluded.tx_count_30d,
+  flag_anomaly = excluded.flag_anomaly,
+  badge = excluded.badge,
+  metrics_updated_at = excluded.metrics_updated_at;
 
 -- ===== 5. Katalog Layanan Mitra (public.services) =====
 insert into public.services (id, provider_id, category_id, name, description, base_fare, duration_min, is_active)
@@ -186,8 +194,8 @@ values
   ('10000000-0000-0000-0000-000000000014', '00000000-0000-0000-0000-000000000011', 4, 'Pembersihan Kamar Kos', 'Sapu, pel, lap perabot kamar kos', 45000, 90, true),
   -- Dimas (p12) - Angkut
   ('10000000-0000-0000-0000-000000000015', '00000000-0000-0000-0000-000000000012', 5, 'Angkut Pindahan Kos', 'Pick-up dan bantuan angkat barang kos hingga sampai tujuan', 100000, 120, true),
-  -- Anisa (p13) - Privat
-  ('10000000-0000-0000-0000-000000000016', '00000000-0000-0000-0000-000000000013', 6, 'Bimbingan Belajar Privat (90 mnt)', 'Bimbingan satu lawan satu mata kuliah / pelajaran sekolah', 60000, 90, true),
+  -- Hendra (p13) - Pipa & Pompa Air
+  ('10000000-0000-0000-0000-000000000016', '00000000-0000-0000-0000-000000000013', 6, 'Servis Pompa Air & Saluran Pipa', 'Perbaikan pompa air mati, pipa bocor, dan saluran mampet', 65000, 90, true),
   -- Teknisi Kepanjen (p14)
   ('10000000-0000-0000-0000-000000000017', '00000000-0000-0000-0000-000000000014', 1, 'Servis Listrik Wilayah Selatan', 'Perbaikan kelistrikan Kepanjen dan sekitarnya', 70000, 90, true),
   -- Bambang (p15)
@@ -319,57 +327,47 @@ values (
 )
 on conflict (id) do nothing;
 
--- ===== 8. Skenario F4 dari pesanan dan ulasan aktual =====
--- Sugeng (AMAN), Joko (rasio batal tinggi), Rudi (skor rendah dan rasio batal tinggi).
-with demo(job, provider, service, days_ago, booking_status, delay_minutes) as (
-  values
-    (10, 4, 6, 1, 'SELESAI', 5),
-    (11, 4, 6, 4, 'SELESAI', 5),
-    (12, 5, 8, 1, 'SELESAI', 5),
-    (13, 5, 8, 3, 'SELESAI', 5),
-    (14, 5, 8, 5, 'SELESAI', 5),
-    (15, 5, 8, 8, 'DIBATALKAN_MITRA', null),
-    (16, 6, 9, 2, 'SELESAI', 25),
-    (17, 6, 9, 4, 'SELESAI', 30),
-    (18, 6, 9, 7, 'DIBATALKAN_PELANGGAN', null),
-    (19, 6, 9, 9, 'DIBATALKAN_MITRA', null),
-    (20, 1, 1, 0, 'DALAM_PENGERJAAN', 5)
-), schedule as (
-  select demo.*, now() - days_ago * interval '1 day' - interval '1 hour' as starts
-  from demo
-)
+-- ===== 8. Snapshot Historis Metrik Mitra Pak Budi (public.provider_metric_snapshots) =====
+insert into public.provider_metric_snapshots (provider_id, computed_at, trust_score, rating_score, on_time_rate, cancel_rate, tx_count, flag_anomaly)
+values
+  ('00000000-0000-0000-0000-000000000001', now() - interval '21 days', 88.00, 90.00, 92.00, 2.00, 160, false),
+  ('00000000-0000-0000-0000-000000000001', now() - interval '14 days', 90.00, 92.00, 95.00, 1.80, 170, false),
+  ('00000000-0000-0000-0000-000000000001', now() - interval '7 days', 91.00, 94.00, 96.00, 1.50, 178, false),
+  ('00000000-0000-0000-0000-000000000001', now(), 92.00, 96.40, 96.40, 1.00, 184, false);
+
+
+-- Pak Sugeng: transaksi selesai dan ulasan contoh untuk profil demo.
+with demo(n) as (values (10), (11), (12))
 insert into public.bookings (
-  id, customer_id, provider_id, service_id, start_at, end_at, complexity, is_urgent,
-  distance_km, base_fare, base_cost, surge_applied, total_cost,
-  customer_lat, customer_lng, status, expires_at, started_at, finished_at, created_at
+  id, customer_id, provider_id, service_id, start_at, end_at, complexity, is_urgent, distance_km,
+  base_fare, base_cost, surge_applied, total_cost, customer_lat, customer_lng, status,
+  expires_at, started_at, finished_at, created_at
 )
-select
-  ('20000000-0000-0000-0000-' || lpad(job::text, 12, '0'))::uuid,
-  'c0000000-0000-0000-0000-000000000001',
-  ('00000000-0000-0000-0000-' || lpad(provider::text, 12, '0'))::uuid,
-  s.id, starts, starts + interval '90 minutes', 'RINGAN', false,
-  1.5, s.base_fare, s.base_fare + 3000, false, s.base_fare + 3000,
-  -7.9797, 112.6304, booking_status, starts, starts + delay_minutes * interval '1 minute',
-  case when booking_status <> 'DALAM_PENGERJAAN' then starts + interval '45 minutes' end,
-  starts - interval '2 hours'
-from schedule
-join public.services s on s.id = ('10000000-0000-0000-0000-' || lpad(service::text, 12, '0'))::uuid
+select ('20000000-0000-0000-0000-' || lpad(n::text, 12, '0'))::uuid,
+  'c0000000-0000-0000-0000-000000000001', '00000000-0000-0000-0000-000000000004',
+  '10000000-0000-0000-0000-000000000006', start_time, start_time + interval '1 hour',
+  'RINGAN', false, 1.4, 45000, 47800, false, 48000, -7.9797, 112.6304, 'SELESAI',
+  start_time, start_time + interval '5 minutes', start_time + interval '50 minutes', start_time - interval '1 hour'
+from demo cross join lateral (select now() - (n - 8) * interval '1 day' as start_time) timing
 on conflict (id) do nothing;
 
-with demo(job, rating, comment) as (
-  values
-    (10, 5, 'Datang sesuai jadwal dan instalasi rapi.'),
-    (11, 5, 'Perbaikan selesai tepat waktu.'),
-    (12, 5, 'Perbaikan tuntas dan rapi.'),
-    (13, 5, 'Pelayanan baik dan cepat.'),
-    (14, 5, 'Datang sesuai jadwal.'),
-    (16, 2, 'Tiba jauh melebihi jadwal.'),
-    (17, 2, 'Pengerjaan dimulai terlambat.')
+with demo(n, stars, comment) as (
+  values (10, 5, 'Datang tepat waktu dan MCB kembali normal.'),
+         (11, 5, 'Instalasi stop kontak rapi dan sudah dites.'),
+         (12, 4, 'Biayanya dijelaskan sebelum pengerjaan.')
 )
 insert into public.reviews (id, booking_id, customer_id, provider_id, rating, comment, created_at)
-select
-  ('30000000-0000-0000-0000-' || lpad(job::text, 12, '0'))::uuid,
-  b.id, b.customer_id, b.provider_id, demo.rating, demo.comment, b.finished_at
-from demo
-join public.bookings b on b.id = ('20000000-0000-0000-0000-' || lpad(job::text, 12, '0'))::uuid
+select ('30000000-0000-0000-0000-' || lpad(n::text, 12, '0'))::uuid, b.id, b.customer_id,
+       b.provider_id, demo.stars, demo.comment, b.finished_at
+from demo join public.bookings b on b.id = ('20000000-0000-0000-0000-' || lpad(n::text, 12, '0'))::uuid
 on conflict do nothing;
+
+do $$
+declare provider record;
+begin
+    if to_regprocedure('public.refresh_provider_trust(uuid)') is not null then
+        for provider in select user_id from public.provider_profiles order by user_id loop
+            perform public.refresh_provider_trust(provider.user_id);
+        end loop;
+    end if;
+end $$;

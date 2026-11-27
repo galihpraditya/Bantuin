@@ -22,33 +22,6 @@ enum class BookingStatus(val displayName: String) {
     DIBATALKAN_MITRA("Dibatalkan Mitra");
 
     val isActive get() = this in setOf(PENDING, DIKONFIRMASI, DALAM_PENGERJAAN)
-
-    /** Status akhir: tidak ada transisi lanjutan dan tidak bisa dibatalkan lagi. */
-    val isTerminal get() = this in setOf(
-        SELESAI, DITOLAK, KEDALUWARSA, DIBATALKAN_PELANGGAN, DIBATALKAN_MITRA
-    )
-
-    val isCancelled get() = this in setOf(
-        DITOLAK, KEDALUWARSA, DIBATALKAN_PELANGGAN, DIBATALKAN_MITRA
-    )
-
-    /** Pelanggan hanya boleh membatalkan sebelum mitra mulai mengerjakan. */
-    val canCustomerCancel get() = this in setOf(PENDING, DIKONFIRMASI)
-
-    /** Mitra sudah ditugaskan dan datang/bertugas pada status ini. */
-    val isProviderAssigned get() = this in setOf(DIKONFIRMASI, DALAM_PENGERJAAN, SELESAI)
-
-    /**
-     * Transisi yang diizinkan, mengikuti RPC update_booking_status di Supabase.
-     * Dipakai juga oleh repository offline agar demo tidak bisa melompati alur
-     * (misalnya PENDING langsung SELESAI saat mitra belum datang).
-     */
-    fun canTransitionTo(next: BookingStatus): Boolean = when (this) {
-        PENDING -> next in setOf(DIKONFIRMASI, DITOLAK, DIBATALKAN_PELANGGAN)
-        DIKONFIRMASI -> next in setOf(DALAM_PENGERJAAN, DIBATALKAN_MITRA, DIBATALKAN_PELANGGAN)
-        DALAM_PENGERJAAN -> next == SELESAI
-        else -> false
-    }
 }
 
 enum class AvailabilityMode { OFF, ON, ALWAYS_ON }
@@ -98,8 +71,7 @@ data class ProviderCandidate(
     val flagAnomaly: Boolean,
     val badge: ProviderBadge,
     val minBaseFare: Int?,
-    val responseTimeText: String = "< 15 mnt",
-    val isDemo: Boolean = false
+    val responseTimeText: String = "< 15 mnt"
 )
 
 data class RankedProvider(
@@ -119,10 +91,8 @@ data class MatchResult(
 
 enum class SurgeReason(val label: String) {
     NONE("Tarif Normal"),
-    PEAK_HOUR("Jam Sibuk (+20%)"),
     NIGHT("Layanan Malam (+20%)"),
     URGENT("Layanan Cepat Tanggap (+20%)"),
-    PEAK_AND_URGENT("Jam Sibuk & Darurat (+20%)"),
     NIGHT_AND_URGENT("Malam & Darurat (+20%)")
 }
 
@@ -154,41 +124,27 @@ data class SlotCheckResult(
     val alternativeStartsMin: List<Int>
 )
 
-data class LockInfo(
-    val lockId: String,
-    val providerId: String,
-    val startMin: Int,
-    val endMin: Int,
-    val expiresAtMillis: Long
-)
-
-enum class CompletionStatus(val label: String) {
-    SELESAI_TEPAT_WAKTU("Selesai Tepat Waktu"),
-    TERLAMBAT("Terlambat"),
-    DIBATALKAN("Dibatalkan")
+enum class CompletionOutcome(val label: String) {
+    SELESAI_TEPAT_WAKTU("Selesai Tepat Waktu"), TERLAMBAT("Terlambat"), DIBATALKAN("Dibatalkan")
 }
 
-data class TransactionOutcome(
-    val bookingId: String,
-    val providerId: String,
-    val status: CompletionStatus,
-    val resolvedAt: Instant,
-    val customerConfirmed: Boolean = false
-)
+fun BookingStatus.reviewOutcomes(): List<CompletionOutcome> = when (this) {
+    BookingStatus.SELESAI -> listOf(CompletionOutcome.SELESAI_TEPAT_WAKTU, CompletionOutcome.TERLAMBAT)
+    else -> emptyList()
+}
 
-data class BookingEvent(val status: BookingStatus, val occurredAt: Instant)
+data class CompletedJob(
+    val startAt: Instant,
+    val startedAt: Instant,
+    val outcome: CompletionOutcome? = null
+)
 
 data class TrustInput(
-    val onTimeCount: Int = 0,
-    val lateCount: Int = 0,
-    val cancelledCount: Int = 0,
-    val ratingCount: Int = 0,
-    val ratingTotal: Long = 0,
-    val otherCount: Int = 0
-) {
-    val transactionCount get() = onTimeCount + lateCount + cancelledCount + otherCount
-    val hasEvidence get() = transactionCount > 0 || ratingCount > 0
-}
+    val completed: List<CompletedJob>,
+    val mitraCancelledCount: Int,
+    val ratings: List<Int>,
+    val otherOrderCount: Int = 0
+)
 
 enum class AnomalyReason(val description: String) {
     LOW_TRUST_SCORE("Trust Score di bawah 60"),
@@ -230,7 +186,7 @@ data class OrderDraft(
     val customerAddress: String,
     val distanceKm: Double,
     val costEstimate: CostEstimate? = null,
-    val lockInfo: LockInfo? = null
+    val paymentMethod: PaymentMethod = PaymentMethod.CASH
 )
 
 data class BookingItem(
@@ -242,13 +198,34 @@ data class BookingItem(
     val serviceName: String,
     val scheduledDate: String,
     val scheduledTime: String,
+    val scheduledDateIso: String = scheduledDate,
     val totalCost: Int,
     val status: BookingStatus,
     val address: String,
     val createdAt: Instant,
     val notes: String? = null,
     val review: ReviewItem? = null,
-    val outcome: TransactionOutcome? = null
+    val expiresAt: Instant? = null,
+    val startedAt: Instant? = null,
+    val finishedAt: Instant? = null,
+    val customerLat: Double? = null,
+    val customerLng: Double? = null,
+    val distanceKm: Double = 0.0,
+    val providerLocation: GeoPoint? = null,
+    val providerPhone: String? = null,
+    val customerPhone: String? = null,
+    val paymentMethod: PaymentMethod = PaymentMethod.CASH,
+    val paymentStatus: PaymentStatus = PaymentStatus.UNPAID,
+    val completionNote: String? = null,
+    val completionOutcome: CompletionOutcome? = null
+)
+
+data class BookingEvent(
+    val id: Long,
+    val bookingId: String,
+    val status: BookingStatus,
+    val actorId: String?,
+    val createdAt: Instant
 )
 
 data class ReviewItem(
@@ -259,6 +236,35 @@ data class ReviewItem(
     val comment: String?,
     val tags: List<String> = emptyList(),
     val createdAtText: String = "Baru saja",
-    val providerId: String = "",
     val createdAt: Instant? = null
 )
+
+// ═══════════════════════════════════════════════════════════════
+// SCALE FEATURE: Bookmark / Mitra Favorit Pelanggan
+// ═══════════════════════════════════════════════════════════════
+
+/** Mitra favorit yang di-bookmark oleh pelanggan. */
+data class BookmarkedProvider(
+    val providerId: String,
+    val name: String,
+    val avatarUrl: String?,
+    val address: String,
+    val ratingAvg: Double?,
+    val badge: ProviderBadge,
+    val minBaseFare: Int?,
+    val categoryId: Int,
+    val savedAt: Instant
+)
+
+// ═══════════════════════════════════════════════════════════════
+// SCALE FEATURE: Dynamic Radius Expansion
+// ═══════════════════════════════════════════════════════════════
+
+enum class RadiusExpansionState {
+    /** Masih dalam radius default — tidak ada ekspansi. */
+    NORMAL,
+    /** Mitra di radius normal kosong, menampilkan banner ekspansi. */
+    SUGGESTING_EXPANSION,
+    /** Pengguna telah menyetujui radius yang diperluas. */
+    EXPANDED
+}

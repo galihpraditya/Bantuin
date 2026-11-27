@@ -2,192 +2,204 @@ package id.bantuin.app.ui.customer.orderdetail
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import id.bantuin.app.core.dispatcher.AppDispatchers
 import id.bantuin.app.core.result.AppResult
 import id.bantuin.app.domain.model.BookingEvent
 import id.bantuin.app.domain.model.BookingItem
 import id.bantuin.app.domain.model.BookingStatus
-import id.bantuin.app.domain.model.CompletionStatus
+import id.bantuin.app.domain.model.CompletionOutcome
+import id.bantuin.app.domain.model.reviewOutcomes
 import id.bantuin.app.domain.repository.BookingRepository
 import id.bantuin.app.domain.repository.ReviewRepository
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
-import kotlinx.coroutines.withContext
 
 data class OrderDetailUiState(
     val bookingId: String = "",
     val booking: BookingItem? = null,
     val events: List<BookingEvent> = emptyList(),
-    val completion: CompletionStatus? = null,
-    val isLoadingBooking: Boolean = true,
-    val bookingNotFound: Boolean = false,
-    val reviewSubmitted: Boolean = false,
-    val isSubmittingReview: Boolean = false,
-    val isUpdatingStatus: Boolean = false,
+    val isLoading: Boolean = false,
     val rating: Int = 5,
     val reviewComment: String = "",
-    val selectedTags: Set<String> = emptySet(),
-    val isLoading: Boolean = true,
-    val isSaving: Boolean = false,
-    val errorMessage: String? = null,
-    val successMessage: String? = null
+    val selectedTags: Set<String> = setOf("Tepat Waktu", "Pekerjaan Rapi"),
+    val isSubmittingReview: Boolean = false,
+    val reviewSubmitted: Boolean = false,
+    val completion: CompletionOutcome? = null,
+    val reviewMessage: String? = null,
+    val isUpdatingStatus: Boolean = false,
+    val errorMessage: String? = null
 )
 
 class OrderDetailViewModel(
     private val bookingRepository: BookingRepository,
-    private val reviewRepository: ReviewRepository,
-    private val dispatchers: AppDispatchers = AppDispatchers()
+    private val reviewRepository: ReviewRepository
 ) : ViewModel() {
+
     private val _uiState = MutableStateFlow(OrderDetailUiState())
-    val uiState = _uiState.asStateFlow()
-    private val requests = Mutex()
-    private var loadJob: Job? = null
-    private var draftEdited = false
+    val uiState: StateFlow<OrderDetailUiState> = _uiState.asStateFlow()
 
-    fun observeBooking(bookingId: String, background: Boolean = false) {
-        if (_uiState.value.bookingId != bookingId) {
-            loadJob?.cancel()
-            draftEdited = false
-            _uiState.value = OrderDetailUiState(bookingId = bookingId)
+    private var observeJob: Job? = null
+
+    fun observeBooking(bookingId: String) {
+        observeJob?.cancel()
+        _uiState.update {
+            if (it.bookingId == bookingId) it.copy(isLoading = it.booking == null, errorMessage = null)
+            else OrderDetailUiState(bookingId = bookingId, isLoading = true)
         }
-        if (loadJob?.isActive == true || _uiState.value.isSaving) return
-        loadJob = viewModelScope.launch {
-            requests.withLock { load(bookingId, background) }
-            bookingRepository.observeBooking(bookingId).collect { item ->
-                _uiState.update {
-                    it.copy(
-                        booking = item,
-                        bookingNotFound = item == null,
-                        isLoadingBooking = false,
-                        reviewSubmitted = item?.review != null
-                    )
+        observeJob = viewModelScope.launch {
+            bookingRepository.expirePending()
+            bookingRepository.myBookingsCustomer()
+            bookingRepository.myBookingsProvider()
+            bookingRepository.observeBooking(bookingId)
+                .catch { e ->
+                    _uiState.update {
+                        it.copy(isLoading = false, errorMessage = e.message ?: "Gagal memuat detail pesanan.")
+                    }
                 }
-            }
-        }
-    }
-
-    private suspend fun load(bookingId: String, background: Boolean = false) {
-        val (detail, events) = withContext(dispatchers.io) {
-            bookingRepository.bookingDetails(bookingId) to bookingRepository.bookingEvents(bookingId)
-        }
-        if (_uiState.value.bookingId != bookingId) return
-        when (detail) {
-            is AppResult.Success -> {
-                val booking = detail.data
-                val review = booking?.review
-                val timeline = (events as? AppResult.Success)?.data
-                _uiState.update { state ->
-                    val updated = state.copy(
-                        booking = booking,
-                        bookingNotFound = booking == null,
-                        isLoadingBooking = false,
-                        events = timeline ?: state.events,
-                        isLoading = false,
-                        reviewSubmitted = review != null,
-                        errorMessage = when {
-                            booking == null -> "Pesanan tidak ditemukan"
-                            background -> state.errorMessage
-                            else -> (events as? AppResult.Error)?.message
-                        }
-                    )
-                    if (draftEdited) updated else updated.copy(
-                        completion = booking?.outcome?.status ?: booking?.status?.completionOptions()?.singleOrNull(),
-                        rating = review?.rating ?: 5,
-                        reviewComment = review?.comment.orEmpty(),
-                        selectedTags = review?.tags.orEmpty().toSet()
-                    )
+                .collect { item ->
+                    val eventsRes = bookingRepository.events(bookingId)
+                    val events = if (eventsRes is AppResult.Success) eventsRes.data else emptyList()
+                    _uiState.update {
+                        val review = item?.review
+                        val oldBooking = it.booking
+                        val loaded = it.copy(
+                            booking = item, events = events, isLoading = false, reviewSubmitted = review != null
+                        )
+                        if (oldBooking == null || oldBooking.review != review ||
+                            oldBooking.completionOutcome != item?.completionOutcome || oldBooking.status != item?.status
+                        ) loaded.copy(
+                            rating = review?.rating ?: 5,
+                            reviewComment = review?.comment.orEmpty(),
+                            selectedTags = review?.tags.orEmpty().toSet(),
+                            completion = item?.completionOutcome ?: item?.status?.reviewOutcomes()?.singleOrNull()
+                        ) else loaded
+                    }
                 }
-            }
-            is AppResult.Error -> _uiState.update {
-                it.copy(isLoading = false, isLoadingBooking = false,
-                    errorMessage = if (background && it.booking != null) it.errorMessage else detail.message)
-            }
-            AppResult.Loading -> Unit
         }
     }
 
-    fun setCompletion(status: CompletionStatus) = edit { it.copy(completion = status) }
-    fun setRating(rating: Int) = edit { it.copy(rating = rating.coerceIn(1, 5)) }
-    fun setReviewComment(comment: String) = edit { it.copy(reviewComment = comment.take(300)) }
-    fun toggleTag(tag: String) = edit {
-        it.copy(selectedTags = if (tag in it.selectedTags) it.selectedTags - tag else it.selectedTags + tag)
+    fun expireIfOverdue() {
+        val bookingId = _uiState.value.bookingId
+        if (bookingId.isBlank()) return
+        viewModelScope.launch {
+            bookingRepository.expirePending()
+            val eventsRes = bookingRepository.events(bookingId)
+            if (eventsRes is AppResult.Success) {
+                _uiState.update { it.copy(events = eventsRes.data) }
+            }
+        }
     }
 
-    private fun edit(transform: (OrderDetailUiState) -> OrderDetailUiState) {
-        if (_uiState.value.isSaving) return
-        draftEdited = true
-        _uiState.update { transform(it).copy(successMessage = null) }
+    fun setCompletion(completion: CompletionOutcome) {
+        _uiState.update { it.copy(completion = completion, errorMessage = null, reviewMessage = null) }
     }
 
-    fun submitReview() {
+    fun setRating(rating: Int) {
+        _uiState.update { it.copy(rating = rating.coerceIn(1, 5), errorMessage = null) }
+    }
+
+    fun setReviewComment(comment: String) {
+        _uiState.update { it.copy(reviewComment = comment, errorMessage = null) }
+    }
+
+    fun toggleTag(tag: String) {
+        _uiState.update {
+            val current = it.selectedTags.toMutableSet()
+            if (current.contains(tag)) current.remove(tag) else current.add(tag)
+            it.copy(selectedTags = current)
+        }
+    }
+
+    fun clearError() {
+        _uiState.update { it.copy(errorMessage = null) }
+    }
+
+    fun submitReview(onSuccess: () -> Unit = {}) {
         val state = _uiState.value
         val booking = state.booking ?: return
-        val completion = state.completion?.takeIf { it in booking.status.completionOptions() } ?: return
-        mutate("Konfirmasi dan ulasan tersimpan") {
-            reviewRepository.confirmCompletion(
-                booking.id, booking.providerId, completion, state.rating,
-                state.reviewComment, state.selectedTags.toList()
+        if (state.isSubmittingReview) return
+        if (booking.status != BookingStatus.SELESAI) {
+            _uiState.update { it.copy(errorMessage = "Ulasan hanya dapat diberikan setelah transaksi selesai.") }
+            return
+        }
+        val completion = state.completion?.takeIf { it in booking.status.reviewOutcomes() }
+        if (completion == null) {
+            _uiState.update { it.copy(errorMessage = "Pilih status penyelesaian pesanan.") }
+            return
+        }
+        val trimmedComment = state.reviewComment.trim()
+        if (state.rating !in 1..5) {
+            _uiState.update { it.copy(errorMessage = "Pilih rating antara 1 hingga 5 bintang.") }
+            return
+        }
+        if (trimmedComment.length > 300) {
+            _uiState.update { it.copy(errorMessage = "Komentar ulasan maksimal 300 karakter.") }
+            return
+        }
+
+        _uiState.update { it.copy(isSubmittingReview = true, errorMessage = null, reviewMessage = null) }
+        viewModelScope.launch {
+            val res = reviewRepository.submitReview(
+                bookingId = state.bookingId,
+                providerId = booking.providerId,
+                rating = state.rating,
+                comment = trimmedComment.ifBlank { null },
+                tags = state.selectedTags.toList(),
+                completion = completion
             )
+            when (res) {
+                is AppResult.Success -> {
+                    _uiState.update { it.copy(isSubmittingReview = false, reviewSubmitted = true, reviewMessage = "Ulasan tersimpan") }
+                    onSuccess()
+                }
+                is AppResult.Error -> {
+                    _uiState.update { it.copy(isSubmittingReview = false, errorMessage = res.message) }
+                }
+                is AppResult.Loading -> _uiState.update { it.copy(isSubmittingReview = false) }
+            }
         }
     }
 
-    fun submitReview(onSuccess: () -> Unit) = submitReview()
-
-    fun deleteReview() = mutate("Ulasan dihapus") { reviewRepository.deleteReview(it) }
-    fun deleteConfirmation() = mutate("Konfirmasi dihapus") { reviewRepository.deleteTransactionOutcome(it) }
+    fun deleteReview() {
+        val state = _uiState.value
+        if (state.booking?.review == null || state.isSubmittingReview) return
+        _uiState.update { it.copy(isSubmittingReview = true, errorMessage = null, reviewMessage = null) }
+        viewModelScope.launch {
+            when (val result = reviewRepository.deleteReview(state.bookingId)) {
+                is AppResult.Success -> _uiState.update {
+                    it.copy(isSubmittingReview = false, reviewSubmitted = false, reviewMessage = "Ulasan dihapus")
+                }
+                is AppResult.Error -> _uiState.update { it.copy(isSubmittingReview = false, errorMessage = result.message) }
+                AppResult.Loading -> _uiState.update { it.copy(isSubmittingReview = false) }
+            }
+        }
+    }
 
     fun updateStatus(status: BookingStatus) {
-        val state = _uiState.value
-        val current = state.booking?.status
-        if (current == null) {
-            _uiState.update { it.copy(errorMessage = "Data pesanan belum tersedia") }
-            return
-        }
-        if (!current.canTransitionTo(status)) {
+        if (status != BookingStatus.DIBATALKAN_PELANGGAN) {
             _uiState.update {
-                it.copy(errorMessage = "Status ${current.displayName} tidak bisa diubah menjadi ${status.displayName}")
+                it.copy(errorMessage = "Hanya mitra yang dapat menyelesaikan atau memperbarui status pengerjaan.")
             }
             return
         }
+        val bookingId = _uiState.value.bookingId
         viewModelScope.launch {
             _uiState.update { it.copy(isUpdatingStatus = true, errorMessage = null) }
-            when (val result = withContext(dispatchers.io) { bookingRepository.updateStatus(state.bookingId, status) }) {
-                is AppResult.Success -> _uiState.update { it.copy(isUpdatingStatus = false) }
-                is AppResult.Error -> _uiState.update { it.copy(isUpdatingStatus = false, errorMessage = result.message) }
-                AppResult.Loading -> _uiState.update { it.copy(isUpdatingStatus = false) }
-            }
-        }
-    }
-
-    private fun mutate(message: String, action: suspend (String) -> AppResult<Unit>) {
-        val state = _uiState.value
-        if (state.isSaving || state.booking == null) return
-        _uiState.update { it.copy(isSaving = true, errorMessage = null, successMessage = null) }
-        viewModelScope.launch {
-            requests.withLock {
-                when (val result = withContext(dispatchers.io) { action(state.bookingId) }) {
-                    is AppResult.Success -> {
-                        draftEdited = false
-                        load(state.bookingId)
-                        _uiState.update { it.copy(isSaving = false, successMessage = message) }
-                    }
-                    is AppResult.Error -> _uiState.update { it.copy(isSaving = false, errorMessage = result.message) }
-                    AppResult.Loading -> _uiState.update { it.copy(isSaving = false) }
+            when (val res = bookingRepository.updateStatus(bookingId, status)) {
+                is AppResult.Success -> {
+                    val eventsRes = bookingRepository.events(bookingId)
+                    val events = if (eventsRes is AppResult.Success) eventsRes.data else _uiState.value.events
+                    _uiState.update { it.copy(isUpdatingStatus = false, events = events) }
                 }
+                is AppResult.Error -> {
+                    _uiState.update { it.copy(isUpdatingStatus = false, errorMessage = res.message) }
+                }
+                is AppResult.Loading -> {}
             }
         }
     }
-}
-
-internal fun BookingStatus.completionOptions(): List<CompletionStatus> = when (this) {
-    BookingStatus.PENDING, BookingStatus.DIKONFIRMASI,
-    BookingStatus.DIBATALKAN_PELANGGAN, BookingStatus.DIBATALKAN_MITRA -> listOf(CompletionStatus.DIBATALKAN)
-    BookingStatus.DALAM_PENGERJAAN -> CompletionStatus.entries
-    BookingStatus.SELESAI -> listOf(CompletionStatus.SELESAI_TEPAT_WAKTU, CompletionStatus.TERLAMBAT)
-    else -> emptyList()
 }

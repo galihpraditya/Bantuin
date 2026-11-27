@@ -10,6 +10,9 @@ data class ProfileDto(
     @SerialName("phone") val phone: String? = null,
     @SerialName("roles") val roles: List<String> = listOf("customer"),
     @SerialName("avatar_url") val avatarUrl: String? = null,
+    @SerialName("default_address") val defaultAddress: String? = null,
+    @SerialName("default_lat") val defaultLat: Double? = null,
+    @SerialName("default_lng") val defaultLng: Double? = null,
     @SerialName("created_at") val createdAt: String? = null
 )
 
@@ -37,7 +40,25 @@ data class ProviderProfileDto(
     @SerialName("tx_count_30d") val txCount30d: Int = 0,
     @SerialName("flag_anomaly") val flagAnomaly: Boolean = false,
     @SerialName("badge") val badge: String = "NEW",
+    @SerialName("is_accepting_orders") val isAcceptingOrders: Boolean = true,
     @SerialName("metrics_updated_at") val metricsUpdatedAt: String? = null
+)
+
+@Serializable
+data class ProviderProfileUpsertDto(
+    @SerialName("user_id") val userId: String,
+    @SerialName("bio") val bio: String? = null,
+    @SerialName("address") val address: String? = null,
+    @SerialName("lat") val lat: Double,
+    @SerialName("lng") val lng: Double
+)
+
+@Serializable
+data class EnableProviderRoleRpcParams(
+    @SerialName("p_bio") val bio: String,
+    @SerialName("p_address") val address: String,
+    @SerialName("p_lat") val lat: Double,
+    @SerialName("p_lng") val lng: Double
 )
 
 @Serializable
@@ -84,9 +105,11 @@ data class BookingDto(
     @SerialName("expires_at") val expiresAt: String,
     @SerialName("started_at") val startedAt: String? = null,
     @SerialName("finished_at") val finishedAt: String? = null,
-    @SerialName("created_at") val createdAt: String? = null,
-    @SerialName("reviews") val review: ReviewDto? = null,
-    @SerialName("booking_outcomes") val outcome: BookingOutcomeDto? = null
+    @SerialName("payment_method") val paymentMethod: String = "CASH",
+    @SerialName("payment_status") val paymentStatus: String = "UNPAID",
+    @SerialName("completion_note") val completionNote: String? = null,
+    @SerialName("completion_outcome") val completionOutcome: String? = null,
+    @SerialName("created_at") val createdAt: String? = null
 )
 
 @Serializable
@@ -133,26 +156,6 @@ data class ProviderMetricSnapshotDto(
     @SerialName("flag_anomaly") val flagAnomaly: Boolean
 )
 
-@Serializable
-data class BookingOutcomeDto(
-    @SerialName("booking_id") val bookingId: String,
-    @SerialName("provider_id") val providerId: String,
-    val status: String,
-    @SerialName("resolved_at") val resolvedAt: String,
-    @SerialName("customer_confirmed") val customerConfirmed: Boolean = false
-)
-
-@Serializable
-data class ProviderTrustInputDto(
-    @SerialName("provider_id") val providerId: String,
-    @SerialName("on_time_count") val onTimeCount: Int,
-    @SerialName("late_count") val lateCount: Int,
-    @SerialName("cancelled_count") val cancelledCount: Int,
-    @SerialName("rating_count") val ratingCount: Int,
-    @SerialName("rating_total") val ratingTotal: Long,
-    @SerialName("other_count") val otherCount: Int
-)
-
 // ===== RPC DTOs =====
 
 @Serializable
@@ -170,8 +173,9 @@ data class AcquireSlotLockRpcParams(
 
 @Serializable
 data class CreateBookingRpcParams(
-    @SerialName("p_lock_id") val lockId: String,
     @SerialName("p_service_id") val serviceId: String,
+    @SerialName("p_start_at") val startAt: String,
+    @SerialName("p_end_at") val endAt: String,
     @SerialName("p_complexity") val complexity: String,
     @SerialName("p_is_urgent") val isUrgent: Boolean,
     @SerialName("p_distance_km") val distanceKm: Double,
@@ -181,11 +185,28 @@ data class CreateBookingRpcParams(
     @SerialName("p_total_cost") val totalCost: Int,
     @SerialName("p_cust_lat") val customerLat: Double,
     @SerialName("p_cust_lng") val customerLng: Double,
-    @SerialName("p_notes") val notes: String? = null
+    // Tanpa default: serializer encodeDefaults=false tetap mengirim key ini
+    // walau catatan kosong. SQL create_booking membutuhkan argumen p_notes.
+    @SerialName("p_notes") val notes: String,
+    @SerialName("p_payment_method") val paymentMethod: String = "CASH"
 )
 
 @Serializable
 data class UpdateBookingStatusRpcParams(
     @SerialName("p_booking") val bookingId: String,
     @SerialName("p_new") val newStatus: String
+)
+
+@Serializable
+data class ApplyProviderMetricsRpcParams(
+    @SerialName("p_provider") val providerId: String,
+    @SerialName("p_rating_avg") val ratingAvg: Double?,
+    @SerialName("p_completion_rate") val completionRate: Double?,
+    @SerialName("p_on_time_rate") val onTimeRate: Double?,
+    @SerialName("p_cancel_rate") val cancelRate: Double,
+    @SerialName("p_trust_score") val trustScore: Double,
+    @SerialName("p_tx_count") val txCount: Int,
+    @SerialName("p_flag") val flagAnomaly: Boolean,
+    @SerialName("p_badge") val badge: String,
+    @SerialName("p_rating_score") val ratingScore: Double?
 )

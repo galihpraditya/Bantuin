@@ -28,7 +28,6 @@ import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.TaskAlt
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -48,62 +47,65 @@ import id.bantuin.app.domain.repository.BantuinRepository
 import id.bantuin.app.ui.common.BantuinTopAppBar
 import id.bantuin.app.ui.common.BantuinViewModelFactory
 import id.bantuin.app.ui.common.EmptyView
-import id.bantuin.app.ui.theme.BorderSubtle
-import id.bantuin.app.ui.theme.GreenSuccess
-import id.bantuin.app.ui.theme.GreenSuccessContainer
-import id.bantuin.app.ui.theme.NeutralBackground
-import id.bantuin.app.ui.theme.NeutralSurface
-import id.bantuin.app.ui.theme.OrangeContainer
-import id.bantuin.app.ui.theme.OrangePrimary
-import id.bantuin.app.ui.theme.RedError
-import id.bantuin.app.ui.theme.RedErrorContainer
-import id.bantuin.app.ui.theme.TextMuted
-import id.bantuin.app.ui.theme.TextPrimary
-import id.bantuin.app.ui.theme.TextSecondary
+import id.bantuin.app.ui.common.ErrorView
+import id.bantuin.app.ui.common.LoadingView
+import id.bantuin.app.ui.theme.BantuinTheme
 
 @Composable
 fun CustomerNotificationsScreen(
     repository: BantuinRepository,
     onOrderClick: (String) -> Unit,
+    canNavigateBack: Boolean = false,
+    onNavigateBack: () -> Unit = {},
     viewModel: CustomerNotificationsViewModel = viewModel(factory = BantuinViewModelFactory(repository)),
     modifier: Modifier = Modifier
 ) {
     val uiState by viewModel.uiState.collectAsState()
+    val colors = BantuinTheme.colors
 
     Column(
         modifier = modifier
             .fillMaxSize()
-            .background(NeutralBackground)
+            .background(colors.background)
     ) {
-        BantuinTopAppBar(title = "Notifikasi")
+        BantuinTopAppBar(
+            title = "Notifikasi",
+            canNavigateBack = canNavigateBack,
+            onNavigateBack = onNavigateBack
+        )
 
-        if (uiState.isLoading) {
-            Box(
-                modifier = Modifier.fillMaxSize(),
-                contentAlignment = Alignment.Center
-            ) {
-                CircularProgressIndicator(color = OrangePrimary)
+        when {
+            uiState.isLoading && uiState.notifications.isEmpty() -> {
+                LoadingView(message = "Memuat notifikasi...")
             }
-        } else if (uiState.notifications.isEmpty()) {
-            EmptyView(
-                title = "Belum Ada Notifikasi",
-                message = "Pembaruan status pesanan dan informasi layanan penting Anda akan tampil di sini."
-            )
-        } else {
-            LazyColumn(
-                modifier = Modifier.fillMaxSize(),
-                contentPadding = PaddingValues(16.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                items(uiState.notifications, key = { it.id }) { item ->
-                    NotificationCardItem(
-                        item = item,
-                        onClick = {
-                            if (item.bookingId != null) {
-                                onOrderClick(item.bookingId)
+            uiState.errorMessage != null && uiState.notifications.isEmpty() -> {
+                ErrorView(
+                    message = uiState.errorMessage ?: "Gagal memuat notifikasi.",
+                    onRetry = { viewModel.loadNotifications() }
+                )
+            }
+            uiState.notifications.isEmpty() -> {
+                EmptyView(
+                    title = "Belum Ada Notifikasi",
+                    message = "Pembaruan status pesanan dan informasi layanan penting Anda akan tampil di sini."
+                )
+            }
+            else -> {
+                LazyColumn(
+                    modifier = Modifier.fillMaxSize(),
+                    contentPadding = PaddingValues(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    items(uiState.notifications, key = { it.id }) { item ->
+                        NotificationCardItem(
+                            item = item,
+                            onClick = {
+                                if (item.bookingId != null) {
+                                    onOrderClick(item.bookingId)
+                                }
                             }
-                        }
-                    )
+                        )
+                    }
                 }
             }
         }
@@ -116,13 +118,16 @@ private fun NotificationCardItem(
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val iconConfig = getNotificationIconConfig(item.type)
+    val colors = BantuinTheme.colors
+    val iconConfig = rememberNotificationIconConfig(item.type)
     val isClickable = item.bookingId != null
 
     Card(
         shape = RoundedCornerShape(12.dp),
-        colors = CardDefaults.cardColors(containerColor = NeutralSurface),
-        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
+        colors = CardDefaults.cardColors(containerColor = colors.surface),
+        border = CardDefaults.outlinedCardBorder().copy(
+            brush = androidx.compose.ui.graphics.SolidColor(colors.borderSubtle)
+        ),
         modifier = modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(12.dp))
@@ -152,26 +157,19 @@ private fun NotificationCardItem(
             Spacer(modifier = Modifier.width(12.dp))
 
             Column(modifier = Modifier.weight(1f)) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = item.title,
-                        style = MaterialTheme.typography.titleSmall,
-                        fontWeight = FontWeight.Bold,
-                        color = TextPrimary,
-                        modifier = Modifier.weight(1f)
-                    )
-                }
+                Text(
+                    text = item.title,
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Bold,
+                    color = colors.textPrimary
+                )
 
                 Spacer(modifier = Modifier.height(4.dp))
 
                 Text(
                     text = item.message,
                     style = MaterialTheme.typography.bodySmall,
-                    color = TextSecondary,
+                    color = colors.textSecondary,
                     lineHeight = 18.sp
                 )
 
@@ -185,7 +183,7 @@ private fun NotificationCardItem(
                     Text(
                         text = item.timeFormatted,
                         style = MaterialTheme.typography.labelSmall,
-                        color = TextMuted
+                        color = colors.textMuted
                     )
 
                     if (isClickable) {
@@ -194,13 +192,13 @@ private fun NotificationCardItem(
                                 text = "Lihat Detail",
                                 style = MaterialTheme.typography.labelSmall,
                                 fontWeight = FontWeight.SemiBold,
-                                color = OrangePrimary
+                                color = colors.primary
                             )
                             Spacer(modifier = Modifier.width(2.dp))
                             Icon(
                                 imageVector = Icons.AutoMirrored.Filled.ArrowForward,
                                 contentDescription = null,
-                                tint = OrangePrimary,
+                                tint = colors.primary,
                                 modifier = Modifier.size(12.dp)
                             )
                         }
@@ -217,37 +215,39 @@ private data class NotificationIconConfig(
     val containerColor: Color
 )
 
-private fun getNotificationIconConfig(type: NotificationType): NotificationIconConfig {
+@Composable
+private fun rememberNotificationIconConfig(type: NotificationType): NotificationIconConfig {
+    val colors = BantuinTheme.colors
     return when (type) {
         NotificationType.ORDER_PENDING -> NotificationIconConfig(
             icon = Icons.Default.HourglassTop,
-            iconColor = OrangePrimary,
-            containerColor = OrangeContainer
+            iconColor = colors.warning,
+            containerColor = colors.warningContainer
         )
         NotificationType.ORDER_CONFIRMED -> NotificationIconConfig(
             icon = Icons.Default.CheckCircle,
-            iconColor = GreenSuccess,
-            containerColor = GreenSuccessContainer
+            iconColor = colors.success,
+            containerColor = colors.successContainer
         )
         NotificationType.ORDER_IN_PROGRESS -> NotificationIconConfig(
             icon = Icons.Default.Build,
-            iconColor = Color(0xFF1D4ED8),
-            containerColor = Color(0xFFDBEAFE)
+            iconColor = colors.info,
+            containerColor = colors.infoContainer
         )
         NotificationType.ORDER_COMPLETED -> NotificationIconConfig(
             icon = Icons.Default.TaskAlt,
-            iconColor = GreenSuccess,
-            containerColor = GreenSuccessContainer
+            iconColor = colors.success,
+            containerColor = colors.successContainer
         )
         NotificationType.ORDER_CANCELLED -> NotificationIconConfig(
             icon = Icons.Default.Cancel,
-            iconColor = RedError,
-            containerColor = RedErrorContainer
+            iconColor = colors.error,
+            containerColor = colors.errorContainer
         )
         NotificationType.SYSTEM_INFO -> NotificationIconConfig(
             icon = Icons.Default.Info,
-            iconColor = OrangePrimary,
-            containerColor = Color(0xFFFFF3E0)
+            iconColor = colors.onPrimaryContainer,
+            containerColor = colors.primaryContainer
         )
     }
 }

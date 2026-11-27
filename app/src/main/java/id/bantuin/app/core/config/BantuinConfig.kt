@@ -20,8 +20,6 @@ object BantuinConfig {
     const val RATE_PER_KM = 2000
     const val SURGE_MULTIPLIER = "1.20"
     const val ROUNDING_STEP = 500
-    // Jam sibuk: 07:00-08:59 (420..539) & 16:00-18:59 (960..1139) menit sejak 00:00 WIB
-    val PEAK_RANGES = listOf(420..539, 960..1139)
     // Jam malam: >= 20:00 (1200) atau < 06:00 (360)
     const val NIGHT_START_MIN = 1200
     const val NIGHT_END_MIN = 360
@@ -40,4 +38,18 @@ object BantuinConfig {
     const val W_TRUST_CANCELLATION = 0.20
     const val TRUST_MIN_THRESHOLD = 60.0
     const val CANCEL_RATE_MAX_PCT = 20.0
+    const val LATE_TOLERANCE_MIN = 15
+    // Skor awal untuk mitra yang belum memiliki transaksi sama sekali.
+    const val TRUST_NEW_PROVIDER_SCORE = 70.0
+    val MALANG_CENTER = id.bantuin.app.domain.model.GeoPoint(-7.9797, 112.6304)
+
+    // Pembayaran, Chat, & Pencairan Dana Mitra
+    const val MIN_PAYOUT_AMOUNT = 20_000
+    const val PAYOUT_ADMIN_FEE = 2_500
+    const val MAX_CHAT_MESSAGE_LENGTH = 1_000
+
+    // Scale: Dynamic Radius Expansion
+    const val MAX_RADIUS_KM_DEFAULT = MAX_RADIUS_KM
+    const val MAX_RADIUS_KM_EXPANDED = 20.0
+    const val MIN_PROVIDERS_BEFORE_EXPAND = 1
 }

@@ -3,6 +3,7 @@ package id.bantuin.app.data.fake
 import id.bantuin.app.domain.model.AvailabilityMode
 import id.bantuin.app.domain.model.DayAvailability
 import id.bantuin.app.domain.model.GeoPoint
+import id.bantuin.app.domain.model.MetricSnapshot
 import id.bantuin.app.domain.model.ProviderBadge
 import id.bantuin.app.domain.model.ProviderCandidate
 import id.bantuin.app.domain.model.ReviewItem
@@ -11,7 +12,7 @@ import id.bantuin.app.domain.model.ServiceItem
 import id.bantuin.app.domain.repository.UserProfile
 
 object FakeData {
-    val MALANG_CENTER = GeoPoint(-7.9797, 112.6304)
+    val MALANG_CENTER: GeoPoint get() = id.bantuin.app.core.config.BantuinConfig.MALANG_CENTER
 
     val categories = listOf(
         ServiceCategory(1, "Teknisi Listrik", "bolt", 60, "Korslet, saklar, panel & MCB"),
@@ -19,7 +20,7 @@ object FakeData {
         ServiceCategory(3, "Tukang Bangunan", "construction", 180, "Atap bocor, kran air, cat dinding"),
         ServiceCategory(4, "Jasa Kebersihan", "cleaning_services", 120, "Deep clean kamar mandi & kos"),
         ServiceCategory(5, "Angkut Barang", "local_shipping", 120, "Pindahan kos, perabot & lemari"),
-        ServiceCategory(6, "Pengajar Privat", "school", 90, "Kalkulus, Fisika Dasar, TOEFL & Ngaji")
+        ServiceCategory(6, "Pipa & Pompa Air", "plumbing", 90, "Saluran mampet, pompa air & tandon")
     )
 
     // 15 Mitra Demo dengan variasi lengkap sesuai PRD Bagian 13
@@ -216,20 +217,20 @@ object FakeData {
             minBaseFare = 100000,
             responseTimeText = "~15 mnt"
         ),
-        // 13. Privat: Anisa Les Privat (Terpercaya)
+        // 13. Pipa & Pompa Air: Hendra Sanjaya (Terpercaya)
         ProviderCandidate(
             providerId = "p13",
-            name = "Anisa Rahmawati, S.Si.",
+            name = "Hendra Sanjaya",
             avatarUrl = null,
             location = GeoPoint(-7.9720, 112.6350), // ~1.1 km
             address = "Jl. Bandung No. 8, Klojen, Malang",
-            bio = "Tutor Sains & Matematika, alumni UB berprestasi.",
+            bio = "Ahli instalasi pipa, perbaikan pompa air & kuras tandon bersih.",
             ratingAvg = 5.0,
             reviewCount = 35,
             completionRate = 1.0,
             flagAnomaly = false,
             badge = ProviderBadge.TRUSTED,
-            minBaseFare = 60000,
+            minBaseFare = 65000,
             responseTimeText = "< 10 mnt"
         ),
         // 14. Mitra Luar Radius (11 km - out of range)
@@ -278,32 +279,6 @@ object FakeData {
     )
 
     val demoAccounts: List<DemoAccount> = buildList {
-        add(
-            DemoAccount(
-                email = "user@bantuin.test",
-                password = "Demo123!",
-                user = UserProfile(
-                    id = "user_demo_rani",
-                    fullName = "Rani Wijaya",
-                    email = "user@bantuin.test",
-                    phone = "081234567890",
-                    roles = setOf("customer")
-                )
-            )
-        )
-        add(
-            DemoAccount(
-                email = "mitra@bantuin.test",
-                password = "Demo123!",
-                user = UserProfile(
-                    id = "p01",
-                    fullName = "Budi Santoso, S.T.",
-                    email = "mitra@bantuin.test",
-                    phone = "081200000001",
-                    roles = setOf("provider")
-                )
-            )
-        )
         add(
             DemoAccount(
                 email = "pelanggan1@bantuin.test",
@@ -379,7 +354,13 @@ object FakeData {
         ServiceItem("s09", "p09", 3, "Darurat Bocor Atap Kos", "Penambalan genteng dan talang darurat", 90000, 180),
         ServiceItem("s10", "p10", 4, "Deep Clean Kamar Mandi Kos", "Pembersihan kerak keramik, kloset & dinding kamar mandi", 50000, 120),
         ServiceItem("s11", "p12", 5, "Angkut Pindahan Kos", "Pick-up dan bantuan angkat barang kos hingga sampai tujuan", 100000, 120),
-        ServiceItem("s12", "p13", 6, "Bimbingan Belajar Privat (90 mnt)", "Bimbingan satu lawan satu mata kuliah / pelajaran sekolah", 60000, 90)
+        ServiceItem("s12", "p13", 6, "Servis Pompa Air & Saluran Pipa", "Perbaikan pompa air mati, pipa bocor, dan saluran mampet", 65000, 90),
+        ServiceItem("s13", "p05", 1, "Perbaikan Kelistrikan Rumah", "Perbaikan saklar rusak dan pengecekan jalur", 40000, 60),
+        ServiceItem("s14", "p06", 1, "Instalasi Listrik Kos", "Pemasangan jalur lampu dan fiting", 45000, 60),
+        ServiceItem("s15", "p07", 1, "Perbaikan Lampu & Fitting", "Ganti instalasi fiting dan lampu kos", 40000, 45),
+        ServiceItem("s16", "p11", 4, "Pembersihan Kamar Kos", "Sapu, pel, lap perabot kamar kos", 45000, 90),
+        ServiceItem("s17", "p14", 1, "Servis Listrik Wilayah Selatan", "Perbaikan kelistrikan Kepanjen dan sekitarnya", 70000, 90),
+        ServiceItem("s18", "p15", 2, "Servis Kulkas & Freon", "Pengecekan mesin kompresor kulkas", 50000, 60)
     )
 
     // Jadwal ketersediaan mitra
@@ -403,5 +384,13 @@ object FakeData {
         ReviewItem("r01", "b01", "Rani Wijaya", 5, "Pak Budi datang cepat sekali, AC langsung dingin dan kamar tetap bersih!", listOf("Tepat Waktu", "Pekerjaan Rapi"), "1 hari lalu"),
         ReviewItem("r02", "b02", "Dimas Arya", 5, "Teknisi sangat sopan, dijelaskan kenapa air AC menetes dan langsung tuntas.", listOf("Sopan & Ramah", "Harga Sesuai"), "3 hari lalu"),
         ReviewItem("r03", "b03", "Eka Putri", 5, "Sangat terbantu di kos, tarif jelas transparan tanpa biaya tersembunyi.", listOf("Pekerjaan Rapi"), "1 minggu lalu")
+    )
+
+    // Riwayat snapshot mingguan untuk Screen 6 Canvas Chart
+    val sampleSnapshots = listOf(
+        MetricSnapshot("M-1", 72.3, 90.0, 92.0, 2.0),
+        MetricSnapshot("M-2", 74.29, 92.0, 95.0, 1.8),
+        MetricSnapshot("M-3", 91.0, 94.0, 96.0, 1.5),
+        MetricSnapshot("Sekarang", 92.0, 96.4, 96.4, 1.8)
     )
 }

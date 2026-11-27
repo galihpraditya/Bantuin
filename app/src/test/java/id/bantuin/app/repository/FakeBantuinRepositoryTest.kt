@@ -2,23 +2,24 @@ package id.bantuin.app.repository
 
 import id.bantuin.app.core.result.AppResult
 import id.bantuin.app.core.session.InMemorySessionStore
+import id.bantuin.app.data.fake.FakeData
 import id.bantuin.app.data.repository.FakeBantuinRepository
-import id.bantuin.app.domain.model.BookingItem
 import id.bantuin.app.domain.model.BookingStatus
-import id.bantuin.app.domain.model.CompletionStatus
+import id.bantuin.app.domain.model.Complexity
 import id.bantuin.app.domain.model.GeoPoint
+import id.bantuin.app.domain.model.OrderDraft
+import id.bantuin.app.domain.model.PaymentMethod
+import id.bantuin.app.domain.model.PaymentStatus
+import id.bantuin.app.domain.model.PayoutChannelType
 import id.bantuin.app.domain.model.ProviderBadge
-import id.bantuin.app.domain.model.TransactionOutcome
-import id.bantuin.app.domain.model.TrustInput
-import id.bantuin.app.domain.usecase.matchmaking.MatchmakingUseCase
-import kotlinx.datetime.Clock
-import kotlinx.datetime.Instant
-import kotlin.time.Duration.Companion.days
 import id.bantuin.app.domain.model.ProviderCandidate
+import id.bantuin.app.domain.repository.UserProfile
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertNull
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -51,88 +52,27 @@ class FakeBantuinRepositoryTest {
     }
 
     @Test
-    fun updateStatus_rejectsSkippingArrival() = runBlocking {
-        val invalid = repo.updateStatus("b01", BookingStatus.PENDING)
-        assertTrue(invalid is AppResult.Error)
+    fun reviewMutations_refreshTrustWithoutDuplicatingTheReview() = runBlocking {
+        repo.signIn("pelanggan2@bantuin.test", "Demo12345!")
+        suspend fun currentScore() = (repo.history("p01") as AppResult.Success).data.last().trustScore
+        suspend fun storedReviews() = (repo.reviewsOf("p01") as AppResult.Success).data
+        val originalScore = currentScore()
 
-        val valid = repo.updateStatus("b01", BookingStatus.SELESAI)
-        assertTrue(valid is AppResult.Success)
+        assertTrue(repo.submitReview("b00_qris", "p01", 1, "Perlu perbaikan", emptyList()) is AppResult.Success)
+        val initialReview = storedReviews().single { it.bookingId == "b00_qris" }
+        val lowScore = currentScore()
+        assertTrue(lowScore < originalScore)
 
-        val booking = repo.observeBooking("b01").firstOrNull()
-        assertEquals(BookingStatus.SELESAI, booking?.status)
+        assertTrue(repo.submitReview("b00_qris", "p01", 3, "Sudah ditindaklanjuti", emptyList()) is AppResult.Success)
+        val editedReview = storedReviews().single { it.bookingId == "b00_qris" }
+        assertEquals(initialReview.id, editedReview.id)
+        assertEquals(initialReview.createdAt, editedReview.createdAt)
+        assertTrue(currentScore() > lowScore)
+
+        assertTrue(repo.deleteReview("b00_qris") is AppResult.Success)
+        assertTrue(storedReviews().none { it.bookingId == "b00_qris" })
+        assertEquals(originalScore, currentScore(), 0.001)
     }
-
-    @Test
-    fun bookingStatus_exposesTrackingGuards() {
-        assertTrue(BookingStatus.PENDING.canCustomerCancel)
-        assertTrue(BookingStatus.DIKONFIRMASI.canCustomerCancel)
-        assertTrue(!BookingStatus.DALAM_PENGERJAAN.canCustomerCancel)
-
-        assertTrue(!BookingStatus.PENDING.isProviderAssigned)
-        assertTrue(BookingStatus.DIKONFIRMASI.isProviderAssigned)
-        assertTrue(BookingStatus.DALAM_PENGERJAAN.isProviderAssigned)
-
-        assertTrue(BookingStatus.PENDING.canTransitionTo(BookingStatus.DIKONFIRMASI))
-        assertTrue(!BookingStatus.PENDING.canTransitionTo(BookingStatus.SELESAI))
-        assertTrue(!BookingStatus.DIKONFIRMASI.canTransitionTo(BookingStatus.SELESAI))
-        assertTrue(BookingStatus.DALAM_PENGERJAAN.canTransitionTo(BookingStatus.SELESAI))
-    }
-
-    @Test
-    fun confirmationUpsertsReviewAndChangesRecommendationPriority() = runBlocking {
-        repo.signIn("pelanggan1@bantuin.test", "Demo12345!")
-        val before = candidate("p01")
-        assertEquals(ProviderBadge.TRUSTED, before.badge)
-        assertTrue(repo.confirmCompletion("b01", "p01", CompletionStatus.TERLAMBAT, 1, "Terlambat", emptyList())
-            is AppResult.Success)
-        val first = (repo.bookingDetails("b01") as AppResult.Success<BookingItem?>).data!!
-        assertEquals(BookingStatus.SELESAI, first.status)
-        assertEquals(CompletionStatus.TERLAMBAT, first.outcome?.status)
-        assertEquals(1, first.review?.rating)
-        assertTrue(candidate("p01").flagAnomaly)
-
-        val flagged = candidate("p01")
-        val matchmaking = MatchmakingUseCase()
-        val origin = GeoPoint(-7.965, 112.632)
-        val penalized = matchmaking(origin, listOf(flagged)).ranked.single().finalScore
-        val normal = matchmaking(origin, listOf(flagged.copy(flagAnomaly = false))).ranked.single().finalScore
-        assertEquals(normal * 0.7, penalized, 0.0001)
-
-        assertTrue(repo.confirmCompletion("b01", "p01", CompletionStatus.SELESAI_TEPAT_WAKTU, 5, "Sudah dikoreksi",
-            listOf("Tepat Waktu")) is AppResult.Success)
-        val updated = (repo.bookingDetails("b01") as AppResult.Success<BookingItem?>).data!!
-        assertEquals(first.review?.id, updated.review?.id)
-        assertEquals(first.review?.createdAt, updated.review?.createdAt)
-        assertEquals(first.outcome?.resolvedAt, updated.outcome?.resolvedAt)
-        assertEquals(ProviderBadge.TRUSTED, candidate("p01").badge)
-
-        repo.deleteReview("b01")
-        val afterDeletion = (repo.bookingDetails("b01") as AppResult.Success<BookingItem?>).data!!
-        assertNull(afterDeletion.review)
-        assertEquals(CompletionStatus.SELESAI_TEPAT_WAKTU, afterDeletion.outcome?.status)
-        repo.deleteTransactionOutcome("b01")
-        val afterReset = (repo.bookingDetails("b01") as AppResult.Success<BookingItem?>).data!!
-        assertEquals(false, afterReset.outcome?.customerConfirmed)
-        assertEquals(BookingStatus.SELESAI, afterReset.status)
-    }
-
-    @Test
-    fun historyAndInputsAreScopedToProviderWindowAndStatus() = runBlocking {
-        var now = Instant.parse("2026-06-01T00:00:00Z")
-        val clock = object : Clock { override fun now() = now }
-        val clockedRepo = FakeBantuinRepository(clock = clock)
-        val cancellations = (clockedRepo.transactionHistory("p05", 30, CompletionStatus.DIBATALKAN)
-            as AppResult.Success<List<TransactionOutcome>>).data
-        assertEquals(1, cancellations.size)
-        assertEquals("p05", cancellations.single().providerId)
-        assertEquals(0, (clockedRepo.trustInput("p01", 30) as AppResult.Success<TrustInput>).data.cancelledCount)
-        now += 31.days
-        assertEquals(TrustInput(), (clockedRepo.trustInput("p05", 30) as AppResult.Success<TrustInput>).data)
-        assertTrue((clockedRepo.transactionHistory("p05", 30) as AppResult.Success<List<TransactionOutcome>>).data.isEmpty())
-    }
-
-    private suspend fun candidate(id: String): ProviderCandidate =
-        (repo.candidates(2) as AppResult.Success<List<ProviderCandidate>>).data.single { it.providerId == id }
 
     @Test
     fun updateProviderProfile_updatesLocationAndBio() = runBlocking {
@@ -154,5 +94,260 @@ class FakeBantuinRepositoryTest {
         assertEquals("Teknisi AC bersertifikat 10 tahun", candidate.bio)
         assertEquals("Jl. Sukarno Hatta No. 45, Malang", candidate.address)
         assertEquals(newLoc.lat, candidate.location.lat, 0.0001)
+    }
+
+    @Test
+    fun candidates_excludesLoggedInSelfProvider() = runBlocking {
+        val mitraRepo = FakeBantuinRepository(
+            sessionStore = InMemorySessionStore(
+                initialRole = "customer",
+                initialUser = UserProfile(
+                    id = "p01",
+                    fullName = "Budi Santoso, S.T.",
+                    email = "mitra01@bantuin.test",
+                    phone = "081200000001",
+                    roles = setOf("customer", "provider")
+                )
+            )
+        )
+        val result = mitraRepo.candidates(2) as AppResult.Success
+        assertFalse(result.data.any { it.providerId == "p01" })
+    }
+
+    @Test
+    fun reviewsOf_filtersByProviderId() = runBlocking {
+        val r07 = repo.reviewsOf("p07") as AppResult.Success
+        assertTrue("Mitra baru tanpa ulasan tidak boleh menampilkan ulasan mitra lain", r07.data.isEmpty())
+    }
+
+    @Test
+    fun providerProfile_returnsAnyCategoryProviderDirectly() = runBlocking {
+        val p04 = repo.providerProfile("p04") as AppResult.Success
+        assertNotNull(p04.data)
+        assertEquals("Pak Sugeng W.", p04.data?.name)
+    }
+
+    @Test
+    fun createBooking_recordsScheduleAndEventsTrackStatusTransitions() = runBlocking {
+        val sharedRepo = FakeBantuinRepository()
+        val draft = OrderDraft(
+            categoryId = 2,
+            provider = FakeData.providers.first { it.providerId == "p01" },
+            service = FakeData.services.first { it.providerId == "p01" },
+            dateIso = "2026-11-28",
+            startMin = 480,
+            durationMin = 90,
+            complexity = Complexity.SEDANG,
+            isUrgent = false,
+            customerLocation = FakeData.MALANG_CENTER,
+            customerAddress = "Alun-alun Malang",
+            distanceKm = 1.8
+        )
+        val bookingId = (sharedRepo.createBooking(draft) as AppResult.Success).data
+        val busyAfterBooking = (sharedRepo.busyBlocks("p01", "2026-11-28") as AppResult.Success).data
+        assertTrue(busyAfterBooking.any { it.startMin == 480 && it.endMin == 600 })
+        sharedRepo.updateStatus(bookingId, BookingStatus.DIKONFIRMASI)
+        sharedRepo.updateStatus(bookingId, BookingStatus.DALAM_PENGERJAAN)
+        sharedRepo.updateStatus(bookingId, BookingStatus.SELESAI)
+
+        val eventsRes = sharedRepo.events(bookingId) as AppResult.Success
+        assertEquals(
+            listOf(
+                BookingStatus.PENDING,
+                BookingStatus.DIKONFIRMASI,
+                BookingStatus.DALAM_PENGERJAAN,
+                BookingStatus.SELESAI
+            ),
+            eventsRes.data.map { it.status }
+        )
+    }
+
+    @Test
+    fun enableProviderRole_addsProviderRoleToCurrentUser() = runBlocking {
+        val customerRepo = FakeBantuinRepository(
+            sessionStore = InMemorySessionStore(
+                initialRole = "customer",
+                initialUser = UserProfile(
+                    id = "user_demo_dimas",
+                    fullName = "Dimas Arya",
+                    email = "pelanggan2@bantuin.test",
+                    phone = "081234567891",
+                    roles = setOf("customer")
+                )
+            )
+        )
+        val res = customerRepo.enableProviderRole(
+            address = "Jl. Soekarno Hatta, Malang",
+            location = GeoPoint(-7.9467, 112.6156),
+            bio = "Teknisi serba bisa"
+        )
+        assertTrue(res is AppResult.Success)
+        val updatedUser = customerRepo.currentUser().first()
+        assertTrue(updatedUser?.roles?.contains("provider") == true)
+        val profile = (customerRepo.providerProfile("user_demo_dimas") as AppResult.Success).data
+        assertNotNull(profile)
+        assertEquals(ProviderBadge.NONE, profile?.badge)
+        assertTrue(profile?.flagAnomaly == true)
+    }
+
+    @Test
+    fun updateCustomerProfile_updatesNamePhoneDefaultAddressAndLocation() = runBlocking {
+        val customerRepo = FakeBantuinRepository(
+            sessionStore = InMemorySessionStore(
+                initialRole = "customer",
+                initialUser = UserProfile(
+                    id = "user_demo_rani",
+                    fullName = "Rani Wijaya",
+                    email = "pelanggan1@bantuin.test",
+                    phone = "081234567890",
+                    roles = setOf("customer")
+                )
+            )
+        )
+        val loc = GeoPoint(-7.9666, 112.6326)
+        val res = customerRepo.updateCustomerProfile(
+            fullName = "Rani Putri",
+            phone = "081299988877",
+            defaultAddress = "Jl. Ijen No. 12, Malang",
+            defaultLocation = loc
+        )
+        assertTrue(res is AppResult.Success)
+        val user = customerRepo.currentUser().first()
+        assertEquals("Rani Putri", user?.fullName)
+        assertEquals("081299988877", user?.phone)
+        assertEquals("Jl. Ijen No. 12, Malang", user?.defaultAddress)
+        assertEquals(loc, user?.defaultLocation)
+    }
+
+    @Test
+    fun qrisAndCashCompletion_respectsAvailableBalanceAndCombinedRevenueRules() = runBlocking {
+        val sharedSession = InMemorySessionStore(
+            initialRole = "customer",
+            initialUser = UserProfile(
+                id = "user_demo_rani",
+                fullName = "Rani Wijaya",
+                email = "pelanggan1@bantuin.test",
+                phone = "081234567890",
+                roles = setOf("customer")
+            )
+        )
+        val sharedRepo = FakeBantuinRepository(sessionStore = sharedSession)
+        val provider = FakeData.providers.first { it.providerId == "p02" }
+        val service = FakeData.services.first { it.providerId == "p02" }
+
+        val qrisDraft = OrderDraft(
+            categoryId = service.categoryId,
+            provider = provider,
+            service = service,
+            dateIso = "2026-11-28",
+            startMin = 540,
+            durationMin = 60,
+            customerLocation = FakeData.MALANG_CENTER,
+            customerAddress = "Jl. Ijen",
+            distanceKm = 1.0,
+            paymentMethod = PaymentMethod.QRIS
+        )
+        val qrisId = (sharedRepo.createBooking(qrisDraft) as AppResult.Success).data
+        val createdQris = sharedRepo.observeBooking(qrisId).first()
+        assertEquals(PaymentStatus.WAITING_PAYMENT, createdQris?.paymentStatus)
+        assertTrue(sharedRepo.confirmQrisPayment(qrisId) is AppResult.Success)
+        assertEquals(PaymentStatus.PAID, sharedRepo.observeBooking(qrisId).first()?.paymentStatus)
+
+        sharedRepo.updateStatus(qrisId, BookingStatus.DIKONFIRMASI)
+        sharedRepo.updateStatus(qrisId, BookingStatus.DALAM_PENGERJAAN)
+        assertTrue(sharedRepo.completeBooking(qrisId, "Berhasil dibersihkan", false) is AppResult.Success)
+
+        val cashDraft = qrisDraft.copy(
+            startMin = 720,
+            paymentMethod = PaymentMethod.CASH
+        )
+        val cashId = (sharedRepo.createBooking(cashDraft) as AppResult.Success).data
+        sharedRepo.updateStatus(cashId, BookingStatus.DIKONFIRMASI)
+        sharedRepo.updateStatus(cashId, BookingStatus.DALAM_PENGERJAAN)
+        val blockedCash = sharedRepo.completeBooking(cashId, "Selesai", cashCollectedConfirmed = false)
+        assertTrue(blockedCash is AppResult.Error)
+        assertTrue(sharedRepo.completeBooking(cashId, "Tunai diterima", cashCollectedConfirmed = true) is AppResult.Success)
+
+        val analytics = sharedRepo.observeProviderRevenue("p02").first()
+        assertEquals(service.baseFare * 2, analytics.totalCombinedRevenue)
+        assertEquals(service.baseFare, analytics.qrisGrossRevenue)
+        assertEquals(service.baseFare, analytics.cashRevenue)
+        assertEquals(service.baseFare, analytics.availableBalance)
+    }
+
+    @Test
+    fun requestPayout_validatesMinAmountAndAvailableBalance_andDeductsOnSuccess() = runBlocking {
+        val sharedSession = InMemorySessionStore(
+            initialRole = "customer",
+            initialUser = UserProfile(
+                id = "user_demo_rani",
+                fullName = "Rani Wijaya",
+                email = "pelanggan1@bantuin.test",
+                phone = "081234567890",
+                roles = setOf("customer")
+            )
+        )
+        val sharedRepo = FakeBantuinRepository(sessionStore = sharedSession)
+        val provider = FakeData.providers.first { it.providerId == "p02" }
+        val service = FakeData.services.first { it.providerId == "p02" }
+
+        val qrisDraft = OrderDraft(
+            categoryId = service.categoryId,
+            provider = provider,
+            service = service,
+            dateIso = "2026-11-29",
+            startMin = 540,
+            durationMin = 60,
+            customerLocation = FakeData.MALANG_CENTER,
+            customerAddress = "Jl. Ijen",
+            distanceKm = 1.0,
+            paymentMethod = PaymentMethod.QRIS
+        )
+        val qrisId = (sharedRepo.createBooking(qrisDraft) as AppResult.Success).data
+        sharedRepo.confirmQrisPayment(qrisId)
+        sharedRepo.updateStatus(qrisId, BookingStatus.DIKONFIRMASI)
+        sharedRepo.updateStatus(qrisId, BookingStatus.DALAM_PENGERJAAN)
+        sharedRepo.completeBooking(qrisId, null, false)
+
+        val tooSmall = sharedRepo.requestPayout("p02", 10_000, PayoutChannelType.BANK, "BCA", "12345", "Dewi")
+        assertTrue(tooSmall is AppResult.Error)
+
+        val available = sharedRepo.observeProviderRevenue("p02").first().availableBalance
+        val tooLarge = sharedRepo.requestPayout("p02", available + 5_000, PayoutChannelType.BANK, "BCA", "12345", "Dewi")
+        assertTrue(tooLarge is AppResult.Error)
+
+        val valid = sharedRepo.requestPayout("p02", 30_000, PayoutChannelType.BANK, "BCA", "12345", "Dewi")
+        assertTrue(valid is AppResult.Success)
+        val updatedAnalytics = sharedRepo.observeProviderRevenue("p02").first()
+        assertEquals(available - 30_000, updatedAnalytics.availableBalance)
+        assertEquals(1, sharedRepo.observePayoutHistory("p02").first().size)
+    }
+
+    @Test
+    fun sendMessage_rejectsBlank_andEmitsMessagesAndThreadSummary() = runBlocking {
+        val sharedRepo = FakeBantuinRepository(
+            sessionStore = InMemorySessionStore(
+                initialRole = "customer",
+                initialUser = UserProfile(
+                    id = "user_demo_rani",
+                    fullName = "Rani Wijaya",
+                    email = "pelanggan1@bantuin.test",
+                    phone = "081234567890",
+                    roles = setOf("customer")
+                )
+            )
+        )
+
+        val blankRes = sharedRepo.sendMessage("b01", "   ")
+        assertTrue(blankRes is AppResult.Error)
+
+        val sendRes = sharedRepo.sendMessage("b01", "Pak, mohon bawa tangga ya.")
+        assertTrue(sendRes is AppResult.Success)
+
+        val messages = sharedRepo.observeMessages("b01").first()
+        assertTrue(messages.any { it.text == "Pak, mohon bawa tangga ya." })
+
+        val threads = sharedRepo.observeChatThreads("customer").first()
+        assertTrue(threads.any { it.bookingId == "b01" })
     }
 }

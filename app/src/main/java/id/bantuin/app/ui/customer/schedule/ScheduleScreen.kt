@@ -1,7 +1,6 @@
 package id.bantuin.app.ui.customer.schedule
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -24,9 +23,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
-import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.EventAvailable
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material.icons.outlined.Timer
 import androidx.compose.material3.Button
@@ -43,110 +41,89 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import id.bantuin.app.core.config.BantuinConfig
-import id.bantuin.app.core.util.TimeUtils
-import id.bantuin.app.domain.usecase.matchmaking.HaversineCalculator
-import id.bantuin.app.data.fake.FakeData
-import id.bantuin.app.domain.model.AvailabilityMode
-import kotlinx.coroutines.launch
-import id.bantuin.app.domain.model.DayAvailability
-import id.bantuin.app.domain.usecase.scheduling.SchedulingConflictDetector
-import id.bantuin.app.ui.common.RatingDisplay
-import id.bantuin.app.ui.customer.OrderFlowManager
-import id.bantuin.app.ui.theme.BorderSubtle
-import id.bantuin.app.ui.theme.GreenSuccess
-import id.bantuin.app.ui.theme.GreenSuccessContainer
-import id.bantuin.app.ui.theme.NeutralBackground
-import id.bantuin.app.ui.theme.NeutralSurface
-import id.bantuin.app.ui.theme.OrangeContainer
-import id.bantuin.app.ui.theme.OrangePrimary
-import id.bantuin.app.ui.theme.RedError
-import id.bantuin.app.ui.theme.RedErrorContainer
-import id.bantuin.app.ui.theme.TextMuted
-import androidx.compose.runtime.collectAsState
 import androidx.lifecycle.viewmodel.compose.viewModel
+import id.bantuin.app.core.util.DistanceUtils
+import id.bantuin.app.core.util.TimeUtils
+import id.bantuin.app.domain.model.AvailabilityMode
+import id.bantuin.app.domain.model.ConflictReason
+import id.bantuin.app.domain.model.DayAvailability
+import id.bantuin.app.domain.model.SlotCheckResult
+import id.bantuin.app.domain.model.TimeBlock
+import id.bantuin.app.domain.repository.BantuinRepository
+import id.bantuin.app.domain.usecase.matchmaking.HaversineCalculator
 import id.bantuin.app.ui.common.BantuinViewModelFactory
-import id.bantuin.app.ui.theme.TextPrimary
-import id.bantuin.app.ui.theme.TextSecondary
+import id.bantuin.app.ui.common.ErrorView
+import id.bantuin.app.ui.common.LoadingView
+import id.bantuin.app.ui.customer.OrderFlowManager
+import id.bantuin.app.ui.theme.BantuinTheme
+import java.util.Locale
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ScheduleScreen(
     orderFlow: OrderFlowManager,
-    repository: id.bantuin.app.domain.repository.BantuinRepository,
+    repository: BantuinRepository,
     onNavigateBack: () -> Unit,
     onContinueToEstimate: () -> Unit,
     viewModel: ScheduleViewModel = viewModel(factory = BantuinViewModelFactory(repository)),
     modifier: Modifier = Modifier
 ) {
     val uiState by viewModel.uiState.collectAsState()
-    val detector = remember { SchedulingConflictDetector() }
-    val provider = uiState.provider ?: orderFlow.selectedProvider ?: FakeData.providers.first()
-    val service = uiState.service ?: orderFlow.selectedService ?: FakeData.services.first()
+    val colors = BantuinTheme.colors
+
+    val provider = orderFlow.selectedProvider
+    val service = orderFlow.selectedService
+
+    if (provider == null || service == null) {
+        Scaffold(
+            topBar = {
+                TopAppBar(
+                    title = { Text("Pilih Jadwal Servis", color = colors.textPrimary) },
+                    navigationIcon = {
+                        IconButton(onClick = onNavigateBack) {
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                                contentDescription = "Kembali",
+                                tint = colors.textPrimary
+                            )
+                        }
+                    },
+                    colors = TopAppBarDefaults.topAppBarColors(containerColor = colors.background)
+                )
+            },
+            containerColor = colors.background
+        ) { innerPadding ->
+            ErrorView(
+                message = "Data mitra atau layanan belum terpilih. Silakan pilih layanan terlebih dahulu.",
+                onRetry = onNavigateBack,
+                modifier = Modifier.padding(innerPadding)
+            )
+        }
+        return
+    }
 
     val distanceKm = remember(orderFlow.customerLocation, provider.location) {
         val d = HaversineCalculator.distanceKm(orderFlow.customerLocation, provider.location)
         Math.round(d * 10.0) / 10.0
     }
 
-    androidx.compose.runtime.LaunchedEffect(provider.providerId, service.id) {
+    LaunchedEffect(provider.providerId, service.id) {
         viewModel.initialize(provider, service, distanceKm, orderFlow.selectedStartMin)
     }
 
-    // Seluruh state jadwal berasal dari ViewModel agar layar dan penguncian slot konsisten.
-    val dynamicDates = uiState.dynamicDates
-    val selectedDateIdx = uiState.selectedDateIdx
-    val selectedDate = uiState.selectedDate
-    val selectedDateIso = selectedDate.toString()
-    val currentDayAvailability = uiState.currentDayAvailability ?: DayAvailability(
-        dayOfWeek = selectedDate.dayOfWeek.value,
-        mode = AvailabilityMode.ON,
-        openMin = 480,
-        closeMin = 1020
-    )
-    val existingBlocks = uiState.existingBlocks
     val selectedStartMin = uiState.selectedStartMin
-    val nowMin = uiState.nowMin
-    val slotCheckResult = uiState.slotCheckResult ?: detector.check(
-        requestedStartMin = selectedStartMin,
-        durationMin = service.durationMin,
-        day = currentDayAvailability,
-        existing = existingBlocks,
-        nowMin = nowMin
-    )
-
-    val availableSlots = remember(currentDayAvailability, service.durationMin) {
-        when (currentDayAvailability.mode) {
-            AvailabilityMode.OFF -> emptyList()
-            AvailabilityMode.ALWAYS_ON -> {
-                (0..1439 step BantuinConfig.SLOT_GRID_MIN)
-                    .filter { it + service.durationMin + BantuinConfig.TRAVEL_BUFFER_MIN <= 1440 }
-                    .map { min -> min to TimeUtils.formatMinuteOfDay(min) }
-            }
-            AvailabilityMode.ON -> {
-                val start = currentDayAvailability.openMin ?: 480
-                val close = currentDayAvailability.closeMin ?: 1020
-                (start..close step BantuinConfig.SLOT_GRID_MIN)
-                    .filter { it + service.durationMin + BantuinConfig.TRAVEL_BUFFER_MIN <= close }
-                    .map { min -> min to TimeUtils.formatMinuteOfDay(min) }
-            }
-        }
-    }
-
-    androidx.compose.runtime.LaunchedEffect(availableSlots, selectedStartMin) {
-        if (availableSlots.isNotEmpty() && availableSlots.none { it.first == selectedStartMin }) {
-            viewModel.selectSlot(availableSlots.first().first)
-        }
-    }
+    val slotCheckResult = uiState.slotCheckResult
+    val isSlotValid = slotCheckResult?.valid ?: true
 
     Scaffold(
         topBar = {
@@ -155,7 +132,7 @@ fun ScheduleScreen(
                     Text(
                         text = "Pilih Jadwal Servis",
                         style = MaterialTheme.typography.titleLarge,
-                        color = TextPrimary
+                        color = colors.textPrimary
                     )
                 },
                 navigationIcon = {
@@ -163,19 +140,18 @@ fun ScheduleScreen(
                         Icon(
                             imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                             contentDescription = "Kembali",
-                            tint = TextPrimary
+                            tint = colors.textPrimary
                         )
                     }
                 },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = NeutralBackground)
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = colors.background)
             )
         },
         bottomBar = {
-            // Bilah Bawah Konfirmasi Jadwal
             Card(
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp),
-                colors = CardDefaults.cardColors(containerColor = NeutralSurface),
+                colors = CardDefaults.cardColors(containerColor = colors.surface),
                 elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
             ) {
                 Column(modifier = Modifier.padding(16.dp)) {
@@ -188,14 +164,14 @@ fun ScheduleScreen(
                             Text(
                                 text = "Waktu Terpilih:",
                                 style = MaterialTheme.typography.bodySmall,
-                                color = TextMuted
+                                color = colors.textMuted
                             )
                             val endMin = selectedStartMin + service.durationMin
                             val timeStr = "${TimeUtils.formatMinuteOfDay(selectedStartMin, false)} - ${TimeUtils.formatMinuteOfDay(endMin)}"
                             Text(
-                                text = if (slotCheckResult.valid) timeStr else "$timeStr (Konflik)",
+                                text = if (isSlotValid) timeStr else "$timeStr (Tidak Tersedia)",
                                 style = MaterialTheme.typography.titleMedium,
-                                color = if (slotCheckResult.valid) TextPrimary else RedError,
+                                color = if (isSlotValid) colors.textPrimary else colors.error,
                                 fontWeight = FontWeight.Bold
                             )
                         }
@@ -204,42 +180,51 @@ fun ScheduleScreen(
                             Text(
                                 text = "Durasi Layanan:",
                                 style = MaterialTheme.typography.bodySmall,
-                                color = TextMuted
+                                color = colors.textMuted
                             )
                             Text(
                                 text = "${service.durationMin} Mnt",
                                 style = MaterialTheme.typography.titleMedium,
-                                color = TextPrimary,
+                                color = colors.textPrimary,
                                 fontWeight = FontWeight.Bold
                             )
                         }
+                    }
+
+                    if (!uiState.errorMessage.isNullOrBlank()) {
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            text = uiState.errorMessage ?: "",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = colors.error
+                        )
                     }
 
                     Spacer(modifier = Modifier.height(12.dp))
 
                     Button(
                         onClick = {
-                            viewModel.acquireLockAndProceed { lockInfo ->
-                                orderFlow.currentLock = lockInfo
+                            viewModel.validateAndProceed {
                                 orderFlow.selectedStartMin = selectedStartMin
                                 orderFlow.selectedDurationMin = service.durationMin
-                                orderFlow.selectedDateIso = selectedDateIso
-                                orderFlow.scheduleErrorMessage = null
+                                orderFlow.selectedDateIso = uiState.selectedDate.toString()
                                 onContinueToEstimate()
                             }
                         },
-                        enabled = slotCheckResult.valid && !uiState.isLocking,
+                        enabled = isSlotValid && !uiState.isLoading,
                         colors = ButtonDefaults.buttonColors(
-                            containerColor = OrangePrimary,
-                            disabledContainerColor = Color(0xFFE0E0E0)
+                            containerColor = colors.primary,
+                            contentColor = colors.onPrimary,
+                            disabledContainerColor = colors.surfaceSubtle,
+                            disabledContentColor = colors.textMuted
                         ),
                         shape = RoundedCornerShape(12.dp),
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(48.dp)
+                            .heightIn(min = 48.dp)
                     ) {
                         Text(
-                            text = if (slotCheckResult.valid) "Lanjut ke Estimasi Biaya" else "Pilih Jam Bebas Konflik",
+                            text = if (isSlotValid) "Lanjut ke Estimasi Biaya" else "Pilih Jam Bebas Konflik",
                             style = MaterialTheme.typography.labelLarge
                         )
                         Spacer(modifier = Modifier.width(8.dp))
@@ -252,9 +237,26 @@ fun ScheduleScreen(
                 }
             }
         },
-        containerColor = NeutralBackground,
+        containerColor = colors.background,
         modifier = modifier
     ) { innerPadding ->
+        if (uiState.isLoading && uiState.dynamicDates.isEmpty()) {
+            LoadingView(
+                message = "Memuat jadwal ketersediaan mitra...",
+                modifier = Modifier.padding(innerPadding)
+            )
+            return@Scaffold
+        }
+
+        val currentDayAvailability = uiState.providerAvailability
+            .find { it.dayOfWeek == uiState.selectedDate.dayOfWeek.value }
+            ?: DayAvailability(
+                dayOfWeek = uiState.selectedDate.dayOfWeek.value,
+                mode = AvailabilityMode.ON,
+                openMin = 480,
+                closeMin = 1020
+            )
+
         LazyColumn(
             modifier = Modifier
                 .fillMaxSize()
@@ -267,8 +269,10 @@ fun ScheduleScreen(
                 Card(
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(14.dp),
-                    colors = CardDefaults.cardColors(containerColor = NeutralSurface),
-                    border = CardDefaults.outlinedCardBorder().copy(brush = androidx.compose.ui.graphics.SolidColor(BorderSubtle))
+                    colors = CardDefaults.cardColors(containerColor = colors.surface),
+                    border = CardDefaults.outlinedCardBorder().copy(
+                        brush = androidx.compose.ui.graphics.SolidColor(colors.borderSubtle)
+                    )
                 ) {
                     Row(
                         modifier = Modifier
@@ -277,18 +281,21 @@ fun ScheduleScreen(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.weight(1f)
+                        ) {
                             Box(
                                 modifier = Modifier
                                     .size(44.dp)
                                     .clip(CircleShape)
-                                    .background(OrangeContainer),
+                                    .background(colors.primaryContainer),
                                 contentAlignment = Alignment.Center
                             ) {
                                 Text(
                                     text = provider.name.take(1),
                                     style = MaterialTheme.typography.titleLarge,
-                                    color = OrangePrimary
+                                    color = colors.onPrimaryContainer
                                 )
                             }
                             Spacer(modifier = Modifier.width(12.dp))
@@ -296,28 +303,32 @@ fun ScheduleScreen(
                                 Text(
                                     text = provider.name,
                                     style = MaterialTheme.typography.titleMedium,
-                                    color = TextPrimary
+                                    color = colors.textPrimary
                                 )
                                 Text(
-                                    text = "${String.format(java.util.Locale.US, "%.1f", distanceKm)} km dari lokasimu • Rating ${provider.ratingAvg ?: 4.9}",
+                                    text = "${DistanceUtils.formatKm(distanceKm)} dari lokasimu • ${service.name}",
                                     style = MaterialTheme.typography.bodySmall,
-                                    color = TextSecondary
+                                    color = colors.textSecondary
                                 )
                             }
                         }
 
+                        Spacer(modifier = Modifier.width(8.dp))
                         OutlinedButton(
                             onClick = onNavigateBack,
-                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
+                            border = ButtonDefaults.outlinedButtonBorder(enabled = true).copy(
+                                brush = androidx.compose.ui.graphics.SolidColor(colors.outline)
+                            ),
+                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
                             modifier = Modifier.heightIn(min = 48.dp)
                         ) {
-                            Text("Ganti", style = MaterialTheme.typography.labelSmall)
+                            Text("Ganti", style = MaterialTheme.typography.labelSmall, color = colors.textPrimary)
                         }
                     }
                 }
             }
 
-            // 2. Pemilih Tanggal Horizontal
+            // 2. Pemilih Tanggal Horizontal (7 Hari ke Depan)
             item {
                 Column {
                     Row(
@@ -328,12 +339,12 @@ fun ScheduleScreen(
                         Text(
                             text = "Pilih Tanggal Servis",
                             style = MaterialTheme.typography.titleMedium,
-                            color = TextPrimary
+                            color = colors.textPrimary
                         )
                         Text(
-                            text = "Oktober 2024",
+                            text = uiState.monthYearLabel,
                             style = MaterialTheme.typography.labelMedium,
-                            color = OrangePrimary
+                            color = colors.primary
                         )
                     }
 
@@ -345,25 +356,29 @@ fun ScheduleScreen(
                             .horizontalScroll(rememberScrollState()),
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        dynamicDates.forEachIndexed { index, (dayName, dateNum, d) ->
-                            val isSelected = selectedDateIdx == index
-                            val dayAvail = uiState.providerAvailability.find { it.dayOfWeek == d.dayOfWeek.value }
+                        uiState.dynamicDates.forEachIndexed { index, (dayName, dateNum, date) ->
+                            val isSelected = uiState.selectedDateIdx == index
+                            val dayAvail = uiState.providerAvailability.find { it.dayOfWeek == date.dayOfWeek.value }
                             val isOff = dayAvail?.mode == AvailabilityMode.OFF
-                            val note = if (index == 0) "Hari ini" else if (isOff) "Libur" else "Ada slot"
+                            val note = if (index == 0) "Hari ini" else if (isOff) "Libur" else "Tersedia"
+
                             Card(
                                 modifier = Modifier
-                                    .width(68.dp)
-                                    .heightIn(min = 68.dp)
+                                    .width(72.dp)
+                                    .heightIn(min = 72.dp)
                                     .clip(RoundedCornerShape(12.dp))
-                                    .clickable {
-                                        orderFlow.scheduleErrorMessage = null
-                                        viewModel.selectDate(index)
-                                    },
+                                    .clickable { viewModel.selectDate(index) },
                                 shape = RoundedCornerShape(12.dp),
                                 colors = CardDefaults.cardColors(
-                                    containerColor = if (isSelected) OrangePrimary else NeutralSurface
+                                    containerColor = if (isSelected) colors.primary else colors.surface
                                 ),
-                                border = if (isSelected) null else CardDefaults.outlinedCardBorder().copy(brush = androidx.compose.ui.graphics.SolidColor(BorderSubtle))
+                                border = if (isSelected) {
+                                    null
+                                } else {
+                                    CardDefaults.outlinedCardBorder().copy(
+                                        brush = androidx.compose.ui.graphics.SolidColor(colors.borderSubtle)
+                                    )
+                                }
                             ) {
                                 Column(
                                     modifier = Modifier
@@ -374,20 +389,24 @@ fun ScheduleScreen(
                                     Text(
                                         text = dayName,
                                         style = MaterialTheme.typography.bodySmall,
-                                        color = if (isSelected) Color.White.copy(alpha = 0.8f) else TextSecondary
+                                        color = if (isSelected) colors.onPrimary else colors.textSecondary
                                     )
                                     Spacer(modifier = Modifier.height(4.dp))
                                     Text(
                                         text = dateNum,
                                         style = MaterialTheme.typography.titleLarge,
-                                        color = if (isSelected) Color.White else TextPrimary,
+                                        color = if (isSelected) colors.onPrimary else colors.textPrimary,
                                         fontWeight = FontWeight.Bold
                                     )
                                     Spacer(modifier = Modifier.height(4.dp))
                                     Text(
                                         text = note,
                                         style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
-                                        color = if (isSelected) Color.White else if (isOff) RedError else GreenSuccess
+                                        color = when {
+                                            isSelected -> colors.onPrimary
+                                            isOff -> colors.error
+                                            else -> colors.success
+                                        }
                                     )
                                 }
                             }
@@ -401,10 +420,15 @@ fun ScheduleScreen(
                 Card(
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(12.dp),
-                    colors = CardDefaults.cardColors(containerColor = Color(0xFFF0EAE1))
+                    colors = CardDefaults.cardColors(containerColor = colors.surfaceSubtle),
+                    border = CardDefaults.outlinedCardBorder().copy(
+                        brush = androidx.compose.ui.graphics.SolidColor(colors.borderSubtle)
+                    )
                 ) {
                     Row(
-                        modifier = Modifier.padding(14.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(14.dp),
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
@@ -412,7 +436,7 @@ fun ScheduleScreen(
                             Icon(
                                 imageVector = Icons.Outlined.Timer,
                                 contentDescription = null,
-                                tint = OrangePrimary,
+                                tint = colors.primary,
                                 modifier = Modifier.size(20.dp)
                             )
                             Spacer(modifier = Modifier.width(10.dp))
@@ -420,16 +444,15 @@ fun ScheduleScreen(
                                 Text(
                                     text = "Estimasi Durasi Servis",
                                     style = MaterialTheme.typography.bodySmall,
-                                    color = TextMuted
+                                    color = colors.textMuted
                                 )
                                 Text(
                                     text = TimeUtils.formatDuration(service.durationMin),
                                     style = MaterialTheme.typography.labelLarge,
-                                    color = TextPrimary
+                                    color = colors.textPrimary
                                 )
                             }
                         }
-
 
                     }
                 }
@@ -445,16 +468,28 @@ fun ScheduleScreen(
                 Text(
                     text = "Pilih Jam Mulai ($operText)",
                     style = MaterialTheme.typography.titleMedium,
-                    color = TextPrimary
+                    color = colors.textPrimary
                 )
             }
 
             item {
-                if (availableSlots.isEmpty()) {
+                val slots = uiState.availableSlots
+                if (uiState.isLoading) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(100.dp)
+                    ) {
+                        LoadingView(message = "Memeriksa ketersediaan slot...")
+                    }
+                } else if (slots.isEmpty()) {
                     Card(
                         modifier = Modifier.fillMaxWidth(),
                         shape = RoundedCornerShape(12.dp),
-                        colors = CardDefaults.cardColors(containerColor = NeutralSurface)
+                        colors = CardDefaults.cardColors(containerColor = colors.surface),
+                        border = CardDefaults.outlinedCardBorder().copy(
+                            brush = androidx.compose.ui.graphics.SolidColor(colors.borderSubtle)
+                        )
                     ) {
                         Column(
                             modifier = Modifier
@@ -465,47 +500,58 @@ fun ScheduleScreen(
                             Text(
                                 text = "Tidak Ada Slot Tersedia",
                                 style = MaterialTheme.typography.titleSmall,
-                                color = TextPrimary
+                                color = colors.textPrimary
                             )
                             Spacer(modifier = Modifier.height(4.dp))
                             Text(
-                                text = "Mitra tidak membuka jadwal pada hari ini. Silakan pilih tanggal lain.",
+                                text = "Mitra tidak membuka jadwal pada tanggal ini. Silakan pilih tanggal lain.",
                                 style = MaterialTheme.typography.bodySmall,
-                                color = TextSecondary
+                                color = colors.textSecondary
                             )
                         }
                     }
                 } else {
-                    val chunkedSlots = availableSlots.chunked(2)
-                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                        chunkedSlots.forEach { pair ->
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.spacedBy(10.dp)
-                            ) {
-                                pair.forEach { (min, label) ->
-                                    val isSelected = selectedStartMin == min
-                                    val check = detector.check(
-                                        requestedStartMin = min,
-                                        durationMin = service.durationMin,
-                                        day = currentDayAvailability,
-                                        existing = existingBlocks,
-                                        nowMin = nowMin
-                                    )
-                                    val isConflict = !check.valid
+                    val morningSlots = slots.filter { it.first < 720 }
+                    val afternoonSlots = slots.filter { it.first in 720..990 }
+                    val eveningSlots = slots.filter { it.first > 990 }
+                    val groups = listOf(
+                        "Pagi" to morningSlots,
+                        "Siang" to afternoonSlots,
+                        "Sore & Malam" to eveningSlots
+                    ).filter { it.second.isNotEmpty() }
 
-                                    TimeSlotItem(
-                                        timeLabel = label,
-                                        finishLabel = "Selesai ${TimeUtils.formatMinuteOfDay(min + service.durationMin)}",
-                                        isSelected = isSelected,
-                                        isFilled = false,
-                                        isConflict = isConflict,
-                                        onClick = {
-                                            orderFlow.scheduleErrorMessage = null
-                                            viewModel.selectSlot(min)
-                                        },
-                                        modifier = Modifier.weight(1f)
-                                    )
+                    Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                        groups.forEach { (groupTitle, groupSlots) ->
+                            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Text(
+                                    text = "$groupTitle (${groupSlots.size} slot)",
+                                    style = MaterialTheme.typography.labelLarge,
+                                    color = colors.textSecondary,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                                val chunkedSlots = groupSlots.chunked(2)
+                                chunkedSlots.forEach { pair ->
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                    ) {
+                                        pair.forEach { (min, label) ->
+                                            val isSelected = selectedStartMin == min
+                                            val isValid = uiState.slotValidMap[min] ?: true
+
+                                            TimeSlotItem(
+                                                timeLabel = label,
+                                                finishLabel = "Selesai ${TimeUtils.formatMinuteOfDay(min + service.durationMin)}",
+                                                isSelected = isSelected,
+                                                isConflict = !isValid,
+                                                onClick = { viewModel.selectSlot(min) },
+                                                modifier = Modifier.weight(1f)
+                                            )
+                                        }
+                                        if (pair.size == 1) {
+                                            Spacer(modifier = Modifier.weight(1f))
+                                        }
+                                    }
                                 }
                             }
                         }
@@ -514,63 +560,18 @@ fun ScheduleScreen(
             }
 
             // 5. Kartu Peringatan Konflik Jadwal (F3 Conflict Detector)
-            if (!slotCheckResult.valid) {
+            if (slotCheckResult != null && !isSlotValid) {
                 item {
                     ConflictAlertCard(
                         slotCheckResult = slotCheckResult,
-                        onSelectAlternative = { altMin ->
-                            orderFlow.scheduleErrorMessage = null
-                            viewModel.selectSlot(altMin)
-                        }
+                        selectedStartMin = uiState.selectedStartMin,
+                        durationMin = uiState.service?.durationMin ?: 60,
+                        existingBlocks = uiState.existingBlocks,
+                        onSelectAlternative = { altMin -> viewModel.selectSlot(altMin) }
                     )
                 }
             }
 
-            // 5b. Pesan error (kunci gagal / server menolak saat kirim pesanan)
-            val scheduleError = orderFlow.scheduleErrorMessage ?: uiState.errorMessage
-            if (scheduleError != null) {
-                item {
-                    Card(
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(12.dp),
-                        colors = CardDefaults.cardColors(containerColor = RedErrorContainer)
-                    ) {
-                        Text(
-                            text = scheduleError,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = RedError,
-                            modifier = Modifier.padding(14.dp)
-                        )
-                    }
-                }
-            }
-
-            // 6. Notifikasi Kunci Slot 10 Menit
-            item {
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(12.dp),
-                    colors = CardDefaults.cardColors(containerColor = Color(0xFFF3E5F5))
-                ) {
-                    Row(
-                        modifier = Modifier.padding(12.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Lock,
-                            contentDescription = null,
-                            tint = Color(0xFF7B1FA2),
-                            modifier = Modifier.size(18.dp)
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(
-                            text = "Slot jadwal dikunci otomatis selama 10 menit setelah waktu valid disetujui.",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = Color(0xFF4A148C)
-                        )
-                    }
-                }
-            }
         }
     }
 }
@@ -580,30 +581,31 @@ private fun TimeSlotItem(
     timeLabel: String,
     finishLabel: String,
     isSelected: Boolean,
-    isFilled: Boolean,
     isConflict: Boolean,
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val colors = BantuinTheme.colors
     val borderColor = when {
-        isSelected -> OrangePrimary
-        isConflict -> RedError
-        else -> BorderSubtle
+        isSelected -> colors.primary
+        isConflict -> colors.error
+        else -> colors.borderSubtle
     }
 
     val backgroundColor = when {
-        isFilled -> Color(0xFFEEEEEE)
-        isSelected -> OrangeContainer.copy(alpha = 0.3f)
-        else -> NeutralSurface
+        isSelected -> colors.primaryContainer.copy(alpha = 0.45f)
+        else -> colors.surface
     }
 
     Card(
         modifier = modifier
             .clip(RoundedCornerShape(12.dp))
-            .clickable(enabled = !isFilled) { onClick() },
+            .clickable { onClick() },
         shape = RoundedCornerShape(12.dp),
         colors = CardDefaults.cardColors(containerColor = backgroundColor),
-        border = CardDefaults.outlinedCardBorder().copy(brush = androidx.compose.ui.graphics.SolidColor(borderColor))
+        border = CardDefaults.outlinedCardBorder().copy(
+            brush = androidx.compose.ui.graphics.SolidColor(borderColor)
+        )
     ) {
         Column(modifier = Modifier.padding(12.dp)) {
             Row(
@@ -614,34 +616,20 @@ private fun TimeSlotItem(
                 Text(
                     text = timeLabel,
                     style = MaterialTheme.typography.titleMedium,
-                    color = if (isFilled) TextMuted else TextPrimary,
+                    color = colors.textPrimary,
                     fontWeight = FontWeight.Bold
                 )
 
                 Box(
                     modifier = Modifier
                         .clip(RoundedCornerShape(6.dp))
-                        .background(
-                            when {
-                                isFilled -> Color(0xFFE0E0E0)
-                                isConflict -> RedErrorContainer
-                                else -> GreenSuccessContainer
-                            }
-                        )
+                        .background(if (isConflict) colors.errorContainer else colors.successContainer)
                         .padding(horizontal = 6.dp, vertical = 2.dp)
                 ) {
                     Text(
-                        text = when {
-                            isFilled -> "Terisi"
-                            isConflict -> "Konflik"
-                            else -> "Tersedia"
-                        },
+                        text = if (isConflict) "Bentrok" else "Tersedia",
                         style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
-                        color = when {
-                            isFilled -> TextMuted
-                            isConflict -> RedError
-                            else -> GreenSuccess
-                        },
+                        color = if (isConflict) colors.error else colors.success,
                         fontWeight = FontWeight.Bold
                     )
                 }
@@ -650,9 +638,9 @@ private fun TimeSlotItem(
             Spacer(modifier = Modifier.height(6.dp))
 
             Text(
-                text = if (isFilled) "Pesanan Lain" else finishLabel,
+                text = finishLabel,
                 style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
-                color = if (isConflict) RedError else TextMuted
+                color = if (isConflict) colors.error else colors.textMuted
             )
         }
     }
@@ -660,14 +648,34 @@ private fun TimeSlotItem(
 
 @Composable
 private fun ConflictAlertCard(
-    slotCheckResult: id.bantuin.app.domain.model.SlotCheckResult,
+    slotCheckResult: SlotCheckResult,
+    selectedStartMin: Int = 0,
+    durationMin: Int = 60,
+    existingBlocks: List<TimeBlock>,
     onSelectAlternative: (Int) -> Unit
 ) {
+    val colors = BantuinTheme.colors
+    val reasonDetail = when (slotCheckResult.reason) {
+        ConflictReason.OVERLAP -> {
+            val requestedEnd = selectedStartMin + durationMin + id.bantuin.app.core.config.BantuinConfig.TRAVEL_BUFFER_MIN
+            val block = existingBlocks.firstOrNull { it.startMin < requestedEnd && selectedStartMin < it.endMin }
+                ?: existingBlocks.firstOrNull()
+            if (block != null) {
+                "Slot beririsan dengan jadwal sibuk (${TimeUtils.formatMinuteOfDay(block.startMin, false)} - ${TimeUtils.formatMinuteOfDay(block.endMin)} termasuk buffer perjalanan)."
+            } else {
+                slotCheckResult.reason.message
+            }
+        }
+        else -> slotCheckResult.reason?.message ?: "Slot ini tidak tersedia untuk dipilih."
+    }
+
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(14.dp),
-        colors = CardDefaults.cardColors(containerColor = RedErrorContainer),
-        border = CardDefaults.outlinedCardBorder().copy(brush = androidx.compose.ui.graphics.SolidColor(RedError.copy(alpha = 0.3f)))
+        colors = CardDefaults.cardColors(containerColor = colors.errorContainer),
+        border = CardDefaults.outlinedCardBorder().copy(
+            brush = androidx.compose.ui.graphics.SolidColor(colors.error.copy(alpha = 0.4f))
+        )
     ) {
         Column(modifier = Modifier.padding(14.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -675,21 +683,21 @@ private fun ConflictAlertCard(
                     modifier = Modifier
                         .size(32.dp)
                         .clip(CircleShape)
-                        .background(RedError),
+                        .background(colors.error),
                     contentAlignment = Alignment.Center
                 ) {
                     Icon(
                         imageVector = Icons.Default.Warning,
                         contentDescription = null,
-                        tint = Color.White,
+                        tint = colors.onPrimary,
                         modifier = Modifier.size(18.dp)
                     )
                 }
                 Spacer(modifier = Modifier.width(10.dp))
                 Text(
-                    text = "Konflik Jadwal Terdeteksi!",
+                    text = "Slot Tidak Tersedia",
                     style = MaterialTheme.typography.titleSmall,
-                    color = RedError,
+                    color = colors.error,
                     fontWeight = FontWeight.Bold
                 )
             }
@@ -697,68 +705,48 @@ private fun ConflictAlertCard(
             Spacer(modifier = Modifier.height(8.dp))
 
             Text(
-                text = slotCheckResult.reason?.message
-                    ?: "Jadwal yang dipilih tidak tersedia. Mohon pilih waktu alternatif.",
+                text = reasonDetail,
                 style = MaterialTheme.typography.bodySmall,
-                color = Color(0xFF7F0000)
+                color = colors.error
             )
 
-            Spacer(modifier = Modifier.height(10.dp))
+            if (slotCheckResult.alternativeStartsMin.isNotEmpty()) {
+                Spacer(modifier = Modifier.height(12.dp))
 
-            // Bar visual overlapping
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(8.dp)
-                    .clip(RoundedCornerShape(4.dp))
-                    .background(Color(0xFFFFCDD2))
-            ) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth(0.6f)
-                        .height(8.dp)
-                        .background(RedError)
-                )
-            }
-
-            Spacer(modifier = Modifier.height(12.dp))
-
-            if (slotCheckResult.alternativeStartsMin.isEmpty()) {
-                Text(
-                    text = "Tidak ada slot alternatif pada hari ini. Silakan pilih tanggal lain.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = Color(0xFF7F0000)
-                )
-            } else {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Icon(
-                        imageVector = Icons.Default.AutoAwesome,
+                        imageVector = Icons.Default.EventAvailable,
                         contentDescription = null,
-                        tint = OrangePrimary,
+                        tint = colors.primary,
                         modifier = Modifier.size(16.dp)
                     )
                     Spacer(modifier = Modifier.width(6.dp))
                     Text(
                         text = "Rekomendasi Jam Bebas Konflik:",
                         style = MaterialTheme.typography.labelSmall,
-                        color = TextPrimary,
+                        color = colors.textPrimary,
                         fontWeight = FontWeight.Bold
                     )
                 }
 
                 Spacer(modifier = Modifier.height(8.dp))
 
-                // Rekomendasi slot alternatif (maks 3 slot)
                 slotCheckResult.alternativeStartsMin.forEachIndexed { idx, altMin ->
                     val timeLabel = TimeUtils.formatMinuteOfDay(altMin)
-                    Button(
+                    OutlinedButton(
                         onClick = { onSelectAlternative(altMin) },
-                        colors = ButtonDefaults.buttonColors(containerColor = Color.White),
-                        border = ButtonDefaults.outlinedButtonBorder.copy(brush = androidx.compose.ui.graphics.SolidColor(GreenSuccess)),
+                        colors = ButtonDefaults.outlinedButtonColors(
+                            containerColor = colors.surface,
+                            contentColor = colors.textPrimary
+                        ),
+                        border = ButtonDefaults.outlinedButtonBorder(enabled = true).copy(
+                            brush = androidx.compose.ui.graphics.SolidColor(colors.success)
+                        ),
                         shape = RoundedCornerShape(20.dp),
-                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
+                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
                         modifier = Modifier
                             .fillMaxWidth()
+                            .heightIn(min = 48.dp)
                             .padding(vertical = 3.dp)
                     ) {
                         Row(
@@ -770,14 +758,14 @@ private fun ConflictAlertCard(
                                 Icon(
                                     imageVector = Icons.Default.Check,
                                     contentDescription = null,
-                                    tint = GreenSuccess,
+                                    tint = colors.success,
                                     modifier = Modifier.size(16.dp)
                                 )
                                 Spacer(modifier = Modifier.width(6.dp))
                                 Text(
                                     text = "Pilih $timeLabel",
                                     style = MaterialTheme.typography.labelMedium,
-                                    color = TextPrimary
+                                    color = colors.textPrimary
                                 )
                             }
 
@@ -785,13 +773,13 @@ private fun ConflictAlertCard(
                                 Box(
                                     modifier = Modifier
                                         .clip(RoundedCornerShape(6.dp))
-                                        .background(GreenSuccessContainer)
+                                        .background(colors.successContainer)
                                         .padding(horizontal = 6.dp, vertical = 2.dp)
                                 ) {
                                     Text(
                                         text = "Paling Cepat",
                                         style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
-                                        color = GreenSuccess,
+                                        color = colors.success,
                                         fontWeight = FontWeight.Bold
                                     )
                                 }

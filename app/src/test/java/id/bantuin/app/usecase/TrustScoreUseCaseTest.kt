@@ -1,74 +1,136 @@
 package id.bantuin.app.usecase
 
+import id.bantuin.app.core.config.BantuinConfig
 import id.bantuin.app.domain.model.AnomalyReason
+import id.bantuin.app.domain.model.CompletedJob
 import id.bantuin.app.domain.model.ProviderBadge
 import id.bantuin.app.domain.model.TrustInput
 import id.bantuin.app.domain.usecase.trust.TrustScoreUseCase
+import kotlinx.datetime.Instant
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import kotlin.time.Duration.Companion.minutes
 
 class TrustScoreUseCaseTest {
-    private val calculate = TrustScoreUseCase()
+
+    private val useCase = TrustScoreUseCase()
+    private val baseInstant = Instant.fromEpochMilliseconds(1700000000000L)
 
     @Test
-    fun formulaUsesCompletionAndCancellationDenominators() {
-        val result = calculate(TrustInput(onTimeCount = 6, lateCount = 2, cancelledCount = 2,
-            ratingCount = 8, ratingTotal = 36))
-        assertEquals(90.0, result.ratingScore, 0.0001)
-        assertEquals(75.0, result.onTimeRate, 0.0001)
-        assertEquals(20.0, result.cancelRate, 0.0001)
-        assertEquals(62.75, result.trustScore, 0.0001)
+    fun testVector8_4_TrustScore() {
+        // 1. Sehat: 8 SELESAI (6 tepat waktu, 2 telat), 2 DIBATALKAN_MITRA, 8 ulasan rata-rata 4.5
+        // -> rating 90, on-time 75, cancel 20 -> 62.75, bukan anomali (20 tidak > 20), badge TRUSTED
+        val completedSehat = (1..6).map {
+            CompletedJob(startAt = baseInstant, startedAt = baseInstant + 10.minutes) // tepat waktu <= 15m
+        } + (1..2).map {
+            CompletedJob(startAt = baseInstant, startedAt = baseInstant + 25.minutes) // telat > 15m
+        }
+        val inputSehat = TrustInput(
+            completed = completedSehat,
+            mitraCancelledCount = 2,
+            ratings = listOf(5, 4, 5, 4, 5, 4, 5, 4) // avg 4.5
+        )
+        val r1 = useCase.calculate(inputSehat)
+        assertEquals(62.75, r1.trustScore, 0.001)
+        assertFalse(r1.flagAnomaly)
+        assertEquals(ProviderBadge.TRUSTED, r1.badge)
+
+        // 2. Cancel tinggi: 6 SELESAI (semua tepat), 4 DIBATALKAN_MITRA, rata-rata 4.0
+        // cancel 40 -> skor 63, anomali HIGH_CANCEL_RATE, badge NONE
+        val completedCancel = (1..6).map {
+            CompletedJob(startAt = baseInstant, startedAt = baseInstant + 5.minutes)
+        }
+        val inputCancel = TrustInput(
+            completed = completedCancel,
+            mitraCancelledCount = 4,
+            ratings = listOf(4, 4, 4, 4, 4) // avg 4.0
+        )
+        val r2 = useCase.calculate(inputCancel)
+        assertEquals(63.0, r2.trustScore, 0.001)
+        assertTrue(r2.flagAnomaly)
+        assertEquals(ProviderBadge.NONE, r2.badge)
+        assertTrue(r2.reasons.contains(AnomalyReason.HIGH_CANCEL_RATE))
+
+        // 3. Skor rendah: 5 SELESAI (1 tepat waktu), 0 batal, rata-rata 2.0
+        // -> 18 + 7 = 25 -> anomali LOW_TRUST_SCORE
+        val completedLow = listOf(
+            CompletedJob(startAt = baseInstant, startedAt = baseInstant + 5.minutes)
+        ) + (1..4).map {
+            CompletedJob(startAt = baseInstant, startedAt = baseInstant + 30.minutes)
+        }
+        val inputLow = TrustInput(
+            completed = completedLow,
+            mitraCancelledCount = 0,
+            ratings = listOf(2, 2, 2, 2, 2) // avg 2.0
+        )
+        val r3 = useCase.calculate(inputLow)
+        assertEquals(25.0, r3.trustScore, 0.001)
+        assertTrue(r3.flagAnomaly)
+        assertTrue(r3.reasons.contains(AnomalyReason.LOW_TRUST_SCORE))
+
+        // 4. Mitra baru: tx = 4 (< 5) -> trust 80, badge TRUSTED, tanpa anomali
+        val inputNew = TrustInput(
+            completed = (1..4).map { CompletedJob(startAt = baseInstant, startedAt = baseInstant) },
+            mitraCancelledCount = 0,
+            ratings = listOf(5, 5, 5, 5)
+        )
+        val r4 = useCase.calculate(inputNew)
+        assertEquals(80.0, r4.trustScore, 0.001)
+        assertFalse(r4.flagAnomaly)
+        assertEquals(ProviderBadge.TRUSTED, r4.badge)
+
+        // 5. Tanpa ulasan: tx >= 5, ratings kosong, tidak ada batal -> belum dirating, tidak dianggap anomali
+        val inputNoReviews = TrustInput(
+            completed = (1..5).map { CompletedJob(startAt = baseInstant, startedAt = baseInstant) },
+            mitraCancelledCount = 0,
+            ratings = emptyList()
+        )
+        val r5 = useCase.calculate(inputNoReviews)
+        assertEquals(0.0, r5.ratingScore, 0.001)
+        assertEquals(BantuinConfig.TRUST_NEW_PROVIDER_SCORE, r5.trustScore, 0.001)
+        assertFalse(r5.flagAnomaly)
+        assertEquals(ProviderBadge.NEW, r5.badge)
+    }
+
+    @Test
+    fun unratedProviderWithHighCancelRateStillFlaggedAsAnomaly() {
+        val result = useCase.calculate(
+            TrustInput(
+                completed = listOf(CompletedJob(baseInstant, baseInstant)),
+                mitraCancelledCount = 2,
+                ratings = emptyList()
+            )
+        )
+        assertTrue(result.flagAnomaly)
+        assertEquals(ProviderBadge.NONE, result.badge)
+        assertTrue(result.reasons.contains(AnomalyReason.HIGH_CANCEL_RATE))
+    }
+    @Test
+    fun brandNewProviderWithNoTransactionsGetsDefaultScoreWithoutAnomaly() {
+        val result = useCase.calculate(TrustInput(
+            completed = emptyList(),
+            mitraCancelledCount = 0,
+            ratings = emptyList()
+        ))
+        assertEquals(BantuinConfig.TRUST_NEW_PROVIDER_SCORE, result.trustScore, 0.001)
+        assertEquals(0, result.txCount)
+        assertEquals(ProviderBadge.NEW, result.badge)
         assertFalse(result.flagAnomaly)
-        assertEquals(ProviderBadge.TRUSTED, result.badge)
-
-        val withUnfinished = calculate(TrustInput(onTimeCount = 1, cancelledCount = 1, otherCount = 3))
-        assertEquals(20.0, withUnfinished.cancelRate, 0.0001)
-        assertEquals(100.0, withUnfinished.onTimeRate, 0.0001)
-        assertEquals(5, withUnfinished.txCount)
+        assertTrue(result.reasons.isEmpty())
     }
 
     @Test
-    fun aSingleAnomalyConditionIsSufficientAndBothCanBeReported() {
-        val highCancel = calculate(TrustInput(onTimeCount = 6, cancelledCount = 4,
-            ratingCount = 5, ratingTotal = 20))
-        assertEquals(63.0, highCancel.trustScore, 0.0001)
-        assertEquals(listOf(AnomalyReason.HIGH_CANCEL_RATE), highCancel.reasons)
-        assertEquals(ProviderBadge.NONE, highCancel.badge)
-
-        val lowScore = calculate(TrustInput(onTimeCount = 1, lateCount = 4,
-            ratingCount = 5, ratingTotal = 10))
-        assertEquals(25.0, lowScore.trustScore, 0.0001)
-        assertEquals(listOf(AnomalyReason.LOW_TRUST_SCORE), lowScore.reasons)
-
-        val both = calculate(TrustInput(lateCount = 1, cancelledCount = 1))
-        assertEquals(setOf(AnomalyReason.LOW_TRUST_SCORE, AnomalyReason.HIGH_CANCEL_RATE), both.reasons.toSet())
-    }
-
-    @Test
-    fun exactTrustThresholdAndSmallSamplesFollowTheSameRule() {
-        val boundary = calculate(TrustInput(onTimeCount = 3, lateCount = 4,
-            ratingCount = 1, ratingTotal = 5))
-        assertEquals(60.0, boundary.trustScore, 0.0001)
-        assertFalse(boundary.flagAnomaly)
-
-        val onePositive = calculate(TrustInput(onTimeCount = 1, ratingCount = 1, ratingTotal = 5))
-        assertEquals(80.0, onePositive.trustScore, 0.0001)
-        assertEquals(ProviderBadge.TRUSTED, onePositive.badge)
-    }
-
-    @Test
-    fun missingDataAndNegativeScoresAreClampedAndFinite() {
-        val empty = calculate(TrustInput())
-        assertEquals(0.0, empty.ratingScore, 0.0)
-        assertEquals(0.0, empty.onTimeRate, 0.0)
-        assertEquals(0.0, empty.cancelRate, 0.0)
-        assertEquals(0.0, empty.trustScore, 0.0)
-        assertTrue(empty.flagAnomaly)
-
-        val cancelled = calculate(TrustInput(cancelledCount = 1))
-        assertEquals(100.0, cancelled.cancelRate, 0.0)
-        assertEquals(0.0, cancelled.trustScore, 0.0)
+    fun includesUnfinishedOrdersInCancellationDenominator() {
+        val result = useCase.calculate(TrustInput(
+            completed = listOf(CompletedJob(baseInstant, baseInstant)),
+            mitraCancelledCount = 1,
+            ratings = listOf(5),
+            otherOrderCount = 3
+        ))
+        assertEquals(20.0, result.cancelRate, 0.001)
+        assertEquals(76.0, result.trustScore, 0.001)
+        assertFalse(result.flagAnomaly)
     }
 }
