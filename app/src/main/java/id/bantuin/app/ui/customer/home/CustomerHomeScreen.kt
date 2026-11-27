@@ -1,11 +1,6 @@
 package id.bantuin.app.ui.customer.home
 
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.core.RepeatMode
-import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
-import androidx.compose.animation.core.tween
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -42,15 +37,9 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Clear
-import androidx.compose.material.icons.filled.KeyboardArrowDown
-import androidx.compose.material.icons.filled.LocationOn
-import androidx.compose.material.icons.filled.Notifications
-import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Verified
 import androidx.compose.material3.Badge
 import androidx.compose.material3.BadgedBox
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
@@ -69,10 +58,12 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
-import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -86,9 +77,9 @@ import id.bantuin.app.domain.model.RankedProvider
 import id.bantuin.app.domain.model.ServiceCategory
 import id.bantuin.app.domain.repository.BantuinRepository
 import id.bantuin.app.ui.common.BantuinServiceIcon
+import id.bantuin.app.ui.common.BantuinUiIcons
 import id.bantuin.app.ui.common.BantuinViewModelFactory
 import id.bantuin.app.ui.common.ErrorView
-import id.bantuin.app.ui.common.HeroTechnicianIllustration
 import id.bantuin.app.ui.common.LoadingView
 import id.bantuin.app.ui.common.LocationPickerDialog
 import id.bantuin.app.ui.common.RatingDisplay
@@ -272,14 +263,35 @@ private fun CurvedHeroAndQuickStrip(
             .fillMaxWidth()
             .padding(bottom = 4.dp)
     ) {
-        // Latar Header Melengkung (padding bawah 26.dp memberi ruang bagi kartu lokasi mengambang di dalam batas Box)
+        // Latar Header Melengkung dengan aksen lengkung geometris tipis di kanan (tanpa ilustrasi orang)
+        val arcTint = if (colors.isDark) {
+            Color(0xFFFB8C00).copy(alpha = 0.08f)
+        } else {
+            Color.White.copy(alpha = 0.08f)
+        }
         Column(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(bottom = 26.dp)
                 .clip(RoundedCornerShape(bottomStart = 28.dp, bottomEnd = 28.dp))
                 .background(headerBrush)
-                .padding(start = 16.dp, end = 12.dp, top = 14.dp, bottom = 46.dp)
+                .drawBehind {
+                    val cx = size.width * 0.94f
+                    val cy = size.height * 0.62f
+                    drawCircle(
+                        color = arcTint,
+                        radius = size.height * 0.56f,
+                        center = Offset(cx, cy),
+                        style = Stroke(width = 2.dp.toPx())
+                    )
+                    drawCircle(
+                        color = arcTint.copy(alpha = arcTint.alpha * 0.65f),
+                        radius = size.height * 0.82f,
+                        center = Offset(cx, cy),
+                        style = Stroke(width = 1.5.dp.toPx())
+                    )
+                }
+                .padding(start = 16.dp, end = 12.dp, top = 16.dp, bottom = 58.dp)
         ) {
             // Baris 1: Search Bar Pill + Notifikasi (Chat sudah tersedia di Bottom Navbar)
             Row(
@@ -294,7 +306,7 @@ private fun CurvedHeroAndQuickStrip(
                 )
 
                 HeaderCircleActionButton(
-                    icon = Icons.Default.Notifications,
+                    icon = BantuinUiIcons.NotificationBell,
                     contentDescription = "Notifikasi",
                     hasBadge = hasUnreadNotifications,
                     badgeCount = 0,
@@ -304,67 +316,57 @@ private fun CurvedHeroAndQuickStrip(
                 )
             }
 
-            // Baris 2: Hero Greeting + Ilustrasi Teknisi (otomatis terlipat saat mencari)
+            // Baris 2: Hero Greeting berskala jelas & lega tanpa ilustrasi orang (otomatis terlipat saat mencari)
             AnimatedVisibility(
                 visible = searchQuery.isBlank(),
                 enter = if (reducedMotion) fadeIn() else expandVertically() + fadeIn(),
                 exit = if (reducedMotion) fadeOut() else shrinkVertically() + fadeOut()
             ) {
-                Row(
+                Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(top = 14.dp, end = 4.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
+                        .padding(top = 20.dp, end = 8.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
-                    Column(
-                        modifier = Modifier
-                            .weight(1f)
-                            .padding(end = 8.dp),
-                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                    Text(
+                        text = "Halo, $firstName!",
+                        style = MaterialTheme.typography.headlineLarge,
+                        color = headerTextColor,
+                        fontWeight = FontWeight.Bold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    Text(
+                        text = "Cari teknisi listrik, AC, atau pipa terpercaya tanpa ribet.",
+                        style = MaterialTheme.typography.bodyMedium.copy(fontSize = 14.sp, lineHeight = 20.sp),
+                        color = headerSubtextColor,
+                        maxLines = 2
+                    )
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Surface(
+                        shape = RoundedCornerShape(20.dp),
+                        color = if (colors.isDark) colors.surfaceSubtle else Color(0xFF8C2C00)
                     ) {
-                        Text(
-                            text = "Halo, $firstName!",
-                            style = MaterialTheme.typography.titleMedium,
-                            color = headerTextColor,
-                            fontWeight = FontWeight.Bold,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                        Text(
-                            text = "Cari teknisi listrik, AC, atau pipa tanpa ribet.",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = headerSubtextColor,
-                            maxLines = 2
-                        )
-                        Spacer(modifier = Modifier.height(2.dp))
-                        Surface(
-                            shape = RoundedCornerShape(20.dp),
-                            color = if (colors.isDark) colors.surfaceSubtle else Color(0xFF8C2C00)
+                        Row(
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(7.dp)
                         ) {
-                            Row(
-                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(6.dp)
-                            ) {
-                                LivePulseDot(
-                                    color = if (colors.isDark) colors.success else Color(0xFF86EFAC)
-                                )
-                                Text(
-                                    text = if (readyProviderCount > 0) {
-                                        "$readyProviderCount Mitra Siaga Sekitar"
-                                    } else {
-                                        "Teknisi Terverifikasi Malang"
-                                    },
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = headerTextColor,
-                                    fontWeight = FontWeight.SemiBold
-                                )
-                            }
+                            LivePulseDot(
+                                color = if (colors.isDark) colors.success else Color(0xFF86EFAC)
+                            )
+                            Text(
+                                text = if (readyProviderCount > 0) {
+                                    "$readyProviderCount Mitra Siaga Sekitar"
+                                } else {
+                                    "Teknisi Terverifikasi Malang"
+                                },
+                                style = MaterialTheme.typography.labelMedium,
+                                color = headerTextColor,
+                                fontWeight = FontWeight.SemiBold
+                            )
                         }
                     }
-
-                    HeroTechnicianIllustration()
                 }
             }
         }
@@ -490,7 +492,7 @@ private fun OverlappingLocationQuickCard(
                     contentAlignment = Alignment.Center
                 ) {
                     Icon(
-                        imageVector = Icons.Default.LocationOn,
+                        imageVector = BantuinUiIcons.LocationPin,
                         contentDescription = "Lokasi Layanan",
                         tint = colors.onPrimaryContainer,
                         modifier = Modifier.size(18.dp)
@@ -515,7 +517,7 @@ private fun OverlappingLocationQuickCard(
                         )
                         Spacer(modifier = Modifier.width(2.dp))
                         Icon(
-                            imageVector = Icons.Default.KeyboardArrowDown,
+                            imageVector = BantuinUiIcons.ChevronDown,
                             contentDescription = "Ubah lokasi",
                             tint = colors.textSecondary,
                             modifier = Modifier.size(18.dp)
@@ -597,7 +599,7 @@ private fun SearchBarPill(
         },
         leadingIcon = {
             Icon(
-                imageVector = Icons.Default.Search,
+                imageVector = BantuinUiIcons.Search,
                 contentDescription = "Cari layanan",
                 tint = colors.primary
             )
@@ -717,6 +719,7 @@ private fun AiryCategoryTile(
     val colors = BantuinTheme.colors
     val interactionSource = remember { MutableInteractionSource() }
     val isPressed by interactionSource.collectIsPressedAsState()
+    val isPriorityTrade = category.id in 1..3
 
     Column(
         modifier = modifier
@@ -743,7 +746,7 @@ private fun AiryCategoryTile(
             text = category.name,
             style = MaterialTheme.typography.labelMedium,
             color = colors.textPrimary,
-            fontWeight = FontWeight.SemiBold,
+            fontWeight = if (isPriorityTrade) FontWeight.Bold else FontWeight.SemiBold,
             textAlign = TextAlign.Center,
             maxLines = 2,
             overflow = TextOverflow.Ellipsis,
@@ -841,33 +844,21 @@ private fun LivePulseDot(
     color: Color,
     modifier: Modifier = Modifier
 ) {
-    val reducedMotion = rememberReducedMotion()
-    val scale = if (reducedMotion) {
-        1f
-    } else {
-        val infiniteTransition = rememberInfiniteTransition(label = "liveDot")
-        val animated by infiniteTransition.animateFloat(
-            initialValue = 0.85f,
-            targetValue = 1.25f,
-            animationSpec = infiniteRepeatable(
-                animation = tween(900),
-                repeatMode = RepeatMode.Reverse
-            ),
-            label = "dotScale"
-        )
-        animated
-    }
-
+    // Indikator status aktif statis bercincin tanpa animasi berulang terus-menerus (R-19).
     Box(
         modifier = modifier
-            .size(10.dp)
-            .graphicsLayer {
-                scaleX = scale
-                scaleY = scale
-            }
+            .size(12.dp)
             .clip(CircleShape)
-            .background(color)
-    )
+            .background(color.copy(alpha = 0.28f)),
+        contentAlignment = Alignment.Center
+    ) {
+        Box(
+            modifier = Modifier
+                .size(7.dp)
+                .clip(CircleShape)
+                .background(color)
+        )
+    }
 }
 
 @Composable
@@ -978,7 +969,11 @@ private fun NearbyProvidersSection(
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Text(
-                                    text = String.format(Locale.US, "%.1f km", ranked.distanceKm),
+                                    text = if (ranked.distanceKm < 0.1) {
+                                        "< 0.1 km"
+                                    } else {
+                                        String.format(Locale.US, "%.1f km", ranked.distanceKm)
+                                    },
                                     style = MaterialTheme.typography.bodySmall,
                                     color = colors.textSecondary
                                 )

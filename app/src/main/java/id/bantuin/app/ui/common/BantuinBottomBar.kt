@@ -7,17 +7,6 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
 import androidx.compose.foundation.layout.Column
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.Chat
-import androidx.compose.material.icons.automirrored.filled.ReceiptLong
-import androidx.compose.material.icons.automirrored.outlined.Chat
-import androidx.compose.material.icons.automirrored.outlined.ReceiptLong
-import androidx.compose.material.icons.filled.Dashboard
-import androidx.compose.material.icons.filled.Home
-import androidx.compose.material.icons.filled.Person
-import androidx.compose.material.icons.outlined.Dashboard
-import androidx.compose.material.icons.outlined.Home
-import androidx.compose.material.icons.outlined.Person
 import androidx.compose.material3.Badge
 import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.HorizontalDivider
@@ -53,28 +42,28 @@ fun customerNavTabs(unreadChatCount: Int = 0): List<NavTabItem> = listOf(
     NavTabItem(
         route = Routes.CUSTOMER_HOME,
         label = "Beranda",
-        selectedIcon = Icons.Default.Home,
-        unselectedIcon = Icons.Outlined.Home
+        selectedIcon = BantuinUiIcons.HomeFilled,
+        unselectedIcon = BantuinUiIcons.HomeOutline
     ),
     NavTabItem(
         route = Routes.CUSTOMER_ORDERS,
         label = "Pesanan",
-        selectedIcon = Icons.AutoMirrored.Filled.ReceiptLong,
-        unselectedIcon = Icons.AutoMirrored.Outlined.ReceiptLong
+        selectedIcon = BantuinUiIcons.OrdersFilled,
+        unselectedIcon = BantuinUiIcons.OrdersOutline
     ),
     NavTabItem(
         route = Routes.CHAT_LIST,
         label = "Chat",
-        selectedIcon = Icons.AutoMirrored.Filled.Chat,
-        unselectedIcon = Icons.AutoMirrored.Outlined.Chat,
+        selectedIcon = BantuinUiIcons.ChatFilled,
+        unselectedIcon = BantuinUiIcons.ChatOutline,
         hasBadge = unreadChatCount > 0,
         badgeCount = unreadChatCount
     ),
     NavTabItem(
         route = Routes.CUSTOMER_PROFILE,
         label = "Profil",
-        selectedIcon = Icons.Default.Person,
-        unselectedIcon = Icons.Outlined.Person
+        selectedIcon = BantuinUiIcons.ProfileFilled,
+        unselectedIcon = BantuinUiIcons.ProfileOutline
     )
 )
 
@@ -82,26 +71,26 @@ fun providerNavTabs(): List<NavTabItem> = listOf(
     NavTabItem(
         route = Routes.PROVIDER_HOME,
         label = "Beranda",
-        selectedIcon = Icons.Default.Home,
-        unselectedIcon = Icons.Outlined.Home
+        selectedIcon = BantuinUiIcons.HomeFilled,
+        unselectedIcon = BantuinUiIcons.HomeOutline
     ),
     NavTabItem(
         route = Routes.PROVIDER_ORDERS,
         label = "Pesanan",
-        selectedIcon = Icons.AutoMirrored.Filled.ReceiptLong,
-        unselectedIcon = Icons.AutoMirrored.Outlined.ReceiptLong
+        selectedIcon = BantuinUiIcons.OrdersFilled,
+        unselectedIcon = BantuinUiIcons.OrdersOutline
     ),
     NavTabItem(
         route = Routes.PROVIDER_DASHBOARD,
         label = "Dashboard",
-        selectedIcon = Icons.Default.Dashboard,
-        unselectedIcon = Icons.Outlined.Dashboard
+        selectedIcon = BantuinUiIcons.DashboardFilled,
+        unselectedIcon = BantuinUiIcons.DashboardOutline
     ),
     NavTabItem(
         route = Routes.PROVIDER_PROFILE,
         label = "Profil",
-        selectedIcon = Icons.Default.Person,
-        unselectedIcon = Icons.Outlined.Person
+        selectedIcon = BantuinUiIcons.ProfileFilled,
+        unselectedIcon = BantuinUiIcons.ProfileOutline
     )
 )
 

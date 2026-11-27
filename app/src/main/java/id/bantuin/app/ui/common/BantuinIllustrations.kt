@@ -12,123 +12,13 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.unit.dp
 import id.bantuin.app.ui.theme.BantuinTheme
 
-@Composable
-fun HeroTechnicianIllustration(
-    modifier: Modifier = Modifier
-) {
-    val isDark = BantuinTheme.colors.isDark
-    Canvas(modifier = modifier.size(width = 96.dp, height = 78.dp)) {
-        val w = size.width
-        val h = size.height
-
-        // Lingkaran cahaya latar belakang
-        val glowColor = if (isDark) {
-            Color(0xFFFB8C00).copy(alpha = 0.20f)
-        } else {
-            Color.White.copy(alpha = 0.16f)
-        }
-        drawCircle(
-            color = glowColor,
-            radius = w * 0.36f,
-            center = Offset(w * 0.52f, h * 0.52f)
-        )
-
-        // Siluet rumah / perbukitan Malang di dasar
-        val hillColor = if (isDark) {
-            Color(0xFFFFB74D).copy(alpha = 0.18f)
-        } else {
-            Color.White.copy(alpha = 0.18f)
-        }
-        val hills = Path().apply {
-            moveTo(w * 0.05f, h * 0.92f)
-            quadraticTo(w * 0.28f, h * 0.72f, w * 0.52f, h * 0.88f)
-            quadraticTo(w * 0.74f, h * 0.70f, w * 0.95f, h * 0.92f)
-            close()
-        }
-        drawPath(path = hills, color = hillColor)
-
-        // Badan teknisi (seragam krem/oranye cerah)
-        val jacketColor = if (isDark) Color(0xFFFB8C00) else Color(0xFFFFEDD5)
-        val collarColor = if (isDark) Color(0xFF1C1E22) else Color(0xFF9A3412)
-        val torso = Path().apply {
-            moveTo(w * 0.28f, h * 0.92f)
-            cubicTo(w * 0.28f, h * 0.66f, w * 0.72f, h * 0.66f, w * 0.72f, h * 0.92f)
-            close()
-        }
-        drawPath(path = torso, color = jacketColor)
-        drawLine(
-            color = collarColor,
-            start = Offset(w * 0.44f, h * 0.72f),
-            end = Offset(w * 0.50f, h * 0.84f),
-            strokeWidth = w * 0.03f,
-            cap = StrokeCap.Round
-        )
-        drawLine(
-            color = collarColor,
-            start = Offset(w * 0.56f, h * 0.72f),
-            end = Offset(w * 0.50f, h * 0.84f),
-            strokeWidth = w * 0.03f,
-            cap = StrokeCap.Round
-        )
-
-        // Wajah ramah
-        drawCircle(
-            color = Color(0xFFFDE0C6),
-            radius = w * 0.13f,
-            center = Offset(w * 0.50f, h * 0.52f)
-        )
-        // Mata & senyum tipis
-        drawCircle(color = Color(0xFF1E293B), radius = w * 0.016f, center = Offset(w * 0.455f, h * 0.51f))
-        drawCircle(color = Color(0xFF1E293B), radius = w * 0.016f, center = Offset(w * 0.545f, h * 0.51f))
-        drawArc(
-            color = Color(0xFF9A3412),
-            startAngle = 20f,
-            sweepAngle = 140f,
-            useCenter = false,
-            topLeft = Offset(w * 0.445f, h * 0.535f),
-            size = Size(w * 0.11f, h * 0.07f),
-            style = Stroke(width = w * 0.022f, cap = StrokeCap.Round)
-        )
-
-        // Topi / Helm Teknisi
-        val helmet = Path().apply {
-            moveTo(w * 0.35f, h * 0.44f)
-            cubicTo(w * 0.35f, h * 0.25f, w * 0.65f, h * 0.25f, w * 0.65f, h * 0.44f)
-            close()
-        }
-        drawPath(path = helmet, color = Color(0xFFFACC15))
-        drawRoundRect(
-            color = Color(0xFFEAB308),
-            topLeft = Offset(w * 0.32f, h * 0.41f),
-            size = Size(w * 0.38f, h * 0.055f),
-            cornerRadius = CornerRadius(w * 0.03f, w * 0.03f)
-        )
-
-        // Kunci pas mengambang di kanan atas teknisi
-        rotate(degrees = 28f, pivot = Offset(w * 0.79f, h * 0.44f)) {
-            drawRoundRect(
-                color = Color.White,
-                topLeft = Offset(w * 0.76f, h * 0.26f),
-                size = Size(w * 0.06f, h * 0.34f),
-                cornerRadius = CornerRadius(w * 0.03f, w * 0.03f)
-            )
-            drawCircle(
-                color = Color.White,
-                radius = w * 0.065f,
-                center = Offset(w * 0.79f, h * 0.26f)
-            )
-        }
-
-        // Bintang kilau kecil
-        drawStar4(Offset(w * 0.20f, h * 0.34f), w * 0.05f, Color(0xFFFDE047))
-        drawStar4(Offset(w * 0.84f, h * 0.70f), w * 0.04f, Color.White.copy(alpha = 0.85f))
-    }
-}
-
+/**
+ * Ilustrasi status & lencana Bantuin bergaya soft duotone tanpa garis luar hitam tebal,
+ * menjaga keselarasan visual dengan ikon layanan (R-04, R-22, R-25).
+ */
 @Composable
 fun EmergencyBeaconIllustration(
     modifier: Modifier = Modifier
@@ -138,7 +28,7 @@ fun EmergencyBeaconIllustration(
         val h = size.height
 
         drawCircle(
-            color = Color(0xFFEF4444).copy(alpha = 0.28f),
+            color = Color(0xFFEF4444).copy(alpha = 0.20f),
             radius = w * 0.46f,
             center = Offset(w * 0.5f, h * 0.5f)
         )
@@ -149,11 +39,11 @@ fun EmergencyBeaconIllustration(
         )
 
         val bolt = Path().apply {
-            moveTo(w * 0.54f, h * 0.24f)
-            lineTo(w * 0.36f, h * 0.52f)
+            moveTo(w * 0.54f, h * 0.26f)
+            lineTo(w * 0.37f, h * 0.52f)
             lineTo(w * 0.50f, h * 0.52f)
-            lineTo(w * 0.45f, h * 0.76f)
-            lineTo(w * 0.65f, h * 0.46f)
+            lineTo(w * 0.46f, h * 0.74f)
+            lineTo(w * 0.64f, h * 0.46f)
             lineTo(w * 0.51f, h * 0.46f)
             close()
         }
@@ -172,17 +62,17 @@ fun WarrantyShieldIllustration(
 
         drawCircle(
             color = colors.successContainer,
-            radius = w * 0.48f,
+            radius = w * 0.46f,
             center = Offset(w * 0.5f, h * 0.5f)
         )
 
         val shield = Path().apply {
             moveTo(w * 0.50f, h * 0.18f)
-            lineTo(w * 0.76f, h * 0.28f)
-            lineTo(w * 0.76f, h * 0.50f)
-            cubicTo(w * 0.76f, h * 0.68f, w * 0.58f, h * 0.80f, w * 0.50f, h * 0.84f)
-            cubicTo(w * 0.42f, h * 0.80f, w * 0.24f, h * 0.68f, w * 0.24f, h * 0.50f)
-            lineTo(w * 0.24f, h * 0.28f)
+            lineTo(w * 0.75f, h * 0.28f)
+            lineTo(w * 0.75f, h * 0.50f)
+            cubicTo(w * 0.75f, h * 0.68f, w * 0.58f, h * 0.80f, w * 0.50f, h * 0.84f)
+            cubicTo(w * 0.42f, h * 0.80f, w * 0.25f, h * 0.68f, w * 0.25f, h * 0.50f)
+            lineTo(w * 0.25f, h * 0.28f)
             close()
         }
         drawPath(path = shield, color = colors.success)
@@ -190,16 +80,19 @@ fun WarrantyShieldIllustration(
         val check = Path().apply {
             moveTo(w * 0.39f, h * 0.51f)
             lineTo(w * 0.47f, h * 0.60f)
-            lineTo(w * 0.63f, h * 0.42f)
+            lineTo(w * 0.62f, h * 0.42f)
         }
         drawPath(
             path = check,
             color = if (colors.isDark) colors.background else Color.White,
-            style = Stroke(width = w * 0.08f, cap = StrokeCap.Round, join = StrokeJoin.Round)
+            style = Stroke(width = w * 0.085f, cap = StrokeCap.Round, join = StrokeJoin.Round)
         )
     }
 }
 
+/**
+ * Ilustrasi status kosong khas Bantuin: papan kerja pesanan kosong dengan penjepit logam (tanpa bintang AI).
+ */
 @Composable
 fun EmptyStateIllustration(
     modifier: Modifier = Modifier
@@ -211,43 +104,52 @@ fun EmptyStateIllustration(
 
         drawCircle(
             color = colors.primaryContainer.copy(alpha = if (colors.isDark) 0.45f else 0.70f),
-            radius = w * 0.44f,
+            radius = w * 0.43f,
             center = Offset(w * 0.5f, h * 0.52f)
         )
 
-        // Kartu / Kotak bersih
+        // Papan clipboard kerja lembut dengan tepi halus sesuai tema
         drawRoundRect(
             color = colors.surface,
-            topLeft = Offset(w * 0.26f, h * 0.28f),
-            size = Size(w * 0.48f, h * 0.48f),
+            topLeft = Offset(w * 0.27f, h * 0.24f),
+            size = Size(w * 0.46f, h * 0.56f),
             cornerRadius = CornerRadius(w * 0.08f, w * 0.08f)
         )
         drawRoundRect(
-            color = colors.primary,
-            topLeft = Offset(w * 0.26f, h * 0.28f),
-            size = Size(w * 0.48f, h * 0.48f),
+            color = colors.borderSubtle,
+            topLeft = Offset(w * 0.27f, h * 0.24f),
+            size = Size(w * 0.46f, h * 0.56f),
             cornerRadius = CornerRadius(w * 0.08f, w * 0.08f),
-            style = Stroke(width = w * 0.035f)
+            style = Stroke(width = w * 0.025f)
         )
 
-        // Garis isi ringkas
-        drawLine(
+        // Penjepit di atas papan kerja
+        drawRoundRect(
             color = colors.primary,
-            start = Offset(w * 0.36f, h * 0.44f),
-            end = Offset(w * 0.64f, h * 0.44f),
-            strokeWidth = w * 0.045f,
-            cap = StrokeCap.Round
-        )
-        drawLine(
-            color = colors.textMuted,
-            start = Offset(w * 0.36f, h * 0.56f),
-            end = Offset(w * 0.56f, h * 0.56f),
-            strokeWidth = w * 0.04f,
-            cap = StrokeCap.Round
+            topLeft = Offset(w * 0.39f, h * 0.17f),
+            size = Size(w * 0.22f, h * 0.11f),
+            cornerRadius = CornerRadius(w * 0.04f, w * 0.04f)
         )
 
-        drawStar4(Offset(w * 0.82f, h * 0.24f), w * 0.06f, colors.primary)
-        drawStar4(Offset(w * 0.16f, h * 0.68f), w * 0.045f, colors.warning)
+        // Baris checklist kosong dengan kotak centang
+        val rowY = listOf(0.41f, 0.54f, 0.67f)
+        rowY.forEachIndexed { idx, y ->
+            drawRoundRect(
+                color = colors.primary,
+                topLeft = Offset(w * 0.35f, h * (y - 0.03f)),
+                size = Size(w * 0.06f, w * 0.06f),
+                cornerRadius = CornerRadius(w * 0.015f, w * 0.015f),
+                style = Stroke(width = w * 0.022f)
+            )
+            val endX = if (idx == 2) 0.54f else 0.63f
+            drawLine(
+                color = if (idx == 0) colors.textSecondary else colors.textMuted,
+                start = Offset(w * 0.45f, h * y),
+                end = Offset(w * endX, h * y),
+                strokeWidth = w * 0.036f,
+                cap = StrokeCap.Round
+            )
+        }
     }
 }
 
@@ -262,7 +164,7 @@ fun ErrorStateIllustration(
 
         drawCircle(
             color = colors.errorContainer,
-            radius = w * 0.44f,
+            radius = w * 0.43f,
             center = Offset(w * 0.5f, h * 0.52f)
         )
 
@@ -272,11 +174,7 @@ fun ErrorStateIllustration(
             lineTo(w * 0.22f, h * 0.74f)
             close()
         }
-        drawPath(
-            path = triangle,
-            color = colors.error,
-            style = Stroke(width = w * 0.055f, join = StrokeJoin.Round)
-        )
+        drawPath(path = triangle, color = colors.surface)
 
         drawLine(
             color = colors.error,
@@ -287,24 +185,8 @@ fun ErrorStateIllustration(
         )
         drawCircle(
             color = colors.error,
-            radius = w * 0.032f,
+            radius = w * 0.034f,
             center = Offset(w * 0.50f, h * 0.65f)
         )
     }
-}
-
-private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawStar4(
-    center: Offset,
-    radius: Float,
-    color: Color
-) {
-    val path = Path().apply {
-        moveTo(center.x, center.y - radius)
-        quadraticTo(center.x, center.y, center.x + radius, center.y)
-        quadraticTo(center.x, center.y, center.x, center.y + radius)
-        quadraticTo(center.x, center.y, center.x - radius, center.y)
-        quadraticTo(center.x, center.y, center.x, center.y - radius)
-        close()
-    }
-    drawPath(path = path, color = color)
 }
