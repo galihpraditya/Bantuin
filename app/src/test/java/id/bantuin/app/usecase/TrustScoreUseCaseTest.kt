@@ -81,7 +81,7 @@ class TrustScoreUseCaseTest {
         assertFalse(r4.flagAnomaly)
         assertEquals(ProviderBadge.TRUSTED, r4.badge)
 
-        // 5. Tanpa ulasan: tx >= 5, ratings kosong -> skor rating = 0
+        // 5. Tanpa ulasan: tx >= 5, ratings kosong, tidak ada batal -> belum dirating, tidak dianggap anomali
         val inputNoReviews = TrustInput(
             completed = (1..5).map { CompletedJob(startAt = baseInstant, startedAt = baseInstant) },
             mitraCancelledCount = 0,
@@ -89,6 +89,23 @@ class TrustScoreUseCaseTest {
         )
         val r5 = useCase.calculate(inputNoReviews)
         assertEquals(0.0, r5.ratingScore, 0.001)
+        assertEquals(BantuinConfig.TRUST_NEW_PROVIDER_SCORE, r5.trustScore, 0.001)
+        assertFalse(r5.flagAnomaly)
+        assertEquals(ProviderBadge.NEW, r5.badge)
+    }
+
+    @Test
+    fun unratedProviderWithHighCancelRateStillFlaggedAsAnomaly() {
+        val result = useCase.calculate(
+            TrustInput(
+                completed = listOf(CompletedJob(baseInstant, baseInstant)),
+                mitraCancelledCount = 2,
+                ratings = emptyList()
+            )
+        )
+        assertTrue(result.flagAnomaly)
+        assertEquals(ProviderBadge.NONE, result.badge)
+        assertTrue(result.reasons.contains(AnomalyReason.HIGH_CANCEL_RATE))
     }
     @Test
     fun brandNewProviderWithNoTransactionsGetsDefaultScoreWithoutAnomaly() {

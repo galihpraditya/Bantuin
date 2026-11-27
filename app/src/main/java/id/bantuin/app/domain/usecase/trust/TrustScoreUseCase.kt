@@ -40,6 +40,26 @@ class TrustScoreUseCase {
         val onTimeRate = if (done == 0) 0.0 else 100.0 * onTime / done
         val cancelRate = if (total == 0) 0.0 else 100.0 * cancelled / total
 
+        // Mitra sudah punya transaksi tetapi belum pernah dirating user:
+        // jangan anggap skor rendah (LOW_TRUST_SCORE) karena rating memang belum ada;
+        // hanya tandai anomali bila rasio pembatalan melebihi batas (> 20%).
+        if (input.ratings.isEmpty()) {
+            val highCancel = 5L * cancelled > total
+            val reasons = if (highCancel) listOf(AnomalyReason.HIGH_CANCEL_RATE) else emptyList()
+            return TrustResult(
+                ratingAvg = null,
+                ratingScore = 0.0,
+                onTimeRate = onTimeRate,
+                cancelRate = cancelRate,
+                completionRate = (done + cancelled).takeIf { it > 0 }?.let { done.toDouble() / it },
+                trustScore = BantuinConfig.TRUST_NEW_PROVIDER_SCORE,
+                txCount = total,
+                flagAnomaly = highCancel,
+                badge = if (highCancel) ProviderBadge.NONE else ProviderBadge.NEW,
+                reasons = reasons
+            )
+        }
+
         // Compare the exact weighted fractions before dividing so 60 and 20 remain strict thresholds.
         val ratingsDen = input.ratings.size.coerceAtLeast(1).toBigDecimal()
         val slaDen = done.coerceAtLeast(1).toBigDecimal()
