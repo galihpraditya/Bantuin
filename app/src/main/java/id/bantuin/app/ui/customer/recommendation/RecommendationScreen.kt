@@ -77,6 +77,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import id.bantuin.app.core.config.BantuinConfig
 import id.bantuin.app.core.util.CurrencyUtils
 import id.bantuin.app.domain.model.ProviderCandidate
+import id.bantuin.app.domain.model.RadiusExpansionState
 import id.bantuin.app.domain.model.RankedProvider
 import id.bantuin.app.domain.repository.BantuinRepository
 import id.bantuin.app.ui.common.BantuinServiceIcon
@@ -151,7 +152,7 @@ fun RecommendationScreen(
                                 )
                                 Spacer(modifier = Modifier.width(3.dp))
                                 Text(
-                                    text = "Radius ${uiState.maxDistanceFilter.toInt()} km • ${filteredList.size} mitra siap",
+                                    text = "Radius ${uiState.effectiveRadius.toInt()} km • ${filteredList.size} mitra siap",
                                     style = MaterialTheme.typography.bodySmall,
                                     color = colors.textSecondary
                                 )
@@ -300,6 +301,18 @@ fun RecommendationScreen(
                         }
                     }
 
+                    // 1b. Banner Saran Perluasan Radius Otomatis
+                    if (uiState.expansionState == RadiusExpansionState.SUGGESTING_EXPANSION) {
+                        item {
+                            RadiusExpansionBanner(
+                                effectiveRadius = uiState.effectiveRadius,
+                                potentialCount = uiState.potentialCountIfExpanded,
+                                onExpand = { viewModel.acceptRadiusExpansion() },
+                                onDismiss = { viewModel.dismissRadiusExpansion() }
+                            )
+                        }
+                    }
+
                     // 2. Daftar Kartu Rekomendasi Mitra Terurut
                     if (filteredList.isEmpty()) {
                         item {
@@ -331,7 +344,10 @@ fun RecommendationScreen(
                     // 3. Catatan Mitra di Luar Radius Maksimal
                     if (matchResult.outOfRange.isNotEmpty()) {
                         item {
-                            OutOfRangeNoticeCard(count = matchResult.outOfRange.size)
+                            OutOfRangeNoticeCard(
+                                count = matchResult.outOfRange.size,
+                                radiusKm = uiState.effectiveRadius.toInt()
+                            )
                         }
                     }
                 }
@@ -838,7 +854,7 @@ private fun ProviderRecommendationCard(
 }
 
 @Composable
-private fun OutOfRangeNoticeCard(count: Int) {
+private fun OutOfRangeNoticeCard(count: Int, radiusKm: Int) {
     val colors = BantuinTheme.colors
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -860,10 +876,81 @@ private fun OutOfRangeNoticeCard(count: Int) {
             )
             Spacer(modifier = Modifier.width(10.dp))
             Text(
-                text = "$count mitra lain berada di luar radius ${BantuinConfig.MAX_RADIUS_KM.toInt()} km sehingga tidak ditampilkan untuk menjaga ketepatan waktu kedatangan.",
+                text = "$count mitra lain berada di luar radius $radiusKm km sehingga tidak ditampilkan untuk menjaga ketepatan waktu kedatangan.",
                 style = MaterialTheme.typography.bodySmall,
                 color = colors.info
             )
+        }
+    }
+}
+
+@Composable
+private fun RadiusExpansionBanner(
+    effectiveRadius: Double,
+    potentialCount: Int,
+    onExpand: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    val colors = BantuinTheme.colors
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(14.dp),
+        colors = CardDefaults.cardColors(containerColor = colors.warningContainer),
+        border = CardDefaults.outlinedCardBorder().copy(
+            brush = SolidColor(colors.warning)
+        )
+    ) {
+        Column(modifier = Modifier.padding(14.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    imageVector = Icons.Default.LocationOn,
+                    contentDescription = null,
+                    tint = colors.primary,
+                    modifier = Modifier.size(20.dp)
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = "Perluas Radius Pencarian?",
+                    style = MaterialTheme.typography.titleSmall,
+                    color = colors.textPrimary,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+            Spacer(modifier = Modifier.height(6.dp))
+            Text(
+                text = "Tidak ada mitra dalam radius ${effectiveRadius.toInt()} km. Tersedia $potentialCount mitra dalam radius ${BantuinConfig.MAX_RADIUS_KM_EXPANDED.toInt()} km.",
+                style = MaterialTheme.typography.bodySmall,
+                color = colors.textSecondary
+            )
+            Spacer(modifier = Modifier.height(10.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Button(
+                    onClick = onExpand,
+                    colors = ButtonDefaults.buttonColors(containerColor = colors.primary),
+                    shape = RoundedCornerShape(10.dp),
+                    contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp),
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Text(
+                        text = "Perluas ke ${BantuinConfig.MAX_RADIUS_KM_EXPANDED.toInt()} km",
+                        style = MaterialTheme.typography.labelMedium
+                    )
+                }
+                OutlinedButton(
+                    onClick = onDismiss,
+                    shape = RoundedCornerShape(10.dp),
+                    contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp)
+                ) {
+                    Text(
+                        text = "Abaikan",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = colors.textSecondary
+                    )
+                }
+            }
         }
     }
 }
