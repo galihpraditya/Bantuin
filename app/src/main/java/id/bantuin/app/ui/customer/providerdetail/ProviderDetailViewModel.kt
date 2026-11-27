@@ -8,6 +8,7 @@ import id.bantuin.app.domain.model.ReviewItem
 import id.bantuin.app.domain.model.ServiceItem
 import id.bantuin.app.domain.repository.CatalogRepository
 import id.bantuin.app.domain.repository.ReviewRepository
+import id.bantuin.app.domain.usecase.bookmark.BookmarkUseCase
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -21,12 +22,14 @@ data class ProviderDetailUiState(
     val services: List<ServiceItem> = emptyList(),
     val reviews: List<ReviewItem> = emptyList(),
     val isLoading: Boolean = false,
-    val errorMessage: String? = null
+    val errorMessage: String? = null,
+    val isBookmarked: Boolean = false
 )
 
 class ProviderDetailViewModel(
     private val catalogRepository: CatalogRepository,
-    private val reviewRepository: ReviewRepository
+    private val reviewRepository: ReviewRepository,
+    private val bookmarkUseCase: BookmarkUseCase = BookmarkUseCase()
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(ProviderDetailUiState())
@@ -79,10 +82,17 @@ class ProviderDetailViewModel(
                         services = services,
                         reviews = reviews,
                         isLoading = false,
-                        errorMessage = errorMsg
+                        errorMessage = errorMsg,
+                        isBookmarked = bookmarkUseCase.isBookmarked("user_demo", providerId)
                     )
                 }
             }
         }
+    }
+
+    fun toggleBookmark(categoryId: Int = 1, customerId: String = "user_demo") {
+        val provider = _uiState.value.provider ?: return
+        val nowBookmarked = bookmarkUseCase.toggle(customerId, provider, categoryId)
+        _uiState.update { it.copy(isBookmarked = nowBookmarked) }
     }
 }
